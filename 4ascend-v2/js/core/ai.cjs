@@ -964,13 +964,9 @@ const run = async () => {
     else if (gl_cf_mode === 'night') game = new GameNight(board, state, rand_aic, rand_unity);
     gl_game = game;
 
-    ai_init({
-        'aic': seed_aic,
-        'unity': seed_unity,
-        'first': first_index,
-        'plant': gl_cf_mode === 'normal' || gl_cf_mode === 'night',
-        'hp': gl_cf_health,
-    });
+    // 注意：AI 初始化必须等到「先手」最终确定之后再执行（见下方分支）。
+    // 若在此处提前初始化，worker 会拿到随机先手，而页面使用显式先手，
+    // 双方回合方不一致会导致 AI 无法正常应手。
 
 
     // 阵营决定
@@ -993,6 +989,15 @@ const run = async () => {
             [first_color, first_icon, first_index] = temp_stone === STONE_ENUM.BLACK ? [PLAYER_ENUM.BLACK, '⚫', 0] : [PLAYER_ENUM.WHITE, '⚪', 1];
         }
         state.turn_player = first_color;
+
+        // 先手与血量确定后再初始化 AI，保证 worker 与页面回合方一致
+        await ai_init({
+            'aic': seed_aic,
+            'unity': seed_unity,
+            'first': first_index,
+            'plant': gl_cf_mode === 'normal' || gl_cf_mode === 'night',
+            'hp': gl_cf_health,
+        });
 
         if (gl_cf_initb) 1; // todo
         if (gl_cf_balance && gl_cf_initb === '') await game_balance();
@@ -1027,8 +1032,8 @@ const run = async () => {
         state.hp = [...archive.healths];
         hp = archive.healths[0];
 
-        // 初始化AI
-        ai_init({
+        // 初始化AI（先手来自存档，与页面一致）
+        await ai_init({
             'aic': archive.seed_aic,
             'unity': archive.seed_unity,
             'first': first_index,
