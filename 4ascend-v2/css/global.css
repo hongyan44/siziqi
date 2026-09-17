@@ -1,0 +1,94 @@
+html {
+    height: 100%;
+    width: 100%;
+
+    background-color: #f8f9fa;
+}
+
+body {
+    touch-action: manipulation;
+
+    overscroll-behavior-x: none;
+
+    margin: 0;
+
+    overflow-x: hidden;
+    overflow-y: auto;
+
+
+    padding-bottom: constant(safe-area-inset-bottom);
+    padding-bottom: env(safe-area-inset-bottom);
+
+    -webkit-tap-highlight-color: transparent;
+
+    -webkit-touch-callout: none;
+
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+img {
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: high-quality;
+}
+
+canvas {
+    display: block !important;
+}
+
+
+/* ==========================================
+   ✨ 极简游戏风 - 隐形悬浮胶囊滚动条
+   ========================================== */
+
+/* 1. 现代标准浏览器 (Firefox 及其它标准核心) */
+* {
+    scrollbar-width: thin;
+    /* 变为细条 */
+    /* 轨道透明，滑块使用 Shoelace 的轻度中性色 */
+    scrollbar-color: var(--sl-color-neutral-300, rgba(0, 0, 0, 0.15)) transparent;
+}
+
+/* 2. WebKit 内核浏览器 (Chrome, Safari, Edge, 各种手机浏览器) */
+
+/* 滚动条整体骨架 */
+::-webkit-scrollbar {
+    width: 6px;
+    /* 纵向滚动条宽度：极窄 6px */
+    height: 6px;
+    /* 横向滚动条高度 */
+}
+
+/* 滚动条轨道：保持与你的 #f8f9fa 全局底色完美融合（或完全透明） */
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+/* 滚动条滑块（中间的小胶囊） */
+::-webkit-scrollbar-thumb {
+    /* 使用 rgba 拥有半透明呼吸感，或者自动适配你项目里的 Shoelace 变量 */
+    background-color: var(--sl-color-neutral-300, rgba(0, 0, 0, 0.15));
+    border-radius: 10px;
+    /* 完美圆角胶囊 */
+
+    /* 配合特殊的边框技巧，实现动态“悬浮不贴边”的精致感 */
+    border: 1px solid transparent;
+    background-clip: padding-box;
+}
+
+/* 鼠标悬停或玩家正在划动时，滑块微微加深加亮 */
+::-webkit-scrollbar-thumb:hover {
+    background-color: var(--sl-color-neutral-400, rgba(0, 0, 0, 0.3));
+}
+
+/* 针对特定高亮区域（比如你刚刚做的排行榜列表），如果想让它滚动时更明显 */
+#leaderboard_list::-webkit-scrollbar-thumb {
+    /* 可以直接借用你四子棋里 primary 蓝色的 rgba 表现 */
+    background-color: var(--sl-color-primary-300, rgba(0, 123, 255, 0.2));
+}
+
+#leaderboard_list::-webkit-scrollbar-thumb:hover {
+    background-color: var(--sl-color-primary-500, rgba(0, 123, 255, 0.5));
+}

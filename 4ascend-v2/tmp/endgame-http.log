@@ -1,0 +1,60 @@
+::ffff:127.0.0.1 - - [12/Sep/2026 14:46:43] "GET /pages/endgame/index.html HTTP/1.1" 200 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:46:43] "GET /css/global.min.css?v=replace HTTP/1.1" 200 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:46:43] "GET /js/global/ui.min.js?v=replace HTTP/1.1" 200 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:46:43] "GET /js/global/endgame.min.js?v=replace HTTP/1.1" 200 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:46:43] "GET /js/risk/api.min.js?v=replace HTTP/1.1" 200 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:46:43] "GET /js/ref/music.min.js?v=replace HTTP/1.1" 200 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:46:43] "GET /js/ref/must.min.js?v=replace HTTP/1.1" 200 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:46:43] "GET /js/ref/http.min.js?v=replace HTTP/1.1" 200 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:46:43] "GET /js/ref/global-music.min.js?v=replace HTTP/1.1" 200 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:46:44] code 404, message File not found
+::ffff:127.0.0.1 - - [12/Sep/2026 14:46:44] "GET /audio/game/main.opus?v=1 HTTP/1.1" 404 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:46:44] "GET /favicon.png HTTP/1.1" 200 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:01] "GET /pages/endgame/levels.html HTTP/1.1" 200 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:01] "GET /css/global.min.css?v=replace HTTP/1.1" 304 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:01] "GET /js/risk/api.min.js?v=replace HTTP/1.1" 304 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:01] "GET /js/global/ui.min.js?v=replace HTTP/1.1" 304 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:01] "GET /js/global/endgame.min.js?v=replace HTTP/1.1" 304 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:01] "GET /js/ref/must.min.js?v=replace HTTP/1.1" 304 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:01] "GET /js/ref/music.min.js?v=replace HTTP/1.1" 304 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:01] "GET /js/ref/global-music.min.js?v=replace HTTP/1.1" 304 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:01] "GET /js/ref/http.min.js?v=replace HTTP/1.1" 304 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:01] code 404, message File not found
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:01] "GET /audio/game/main.opus?v=1 HTTP/1.1" 404 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] "GET /pages/endgame/challenge.html?mode=daily HTTP/1.1" 200 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] "GET /css/main.min.css?v=replace HTTP/1.1" 200 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] "GET /js/global/fascend.min.js?v=replace HTTP/1.1" 200 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] "GET /css/global.min.css?v=replace HTTP/1.1" 304 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] "GET /js/global/ui.min.js?v=replace HTTP/1.1" 304 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] "GET /js/global/endgame.min.js?v=replace HTTP/1.1" 304 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] "GET /css/game.min.css?v=replace HTTP/1.1" 200 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] "GET /js/global/game.min.js?v=replace HTTP/1.1" 200 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] "GET /js/global/utils.min.js?v=replace HTTP/1.1" 200 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] "GET /js/risk/api.min.js?v=replace HTTP/1.1" 304 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] "GET /js/ref/music.min.js?v=replace HTTP/1.1" 304 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] "GET /js/ref/global-music.min.js?v=replace HTTP/1.1" 304 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] "GET /js/worker/ai.min.js HTTP/1.1" 200 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] code 404, message File not found
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] "GET /audio/game/main.opus?v=1 HTTP/1.1" 404 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] code 404, message File not found
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] "GET /audio/game/stone.opus?v=1 HTTP/1.1" 404 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] code 404, message File not found
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] "GET /audio/game/plant.opus?v=1 HTTP/1.1" 404 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] code 404, message File not found
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] "GET /audio/game/match.opus?v=1 HTTP/1.1" 404 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] code 404, message File not found
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] "GET /audio/game/timer_tick.opus?v=1 HTTP/1.1" 404 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] code 404, message File not found
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] "GET /audio/game/main.opus?v=1 HTTP/1.1" 404 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] code 404, message File not found
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] "GET /audio/game/timer_end.opus?v=1 HTTP/1.1" 404 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] code 404, message File not found
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] code 404, message File not found
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] code 404, message File not found
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] "GET /audio/game/hit.mp3?v=1 HTTP/1.1" 404 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] "GET /audio/game/orbit.mp3?v=1 HTTP/1.1" 404 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] "GET /audio/game/annihilation.mp3?v=1 HTTP/1.1" 404 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] code 404, message File not found
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] "GET /audio/game/fly.mp3?v=1 HTTP/1.1" 404 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] "GET /wasm/ai/4ascend-hce.js?v=0.4158961174364567 HTTP/1.1" 200 -
+::ffff:127.0.0.1 - - [12/Sep/2026 14:48:55] "GET /wasm/ai/4ascend-zero.js?v=0.9256461156493221 HTTP/1.1" 200 -

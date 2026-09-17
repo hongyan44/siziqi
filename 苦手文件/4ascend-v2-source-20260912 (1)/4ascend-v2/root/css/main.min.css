@@ -1,0 +1,1 @@
+.main-transition{transition:opacity .5s cubic-bezier(.23,1,.32,1),transform .5s cubic-bezier(.23,1,.32,1),visibility .5s;will-change:opacity,transform}.main-show{opacity:1;visibility:visible;pointer-events:auto;position:absolute;z-index:2}.main-hide{opacity:0;visibility:hidden;pointer-events:none;position:absolute;z-index:1}

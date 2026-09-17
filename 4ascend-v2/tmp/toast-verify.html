@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>ShToast 验证</title>
+  <link href="https://quantil.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/themes/light.css" rel="stylesheet">
+  <script src="https://quantil.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/shoelace-autoloader.js" type="module"></script>
+  <script src="/js/global/ui.min.js"></script>
+</head>
+<body>
+  <h1>ShToast 验证</h1>
+  <button id="btn">弹出成功提示</button>
+  <script>
+    document.getElementById('btn').addEventListener('click', () => {
+      new window.UiExports.ShToast(2600).success('压缩残局码已复制');
+    });
+    // 页面加载后自动弹一次，便于无头验证。
+    customElements.whenDefined('sl-alert').then(() => {
+      new window.UiExports.ShToast(2600).success('Toast 自动验证成功');
+    });
+  </script>
+</body>
+</html>

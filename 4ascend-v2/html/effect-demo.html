@@ -1,0 +1,266 @@
+<!--
+ * @Author: CsVeryLoveXieWenLi
+ * @Description: 落子特效演示
+ * @Copyright (c) 2026 by CsVeryLoveXieWenLi, All Rights Reserved.
+-->
+<!DOCTYPE html>
+<html>
+
+
+<head>
+    <meta charset='UTF-8'>
+    <meta http-equiv='X-UA-Compatible' content='IE=edge'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0, user-scalable=no'>
+
+    <link rel='shortcut icon' href='/favicon.png' type='image/png'>
+
+    <title>四子棋 落子特效演示</title>
+
+    <script src='/js/risk/api.min.js?v=replace'></script>
+    <script src='/js/global/game.min.js?v=replace'></script>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #f8f9fa;
+            font-family: sans-serif;
+            color: #333;
+            padding: 16px;
+            gap: 14px;
+        }
+
+        h1 {
+            font-size: 1.25rem;
+            margin: 0;
+        }
+
+        .tip {
+            font-size: 0.8rem;
+            color: #888;
+            margin: 0;
+        }
+
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 8px;
+            max-width: 560px;
+        }
+
+        .toolbar button {
+            border: none;
+            border-radius: 999px;
+            padding: 8px 16px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            color: #fff;
+            transition: transform 0.1s ease, opacity 0.1s ease;
+        }
+
+        .toolbar button:active {
+            transform: scale(0.94);
+            opacity: 0.85;
+        }
+
+        .btn-black { background: #2c3e50; }
+        .btn-white { background: #95a5a6; }
+        .btn-ascend-b { background: #e74c3c; }
+        .btn-ascend-w { background: #3498db; }
+        .btn-auto { background: #8e44ad; }
+        .btn-clear { background: #7f8c8d; }
+
+        .board-wrap {
+            position: relative;
+            width: min(92vw, 520px);
+            aspect-ratio: 1 / 1;
+        }
+
+        .board-wrap canvas {
+            display: block;
+        }
+
+        .layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+
+<body>
+    <h1>🎯 四子棋 落子特效演示</h1>
+    <p class='tip'>点击棋盘交叉点落子，或使用下方按钮触发对应特效</p>
+
+    <div class='toolbar'>
+        <button class='btn-black' id='btn_black'>⚫ 黑子落子</button>
+        <button class='btn-white' id='btn_white'>⚪ 白子落子</button>
+        <button class='btn-ascend-b' id='btn_ascend_b'>🔴 黑 ASCEND</button>
+        <button class='btn-ascend-w' id='btn_ascend_w'>🔵 白 ASCEND</button>
+        <button class='btn-auto' id='btn_auto'>▶ 自动演示</button>
+        <button class='btn-clear' id='btn_clear'>🗑 清空</button>
+    </div>
+
+    <div class='board-wrap' id='board_wrap'>
+        <canvas id='canvas_board'></canvas>
+
+        <canvas id='canvas_stone_fill' class='layer'></canvas>
+        <canvas id='canvas_stone_ascend' class='layer'></canvas>
+
+        <canvas id='canvas_plant' class='layer'></canvas>
+
+        <canvas id='canvas_view_turn' class='layer'></canvas>
+        <canvas id='canvas_view_ascend' class='layer'></canvas>
+        <canvas id='canvas_view_move' class='layer'></canvas>
+    </div>
+
+    <script>
+        (() => {
+            const GameCanvas = window.GameExports.Canvas;
+
+            const SIZE = Math.min(window.innerWidth * 0.92, 520);
+
+            const ui = new GameCanvas(
+                document.getElementById('canvas_board'),
+
+                document.getElementById('canvas_stone_fill'),
+                document.getElementById('canvas_stone_ascend'),
+
+                document.getElementById('canvas_plant'),
+
+                document.getElementById('canvas_view_turn'),
+                document.getElementById('canvas_view_ascend'),
+                document.getElementById('canvas_view_move'),
+
+                9, 9,
+                0.41, 0.12,
+                0.062, SIZE
+            );
+
+            ui.init();
+            ui.draw_board();
+
+
+            // ==================== 演示逻辑 ====================
+
+            const KINDS = {
+                'black': { 'stone': '#2c3e50', 'effect': '#2c3e50', 'ascend': false },
+                'white': { 'stone': '#ecf0f1', 'effect': '#95a5a6', 'ascend': false },
+                'ascend_b': { 'stone': '#e74c3c', 'effect': '#e74c3c', 'ascend': true },
+                'ascend_w': { 'stone': '#3498db', 'effect': '#3498db', 'ascend': true }
+            };
+
+            const occupied = new Set();
+
+            const place_at = (gx, gy, kind_name) => {
+                const key = `${gx},${gy}`;
+                if (occupied.has(key)) return false;
+                occupied.add(key);
+
+                const kind = KINDS[kind_name];
+
+                if (kind.ascend) {
+                    ui.draw_stone_ascend(gx, gy, kind.stone);
+                    ui.draw_effect_ascend(gx, gy, kind.effect);
+                } else {
+                    ui.draw_stone_fill(gx, gy, kind.stone);
+                    ui.draw_effect_place(gx, gy, kind.effect);
+                }
+
+                return true;
+            };
+
+            const place_random = (kind_name) => {
+                const empty = [];
+                for (let x = 0; x < 9; x++) {
+                    for (let y = 0; y < 9; y++) {
+                        if (!occupied.has(`${x},${y}`)) empty.push([x, y]);
+                    }
+                }
+                if (!empty.length) return false;
+
+                const [gx, gy] = empty[Math.floor(Math.random() * empty.length)];
+                return place_at(gx, gy, kind_name);
+            };
+
+            const clear_all = () => {
+                occupied.clear();
+                ui.clear();
+                ui.init();
+                ui.draw_board();
+            };
+
+
+            // ==================== 交互绑定 ====================
+
+            let click_kind = 'black';
+
+            document.getElementById('btn_black').addEventListener('click', () => { click_kind = 'black'; place_random('black'); });
+            document.getElementById('btn_white').addEventListener('click', () => { click_kind = 'white'; place_random('white'); });
+            document.getElementById('btn_ascend_b').addEventListener('click', () => { click_kind = 'ascend_b'; place_random('ascend_b'); });
+            document.getElementById('btn_ascend_w').addEventListener('click', () => { click_kind = 'ascend_w'; place_random('ascend_w'); });
+            document.getElementById('btn_clear').addEventListener('click', clear_all);
+
+
+            // 自动演示
+            let auto_timer = null;
+            const btn_auto = document.getElementById('btn_auto');
+
+            btn_auto.addEventListener('click', () => {
+                if (auto_timer) {
+                    clearInterval(auto_timer);
+                    auto_timer = null;
+                    btn_auto.innerText = '▶ 自动演示';
+                    return;
+                }
+
+                btn_auto.innerText = '⏸ 停止演示';
+
+                let count = 0;
+                auto_timer = setInterval(() => {
+                    // 约每 5 手出现一次 ASCEND
+                    const kind = count % 5 === 4
+                        ? (Math.random() < 0.5 ? 'ascend_b' : 'ascend_w')
+                        : (count % 2 === 0 ? 'black' : 'white');
+
+                    count++;
+
+                    if (!place_random(kind)) {
+                        clearInterval(auto_timer);
+                        auto_timer = null;
+                        btn_auto.innerText = '▶ 自动演示';
+                    }
+                }, 750);
+            });
+
+
+            // 点击棋盘落子
+            const canvas_board = document.getElementById('canvas_board');
+
+            canvas_board.addEventListener('pointerdown', (event) => {
+                const rect = canvas_board.getBoundingClientRect();
+
+                const dx = (event.clientX - rect.left) * (SIZE / rect.width);
+                const dy = (event.clientY - rect.top) * (SIZE / rect.height);
+
+                const grid = ui.cxcy2grid(dx, dy);
+                if (grid) place_at(grid[0], grid[1], click_kind);
+            });
+        })();
+    </script>
+</body>
+
+
+</html>

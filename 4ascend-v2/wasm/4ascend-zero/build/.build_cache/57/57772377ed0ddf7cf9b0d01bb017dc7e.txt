@@ -1,0 +1,19 @@
+{
+    errdata = "emcc: \27[35m\27[1mwarning: \27[0m\27[1mlinker flag ignored during compilation: '--bind' [-Wunused-command-line-argument]\27[0m\
+clang: warning: -lembind: 'linker' input unused [-Wunused-command-line-argument]\
+clang: warning: argument unused during compilation: '-c' [-Wunused-command-line-argument]\
+emcc: \27[35m\27[1mwarning: \27[0m\27[1mlinker flag ignored during compilation: '--bind' [-Wunused-command-line-argument]\27[0m\
+clang: warning: -lembind: 'linker' input unused [-Wunused-command-line-argument]\
+In file included from src\\net.cpp:6:\
+In file included from src\\net.h:10:\
+In file included from C:\\MyData\\Libs\\StaticWasm\\ncnn-20260526\\x64\\include\\ncnn/net.h:7:\
+In file included from C:\\MyData\\Libs\\StaticWasm\\ncnn-20260526\\x64\\include\\ncnn\\blob.h:7:\
+C:\\MyData\\Libs\\StaticWasm\\ncnn-20260526\\x64\\include\\ncnn\\mat.h:1177:9: warning: expression result unused [-Wunused-value]\
+ 1177 |         (int)__sync_fetch_and_add((unsigned*)(m.refcount), (unsigned)(1));\
+      |         ^    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\
+C:\\MyData\\Libs\\StaticWasm\\ncnn-20260526\\x64\\include\\ncnn\\mat.h:1201:9: warning: expression result unused [-Wunused-value]\
+ 1201 |         (int)__sync_fetch_and_add((unsigned*)(refcount), (unsigned)(1));\
+      |         ^    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\
+2 warnings generated.\
+"
+}

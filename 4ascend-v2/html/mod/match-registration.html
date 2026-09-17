@@ -1,0 +1,378 @@
+<!--
+ * @Author: CsVeryLoveXieWenLi
+ * @Description: 当前赛事报名与随机分组
+ * @Copyright (c) 2026 by CsVeryLoveXieWenLi, All Rights Reserved.
+-->
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset='UTF-8'>
+    <meta http-equiv='X-UA-Compatible' content='IE=edge'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0, user-scalable=no'>
+
+    <link rel='shortcut icon' href='/favicon.png' type='image/png'>
+    <title>四子棋 当前赛事报名与抽签</title>
+
+    <!-- Bootstrap V5 -->
+    <link href='https://quantil.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css' rel='stylesheet'>
+
+    <!-- Shoelace -->
+    <link href='https://quantil.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/themes/light.css' rel='stylesheet'>
+    <script src='https://quantil.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/shoelace-autoloader.js'
+        type='module'></script>
+
+    <!-- MY -->
+    <script src='/js/global/ui.min.js?v=replace'></script>
+    <script src='/js/ref/must.min.js?v=replace'></script>
+    <script src='/js/ref/music.min.js?v=replace'></script>
+    <script src='/js/ref/global-music.min.js?v=replace'></script>
+    <script src='/js/ref/http.min.js?v=replace'></script>
+    <link href='/css/global.min.css?v=replace' rel='stylesheet'>
+
+    <style>
+        .loading-a {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 1);
+            transition: all 0.4s ease;
+        }
+
+        .loading-p {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            animation: loading-spin 1s linear infinite;
+        }
+
+        .loading-t {
+            margin-top: 15px;
+            font-family: sans-serif;
+            color: #666;
+            font-size: 14px;
+        }
+
+        @keyframes loading-spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .category-title {
+            font-size: 1.1rem;
+            color: var(--sl-color-neutral-600);
+            border-left: 4px solid var(--sl-color-primary-500);
+            padding-left: 8px;
+            margin-bottom: 0.5rem;
+        }
+
+        .draw-card {
+            border: 1px solid rgba(13, 110, 253, 0.14);
+            border-radius: 0.85rem;
+        }
+
+        .draw-card .card-header {
+            background: rgba(13, 110, 253, 0.035);
+            border-bottom: 1px solid rgba(13, 110, 253, 0.1);
+        }
+
+        .player-chip {
+            min-width: 0;
+            border: 1px solid var(--sl-color-neutral-200);
+            border-radius: 0.7rem;
+            background: #fff;
+        }
+
+        .player-avatar {
+            width: 2rem;
+            height: 2rem;
+            flex: 0 0 auto;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            color: var(--sl-color-primary-700);
+            background: var(--sl-color-primary-100);
+        }
+
+        .wait-player {
+            color: var(--sl-color-neutral-500);
+            border-style: dashed;
+            background: var(--sl-color-neutral-50);
+        }
+
+        .admin-panel {
+            border: 1px solid rgba(255, 193, 7, 0.35);
+            background: rgba(255, 193, 7, 0.08);
+        }
+
+        .sticky-actions {
+            position: sticky;
+            bottom: 0;
+            z-index: 5;
+            background: rgba(248, 249, 250, 0.94);
+            backdrop-filter: blur(8px);
+        }
+
+        @media (min-width: 768px) {
+            .draw-grid {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 0.75rem;
+            }
+        }
+    </style>
+
+    <div id='loading' class='loading-a'>
+        <div class='loading-p'></div>
+        <p class='loading-t'>正在初始化...</p>
+    </div>
+
+    <script>
+        (async () => {
+            const icons = Array.from(document.querySelectorAll('sl-icon'));
+            const st = Date.now();
+            await Promise.allSettled([
+                customElements.whenDefined('sl-button'),
+                customElements.whenDefined('sl-icon'),
+                customElements.whenDefined('sl-input'),
+                customElements.whenDefined('sl-select'),
+                customElements.whenDefined('sl-option'),
+            ]);
+            if (document.readyState === 'loading') await new Promise((resolve) => document.addEventListener('DOMContentLoaded', resolve, { 'once': true }));
+            await Promise.allSettled(icons.map((icon) => new Promise((resolve) => {
+                if (icon.hasAttribute('library')) resolve();
+                icon.addEventListener('sl-load', () => requestAnimationFrame(() => requestAnimationFrame(resolve)), { 'once': true });
+            })));
+            await new Promise((resolve) => {
+                if (document.readyState === 'complete') resolve();
+                else window.addEventListener('load', resolve, { 'once': true });
+            });
+            setTimeout(() => {
+                window.loaded = true;
+                const loader = document.getElementById('loading');
+                if (loader) {
+                    loader.style.opacity = '0';
+                    loader.style.visibility = 'hidden';
+                    setTimeout(() => loader.remove(), 400);
+                }
+            }, Math.max(0, 300 - (Date.now() - st)));
+        })();
+    </script>
+</head>
+
+<body class='d-flex flex-column w-100 h-100 bg-light'>
+    <div id='button_music_wrap' class='position-fixed top-0 start-0 d-flex p-2' style='z-index: 1050;'>
+        <sl-button id='button_music_toggle' variant='default' circle title='单击切换下一首；1 秒内双击开始/停止播放' aria-label='单击切换下一首；1 秒内双击开始/停止播放'>
+            <sl-icon id='icon_music_toggle' name='volume-up'></sl-icon>
+        </sl-button>
+    </div>
+
+    <div class='d-flex flex-column w-100 h-100'>
+        <header></header>
+
+        <main class='container py-4 flex-grow-1 overflow-auto' style='max-width: 960px;'>
+            <header class='text-center'>
+                <sl-icon name='diagram-3' style='font-size: 3.5rem; color: var(--sl-color-primary-600);'></sl-icon>
+                <h1 class='display-5 fw-bold mt-2 mb-1' style='letter-spacing: -1px;'>当前赛事报名与抽签</h1>
+                <p class='text-secondary'>报名参赛 · 随机分组</p>
+            </header>
+
+            <div class='d-flex flex-column gap-4 px-2'>
+                <section>
+                    <div class='category-title fw-bold'>赛事信息</div>
+                    <div class='card shadow-sm draw-card'>
+                        <div class='card-body p-3'>
+                            <div class='d-flex align-items-start justify-content-between gap-3'>
+                                <div>
+                                    <div class='fw-bold'>四子棋春季公开赛</div>
+                                    <div class='text-secondary small mt-1'>报名结束后由系统随机分组，每组 2 人。</div>
+                                </div>
+                                <sl-badge variant='success' pill>报名中</sl-badge>
+                            </div>
+                            <div class='row g-2 mt-2 text-secondary small'>
+                                <div class='col-6'><sl-icon name='people' class='me-1'></sl-icon><span id='summary_players'>0 / 8 人</span></div>
+                                <div class='col-6'><sl-icon name='diagram-3' class='me-1'></sl-icon><span id='summary_groups'>4 组</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section>
+                    <div class='category-title fw-bold'>报名参赛</div>
+                    <div class='card shadow-sm draw-card'>
+                        <div class='card-body p-3'>
+                            <div class='d-flex flex-column flex-md-row align-items-md-end gap-2'>
+                                <sl-input id='input_player_name' class='flex-grow-1' label='参赛昵称' placeholder='请输入昵称（演示用）' clearable></sl-input>
+                                <sl-button id='button_join' variant='primary' size='medium'>
+                                    <sl-icon slot='prefix' name='person-plus'></sl-icon>报名参赛
+                                </sl-button>
+                            </div>
+                            <div class='text-secondary small mt-2'>普通用户报名后，将在抽签时随机分入对应小组。</div>
+                        </div>
+                    </div>
+                </section>
+
+                <section>
+                    <div class='d-flex align-items-center justify-content-between gap-2'>
+                        <div>
+                            <div class='category-title fw-bold mb-0'>分组结果</div>
+                            <div class='text-secondary small mt-1'>当前报名名单 · 抽签结果预览</div>
+                        </div>
+                        <sl-badge id='draw_status' variant='neutral' pill>等待抽签</sl-badge>
+                    </div>
+                    <div id='draw_groups' class='draw-grid mt-2'></div>
+                </section>
+
+                <section id='admin_section' class='d-none'>
+                    <div class='category-title fw-bold'>管理员设置</div>
+                    <div class='card shadow-sm draw-card admin-panel'>
+                        <div class='card-body p-3'>
+                            <div class='d-flex align-items-center gap-2 mb-3'>
+                                <sl-icon name='shield-lock' class='text-warning'></sl-icon>
+                                <div class='fw-bold'>调整赛事分组规则</div>
+                                <sl-badge variant='warning' pill>管理员</sl-badge>
+                            </div>
+                            <div class='row g-2'>
+                                <div class='col-6'>
+                                    <sl-input id='input_max_players' type='number' label='报名人数上限' value='8' min='2' max='64' step='2'></sl-input>
+                                </div>
+                                <div class='col-6'>
+                                    <sl-input id='input_group_count' type='number' label='分组数' value='4' min='1' max='32'></sl-input>
+                                </div>
+                            </div>
+                            <div class='text-secondary small mt-2'>默认 8 人、4 组，每组 2 人。调整后仅影响本页面演示数据。</div>
+                            <sl-button id='button_apply_settings' class='mt-3' variant='warning' outline>应用设置</sl-button>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <div class='sticky-actions px-3 pb-2'>
+            <div class='container d-flex flex-column flex-sm-row justify-content-center gap-2' style='max-width: 960px;'>
+                <sl-button id='button_draw' variant='primary' size='large' pill>
+                    <sl-icon slot='prefix' name='shuffle'></sl-icon>随机分组
+                </sl-button>
+                <sl-button id='button_back' variant='default' size='large' pill href='/pages/mod/match.html'>返回赛事大厅</sl-button>
+            </div>
+        </div>
+
+        <footer class='text-center text-muted py-1' style='font-size: 0.74rem;'>
+            <a href='/' class='text-decoration-none text-secondary'>返回功能选择</a>
+        </footer>
+    </div>
+
+    <script>
+        const playersElement = document.getElementById('draw_groups');
+        const playerNameInput = document.getElementById('input_player_name');
+        const joinButton = document.getElementById('button_join');
+        const drawButton = document.getElementById('button_draw');
+        const drawStatus = document.getElementById('draw_status');
+        const summaryPlayers = document.getElementById('summary_players');
+        const summaryGroups = document.getElementById('summary_groups');
+        const maxPlayersInput = document.getElementById('input_max_players');
+        const groupCountInput = document.getElementById('input_group_count');
+        const adminSection = document.getElementById('admin_section');
+        const applySettingsButton = document.getElementById('button_apply_settings');
+
+        let maxPlayers = 8;
+        let groupCount = 4;
+        let hasDrawn = false;
+        let players = ['星河', '远山', '清风'];
+
+        const demoNames = ['落子无悔', '棋盘漫游者', '青空', '月下观棋', '四角星', '一枚白子', '山海之间', '小棋手'];
+
+        const isAdmin = new URLSearchParams(location.search).get('admin') === '1';
+        adminSection.classList.toggle('d-none', !isAdmin);
+
+        const normalizeSettings = () => {
+            maxPlayers = Math.max(2, Math.min(64, Number(maxPlayersInput.value) || 8));
+            groupCount = Math.max(1, Math.min(32, Number(groupCountInput.value) || 4));
+            groupCount = Math.min(groupCount, maxPlayers);
+            maxPlayersInput.value = maxPlayers;
+            groupCountInput.value = groupCount;
+        };
+
+        const render = (groups = []) => {
+            summaryPlayers.textContent = `${players.length} / ${maxPlayers} 人`;
+            summaryGroups.textContent = `${groupCount} 组`;
+            playersElement.innerHTML = '';
+            if (!groups.length) {
+                for (let index = 0; index < groupCount; index++) groups.push([]);
+            }
+            groups.forEach((group, index) => {
+                const card = document.createElement('div');
+                card.className = 'card draw-card shadow-sm';
+                const header = document.createElement('div');
+                header.className = 'card-header d-flex align-items-center justify-content-between py-2 px-3';
+                header.innerHTML = `<span class='fw-bold'>分组 ${index + 1}</span><span class='text-secondary small'>${group.length} / 2 人</span>`;
+                const body = document.createElement('div');
+                body.className = 'card-body d-flex flex-column gap-2 p-2';
+                [0, 1].forEach((slot) => {
+                    const player = group[slot];
+                    const item = document.createElement('div');
+                    item.className = `player-chip d-flex align-items-center gap-2 px-2 py-2 ${player ? '' : 'wait-player'}`;
+                    item.innerHTML = player
+                        ? `<span class='player-avatar'><sl-icon name='person-fill'></sl-icon></span><span class='text-truncate'>${player}</span>`
+                        : `<span class='player-avatar'><sl-icon name='person'></sl-icon></span><span class='text-truncate'>待分组</span>`;
+                    body.appendChild(item);
+                });
+                card.append(header, body);
+                playersElement.appendChild(card);
+            });
+            drawButton.disabled = players.length < 2;
+        };
+
+        const drawGroups = () => {
+            const shuffled = [...players].sort(() => Math.random() - 0.5);
+            const groups = Array.from({ length: groupCount }, () => []);
+            shuffled.forEach((player, index) => groups[index % groupCount].push(player));
+            hasDrawn = true;
+            drawStatus.textContent = '已完成抽签';
+            drawStatus.variant = 'success';
+            render(groups);
+        };
+
+        joinButton.addEventListener('click', () => {
+            const name = playerNameInput.value.trim();
+            if (!name) return playerNameInput.focus();
+            if (players.length >= maxPlayers) return;
+            if (players.includes(name)) return;
+            players.push(name);
+            playerNameInput.value = '';
+            hasDrawn = false;
+            drawStatus.textContent = '等待抽签';
+            drawStatus.variant = 'neutral';
+            render();
+        });
+
+        playerNameInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') joinButton.click();
+        });
+
+        drawButton.addEventListener('click', drawGroups);
+
+        applySettingsButton.addEventListener('click', () => {
+            normalizeSettings();
+            players = players.slice(0, maxPlayers);
+            hasDrawn = false;
+            drawStatus.textContent = '等待抽签';
+            drawStatus.variant = 'neutral';
+            render();
+        });
+
+        window.addEventListener('load', () => {
+            normalizeSettings();
+            render();
+        });
+    </script>
+</body>
+
+</html>

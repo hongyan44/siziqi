@@ -1,0 +1,382 @@
+<!--
+ * @Author: CsVeryLoveXieWenLi
+ * @Description: ASCEND 抵消动画演示
+ * @Copyright (c) 2026 by CsVeryLoveXieWenLi, All Rights Reserved.
+-->
+<!DOCTYPE html>
+<html>
+
+
+<head>
+    <meta charset='UTF-8'>
+    <meta http-equiv='X-UA-Compatible' content='IE=edge'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0, user-scalable=no'>
+
+    <link rel='shortcut icon' href='/favicon.png' type='image/png'>
+
+    <title>四子棋 ASCEND 抵消动画演示</title>
+
+    <script src='/js/risk/api.min.js?v=replace'></script>
+    <script src='/js/global/game.min.js?v=replace'></script>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #f8f9fa;
+            font-family: sans-serif;
+            color: #333;
+            padding: 14px;
+            gap: 12px;
+        }
+
+        h1 {
+            font-size: 1.2rem;
+            margin: 0;
+        }
+
+        .tip {
+            font-size: 0.78rem;
+            color: #888;
+            margin: 0;
+            max-width: 560px;
+            text-align: center;
+        }
+
+        .hp-row {
+            display: flex;
+            gap: 10px;
+            width: min(92vw, 520px);
+        }
+
+        .hp-card {
+            flex: 1;
+            background: #fff;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 8px 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        }
+
+        .hp-card .name {
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+
+        .hp-card .hp {
+            font-size: 0.9rem;
+            color: #c0392b;
+            font-weight: bold;
+        }
+
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 8px;
+            max-width: 640px;
+        }
+
+        .toolbar button {
+            border: none;
+            border-radius: 999px;
+            padding: 8px 14px;
+            font-size: 0.82rem;
+            cursor: pointer;
+            color: #fff;
+            transition: transform 0.1s ease, opacity 0.1s ease;
+        }
+
+        .toolbar button:active {
+            transform: scale(0.94);
+            opacity: 0.85;
+        }
+
+        .toolbar button:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
+        .b1 { background: #2c3e50; }
+        .b2 { background: #16a085; }
+        .b3 { background: #27ae60; }
+        .b4 { background: #f39c12; }
+        .b5 { background: #8e44ad; }
+        .b6 { background: #c0392b; }
+        .b7 { background: #7f8c8d; }
+
+        .board-wrap {
+            position: relative;
+            width: min(92vw, 520px);
+            aspect-ratio: 1 / 1;
+        }
+
+        .board-wrap canvas {
+            display: block;
+        }
+
+        .layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        #status {
+            font-size: 0.85rem;
+            color: #555;
+            min-height: 1.4em;
+        }
+    </style>
+</head>
+
+
+<body>
+    <h1>⚔️ ASCEND 抵消动画演示</h1>
+    <p class='tip'>连子升起 → 侧翼盘旋 → 对手回应 → 碰撞抵消（带草优先、同等互消、返还子）→ 剩余棋子轰击血量</p>
+
+    <div class='hp-row'>
+        <div class='hp-card' id='card_left'>
+            <span class='name'>🔴 黑方（左）</span>
+            <span class='hp' id='hp_left'>HP: 6/6</span>
+        </div>
+        <div class='hp-card' id='card_right'>
+            <span class='name'>🔵 白方（右）</span>
+            <span class='hp' id='hp_right'>HP: 6/6</span>
+        </div>
+    </div>
+
+    <div class='toolbar'>
+        <button class='b1' id='s1'>4v4 全灭</button>
+        <button class='b2' id='s2'>5v4 打血</button>
+        <button class='b3' id='s3'>带草返还</button>
+        <button class='b4' id='s4'>反击卖血</button>
+        <button class='b5' id='s5'>不回应斩杀</button>
+        <button class='b6' id='s6'>☢ 核弹</button>
+        <button class='b7' id='reset'>🗑 重置</button>
+    </div>
+
+    <div id='status'>选择一个场景开始演示</div>
+
+    <div class='board-wrap' id='board_wrap'>
+        <canvas id='canvas_board'></canvas>
+
+        <canvas id='canvas_stone_fill' class='layer'></canvas>
+        <canvas id='canvas_stone_ascend' class='layer'></canvas>
+
+        <canvas id='canvas_plant' class='layer'></canvas>
+
+        <canvas id='canvas_view_turn' class='layer'></canvas>
+        <canvas id='canvas_view_ascend' class='layer'></canvas>
+        <canvas id='canvas_view_move' class='layer'></canvas>
+    </div>
+
+    <script>
+        (() => {
+            const GameCanvas = window.GameExports.Canvas;
+
+            const SIZE = Math.min(window.innerWidth * 0.92, 520);
+
+            const ui = new GameCanvas(
+                document.getElementById('canvas_board'),
+
+                document.getElementById('canvas_stone_fill'),
+                document.getElementById('canvas_stone_ascend'),
+
+                document.getElementById('canvas_plant'),
+
+                document.getElementById('canvas_view_turn'),
+                document.getElementById('canvas_view_ascend'),
+                document.getElementById('canvas_view_move'),
+
+                9, 9,
+                0.41, 0.12,
+                0.062, SIZE
+            );
+
+            ui.init();
+            ui.draw_board();
+
+
+            // ==================== 演示状态 ====================
+
+            const hp = { 'left': 6, 'right': 6 };
+            const hp_left = document.getElementById('hp_left');
+            const hp_right = document.getElementById('hp_right');
+            const status = document.getElementById('status');
+            const buttons = Array.from(document.querySelectorAll('.toolbar button'));
+
+            const RED = '#e74c3c';
+            const BLUE = '#3498db';
+
+            const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+            const set_busy = (busy) => buttons.forEach((b) => b.disabled = busy);
+
+            const update_hp = () => {
+                hp_left.innerText = `HP: ${Math.max(0, hp.left)}/6`;
+                hp_right.innerText = `HP: ${Math.max(0, hp.right)}/6`;
+            };
+
+            /**
+             * @description: 在棋盘上画出静态 ASCEND 棋子，然后升起
+             * @param {[number, number][]} cells 棋盘格点
+             * @param {string} side 'left' | 'right'
+             * @param {string} color
+             * @param {number[]} powers 每子战力（1普通 2一草 3两草）
+             */
+            const lift = (cells, side, color, powers) => {
+                const metas = cells.map(([gx, gy], i) => {
+                    ui.draw_stone_ascend(gx, gy, color);
+                    return {
+                        gx,
+                        gy,
+                        'power': powers[i] || 1,
+                        color,
+                        'stone_color': color === '#e74c3c' ? '#2c3e50' : '#ecf0f1',
+                        'marker_color': color,
+                        'plant': powers[i] - 1
+                    };
+                });
+                return ui.ascend_lift(metas, side);
+            };
+
+            /**
+             * @description: 结算并扣血
+             */
+            const settle = async () => {
+                const result = await ui.ascend_settle({ 'left': hp_left, 'right': hp_right });
+                hp.left -= result.damageLeft;
+                hp.right -= result.damageRight;
+                update_hp();
+                return result;
+            };
+
+            const run = async (fn) => {
+                set_busy(true);
+                try { await fn(); } catch (e) { console.error(e); }
+                set_busy(false);
+            };
+
+
+            // ==================== 场景 ====================
+
+            // 黑方连子位（左侧发起）与白方连子位（右侧回应）
+            const BLACK_LINE4 = [[2, 2], [3, 2], [4, 2], [5, 2]];
+            const BLACK_LINE5 = [[2, 2], [3, 2], [4, 2], [5, 2], [6, 2]];
+            const BLACK_LINE7 = [[1, 2], [2, 2], [3, 2], [4, 2], [5, 2], [6, 2], [7, 2]];
+            const WHITE_LINE4 = [[2, 6], [3, 6], [4, 6], [5, 6]];
+            const WHITE_LINE4B = [[3, 6], [4, 6], [5, 6], [6, 6]];
+
+            // 1. 4v4 全灭
+            document.getElementById('s1').addEventListener('click', () => run(async () => {
+                status.innerText = '黑方连成 4 子，全部升起盘旋…';
+                await lift(BLACK_LINE4, 'left', RED, [1, 1, 1, 1]);
+                await sleep(1200);
+
+                status.innerText = '白方也连成 4 子回应！双方即将碰撞抵消…';
+                await lift(WHITE_LINE4, 'right', BLUE, [1, 1, 1, 1]);
+                await sleep(900);
+
+                status.innerText = '4 vs 4：同等棋子直接抵消，全灭，无伤害';
+                await settle();
+                status.innerText = '抵消完毕：双方棋子全部湮灭，无人受伤';
+            }));
+
+            // 2. 5v4 打血
+            document.getElementById('s2').addEventListener('click', () => run(async () => {
+                status.innerText = '黑方连成 5 子升起…';
+                await lift(BLACK_LINE5, 'left', RED, [1, 1, 1, 1, 1]);
+                await sleep(1200);
+
+                status.innerText = '白方 4 子回应…';
+                await lift(WHITE_LINE4, 'right', BLUE, [1, 1, 1, 1]);
+                await sleep(900);
+
+                status.innerText = '5 vs 4：黑方剩余 1 子，轰击白方血量！';
+                await settle();
+                status.innerText = '黑方胜 1 子：白方 HP -1';
+            }));
+
+            // 3. 带草返还
+            document.getElementById('s3').addEventListener('click', () => run(async () => {
+                status.innerText = '黑方 4 子升起，其中一枚带草（绿点，战力 2）…';
+                await lift(BLACK_LINE4, 'left', RED, [2, 1, 1, 1]);
+                await sleep(1200);
+
+                status.innerText = '白方 4 普通子回应…';
+                await lift(WHITE_LINE4, 'right', BLUE, [1, 1, 1, 1]);
+                await sleep(900);
+
+                status.innerText = '带草子优先抵消：2 vs 1 → 抵消后返还 1 枚普通子，且最优先继续抵消';
+                await settle();
+                status.innerText = '带草方胜 1 子：白方 HP -1';
+            }));
+
+            // 4. 反击卖血
+            document.getElementById('s4').addEventListener('click', () => run(async () => {
+                status.innerText = '黑方 4 子升起盘旋…';
+                await lift(BLACK_LINE4, 'left', RED, [1, 1, 1, 1]);
+                await sleep(1400);
+
+                status.innerText = '白方反击！直接在黑方连子位落子，这枚被反击的棋子被击落';
+                ui.ascend_counter(4, 2);
+                await sleep(1200);
+
+                status.innerText = '白方未形成打：黑方剩余 3 子直接轰击（卖血少受 1 点伤害）';
+                await settle();
+                status.innerText = '反击成功：白方仅 HP -3（原为 -4）';
+            }));
+
+            // 5. 不回应斩杀
+            document.getElementById('s5').addEventListener('click', () => run(async () => {
+                status.innerText = '黑方 4 子升起盘旋…';
+                await lift(BLACK_LINE4, 'left', RED, [1, 1, 1, 1]);
+                await sleep(1500);
+
+                status.innerText = '白方不做打也不反击 → 黑方自动抵消胜利，全额轰击！';
+                await settle();
+                status.innerText = '不回应惩罚：白方 HP -4';
+            }));
+
+            // 6. 核弹
+            document.getElementById('s6').addEventListener('click', () => run(async () => {
+                status.innerText = '☢ 黑方连成 7 子——核弹！无法卖血！';
+                await lift(BLACK_LINE7, 'left', RED, [1, 1, 1, 1, 1, 1, 1]);
+                await sleep(1500);
+
+                status.innerText = '白方无法回应核弹 → 满血斩杀！';
+                await settle();
+                status.innerText = hp.right <= 0 ? '☢ 核弹命中：白方 HP 归零，黑方斩杀获胜！' : `核弹轰击：白方 HP -7`;
+            }));
+
+            // 重置
+            document.getElementById('reset').addEventListener('click', () => {
+                hp.left = 6;
+                hp.right = 6;
+                update_hp();
+
+                ui.clear();
+                ui.init();
+                ui.draw_board();
+
+                status.innerText = '选择一个场景开始演示';
+            });
+        })();
+    </script>
+</body>
+
+
+</html>

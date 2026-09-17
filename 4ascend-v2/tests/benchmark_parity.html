@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <title>4zero-code / Web parity</title>
+    <script src="/js/global/fascend.min.js"></script>
+    <script src="/vendor/onnxruntime-web/ort.wasm.min.js"></script>
+    <script src="/js/ai.min.js"></script>
+</head>
+<body>
+    <h1>4zero-code / Web parity</h1>
+    <pre id="result">RUNNING</pre>
+    <script>
+        (async () => {
+            const output = document.getElementById('result');
+            const lines = [];
+            const {
+                GameNormal, Board, State, RandAIC, RandUnity, RulesRuntime,
+                PLAYER_ENUM, STONE_ENUM, PLANT_ENUM, ASCEND_ENUM, OVER_ENUM,
+            } = FAscendExports;
+            const { StateEncoder, OnnxEvaluator, MctsSearch } = FourZeroExports;
+            const other = (player) => player === PLAYER_ENUM.BLACK ? PLAYER_ENUM.WHITE : PLAYER_ENUM.BLACK;
+            const maxAbs = (left, right) => left.reduce((value, item, index) => Math.max(value, Math.abs(item - right[index])), 0);
+            const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+
+            // Independent parity oracle using the enum objects exported by the
+            // canonical rules bundle. It guards against accidentally bundling
+            // a second, identity-incompatible set of Symbol enums again.
+            const sharedEnumEncode = (game) => {
+                const size = 9;
+                const cells = 81;
+                const output = new Float32Array(25 * cells);
+                const index = (plane, cell) => plane * cells + cell;
+                const me = game.state.turn_player;
+                const opponent = other(me);
+                const myStone = me === PLAYER_ENUM.BLACK ? STONE_ENUM.BLACK : STONE_ENUM.WHITE;
+                const opponentStone = opponent === PLAYER_ENUM.BLACK ? STONE_ENUM.BLACK : STONE_ENUM.WHITE;
+                const meIndex = me === PLAYER_ENUM.BLACK ? 0 : 1;
+                const opponentIndex = meIndex ^ 1;
+                const inAscend = game.state.ascend_status !== ASCEND_ENUM.NONE;
+
+                for (let cell = 0; cell < cells; cell++) {
+                    const pos = game.board.data[cell];
+                    output[index(0, cell)] = pos.stone === myStone ? 1 : 0;
+                    output[index(1, cell)] = pos.stone === opponentStone ? 1 : 0;
+                    output[index(2, cell)] = pos.stone === STONE_ENUM.BLACK_ASCEND || pos.stone === STONE_ENUM.WHITE_ASCEND ? 1 : 0;
+                    output[index(3, cell)] = pos.plant === PLANT_ENUM.TWO ? 2 : pos.plant === PLANT_ENUM.ONE ? 1 : 0;
+                    output[index(4, cell)] = game.state.hp[meIndex];
+                    output[index(5, cell)] = game.state.hp[opponentIndex];
+                    output[index(6, cell)] = inAscend ? 1 : 0;
+                    output[index(7, cell)] = me === game.first_player ? 1 : 0;
+                    output[index(8, cell)] = inAscend ? 1 : game.state.grow_count % 2;
+                }
+
+                const countDirection = (row, column, dr, dc, stone) => {
+                    let count = 0;
+                    row += dr;
+                    column += dc;
+                    while (row >= 0 && row < size && column >= 0 && column < size) {
+                        if (game.board.data[row * size + column].stone !== stone) break;
+                        count++;
+                        row += dr;
+                        column += dc;
+                    }
+                    return count;
+                };
+                const potential = (plane, stone) => {
+                    const directions = [[1, 0], [0, 1], [1, -1], [1, 1]];
+                    for (let row = 0; row < size; row++) for (let column = 0; column < size; column++) {
+                        const cell = row * size + column;
+                        if (game.board.data[cell].stone === stone) continue;
+                        let score = 0;
+                        let any = false;
+                        directions.forEach(([dr, dc]) => {
+                            const neighbours = countDirection(row, column, dr, dc, stone)
+                                + countDirection(row, column, -dr, -dc, stone);
+                            if (neighbours + 1 >= 4) {
+                                score += neighbours;
+                                any = true;
+                            }
+                        });
+                        output[index(plane, cell)] = score + (any ? 1 : 0);
+                    }
+                };
+                potential(9, myStone);
+                potential(10, opponentStone);
+
+                const history = game.history_boards || [];
+                const firstCode = game.first_player === PLAYER_ENUM.WHITE ? 2 : 1;
+                for (let j = 1; j <= 7; j++) {
+                    if (j > history.length) continue;
+                    const past = history[history.length - j];
+                    const moverCode = (game.state.turn_count - j) % 2 === 0 ? firstCode : (firstCode === 1 ? 2 : 1);
+                    const otherCode = moverCode === 1 ? 2 : 1;
+                    const firstPlane = 11 + (j - 1) * 2;
+                    for (let cell = 0; cell < cells; cell++) {
+                        output[index(firstPlane, cell)] = past[cell] === moverCode ? 1 : 0;
+                        output[index(firstPlane + 1, cell)] = past[cell] === otherCode ? 1 : 0;
+                    }
+                }
+                return output;
+            };
+
+            const createGame = (spec) => {
+                const first = spec.firstPhysical === 1 ? PLAYER_ENUM.WHITE : PLAYER_ENUM.BLACK;
+                const logicalPlayer = (code) => code === 0 ? first : other(first);
+                const physicalStone = (code, ascend = false) => {
+                    if (!code) return STONE_ENUM.NONE;
+                    const player = logicalPlayer(code - 1);
+                    if (ascend) return player === PLAYER_ENUM.BLACK ? STONE_ENUM.BLACK_ASCEND : STONE_ENUM.WHITE_ASCEND;
+                    return player === PLAYER_ENUM.BLACK ? STONE_ENUM.BLACK : STONE_ENUM.WHITE;
+                };
+                const physicalCode = (code) => {
+                    if (!code) return 0;
+                    return physicalStone(code) === STONE_ENUM.BLACK ? 1 : 2;
+                };
+                const board = new Board(9, 9);
+                const state = new State();
+                state.turn_player = logicalPlayer(spec.toPlay);
+                state.turn_count = spec.turn;
+                state.ascend_status = spec.phase === 'attack' ? ASCEND_ENUM.START : ASCEND_ENUM.NONE;
+                state.hp = first === PLAYER_ENUM.BLACK ? [...spec.hp] : [spec.hp[1], spec.hp[0]];
+                state.grow_count = spec.growCount;
+                state.unascend_charge = spec.unascendCharge;
+                state.unascend_chargef = first === PLAYER_ENUM.BLACK ? [...spec.fastCharge] : [spec.fastCharge[1], spec.fastCharge[0]];
+                state.just_unascend = spec.justUnascend;
+                state.over_status = spec.overFill ? OVER_ENUM.ENABLE : OVER_ENUM.NONE;
+                const attacker = spec.toPlay === 0 ? 2 : 1;
+                for (let cell = 0; cell < 81; cell++) {
+                    const x = cell % 9;
+                    const y = Math.floor(cell / 9);
+                    const isAttack = Boolean(spec.attackMask && spec.attackMask[cell]);
+                    const stone = isAttack ? physicalStone(attacker, true) : physicalStone(spec.grid[cell]);
+                    const plant = spec.plants[cell] === 2 ? PLANT_ENUM.TWO : spec.plants[cell] === 1 ? PLANT_ENUM.ONE : PLANT_ENUM.NONE;
+                    board.set_pos(x, y, stone, plant);
+                }
+                const game = new GameNormal(board, state, new RandAIC(12345), new RandUnity(67890));
+                RulesRuntime.initialize(game, first);
+                game.history_boards = spec.history.map((entry) => Uint8Array.from(entry, physicalCode));
+                return game;
+            };
+
+            const summarize = (game) => {
+                const first = game.first_player;
+                const logicalPlayer = (player) => player === first ? 0 : 1;
+                const logicalStone = (stone) => {
+                    if (stone === STONE_ENUM.BLACK) return logicalPlayer(PLAYER_ENUM.BLACK) + 1;
+                    if (stone === STONE_ENUM.WHITE) return logicalPlayer(PLAYER_ENUM.WHITE) + 1;
+                    return 0;
+                };
+                const logicalHistoryStone = (code) => {
+                    if (!code) return 0;
+                    return logicalPlayer(code === 1 ? PLAYER_ENUM.BLACK : PLAYER_ENUM.WHITE) + 1;
+                };
+                const attackMask = game.state.ascend_status === ASCEND_ENUM.NONE ? null : game.board.data.map((pos) =>
+                    pos.stone === STONE_ENUM.BLACK_ASCEND || pos.stone === STONE_ENUM.WHITE_ASCEND ? 1 : 0
+                );
+                const hp = first === PLAYER_ENUM.BLACK ? [...game.state.hp] : [game.state.hp[1], game.state.hp[0]];
+                const fast = first === PLAYER_ENUM.BLACK ? [...game.state.unascend_chargef] : [game.state.unascend_chargef[1], game.state.unascend_chargef[0]];
+                return {
+                    grid: game.board.data.map((pos) => logicalStone(pos.stone)),
+                    plants: game.board.data.map((pos) => pos.plant === PLANT_ENUM.TWO ? 2 : pos.plant === PLANT_ENUM.ONE ? 1 : 0),
+                    toPlay: logicalPlayer(game.state.turn_player),
+                    turn: game.state.turn_count,
+                    phase: game.state.ascend_status === ASCEND_ENUM.NONE ? 'normal' : 'attack',
+                    history: (game.history_boards || []).map((entry) => Array.from(entry, logicalHistoryStone)),
+                    hp,
+                    attackMask,
+                    growCount: game.state.grow_count,
+                    unascendCharge: game.state.unascend_charge,
+                    fastCharge: fast,
+                    justUnascend: Boolean(game.state.just_unascend),
+                    overFill: game.state.over_status !== OVER_ENUM.NONE,
+                };
+            };
+
+            try {
+                const benchmark = await fetch('/dev/python_benchmark.json').then((response) => response.json());
+                const evaluator = new OnnxEvaluator('/model/4ascend-zero.onnx', FAscendExports);
+                await evaluator.initialize();
+                lines.push(`Python ONNX Runtime: ${benchmark.onnxRuntime}`);
+                lines.push(`Web fixtures: ${benchmark.fixtures.length}`);
+
+                for (const fixture of benchmark.fixtures) {
+                    const game = createGame(fixture.spec);
+                    const productionEncoding = Array.from(new StateEncoder(FAscendExports).encode(game));
+                    const encoding = Array.from(sharedEnumEncode(game));
+                    const productionEncodingError = maxAbs(productionEncoding, fixture.encoding);
+                    const encodingError = maxAbs(encoding, fixture.encoding);
+                    const differingPlanes = [];
+                    for (let plane = 0; plane < 25; plane++) {
+                        const begin = plane * 81;
+                        if (maxAbs(encoding.slice(begin, begin + 81), fixture.encoding.slice(begin, begin + 81)) > 0) differingPlanes.push(plane);
+                    }
+                    const prediction = await evaluator.evaluate(game);
+                    const policyError = maxAbs(Array.from(prediction.logits), fixture.policyLogits);
+                    const valueError = Math.abs(prediction.value - fixture.value);
+                    const legal = RulesRuntime.legalMoves(game);
+                    lines.push(`\n[${fixture.spec.name}]`);
+                    lines.push(`production encoder max_abs=${productionEncodingError}`);
+                    lines.push(`shared-enum oracle max_abs=${encodingError} differing_planes=${JSON.stringify(differingPlanes)}`);
+                    lines.push(`onnx policy max_abs=${policyError} value_abs=${valueError}`);
+                    lines.push(`legal exact=${same(legal, fixture.legal)} python=${fixture.legal.length} web=${legal.length}`);
+
+                    for (const [action, expected] of Object.entries(fixture.transitions)) {
+                        const next = RulesRuntime.fork(game);
+                        const applied = RulesRuntime.applyMove(next, Number(action));
+                        const actual = summarize(next);
+                        const differingKeys = Object.keys(expected).filter((key) => !same(actual[key], expected[key]));
+                        lines.push(`transition ${action} legal=${applied.legal} differing_keys=${JSON.stringify(differingKeys)}`);
+                        differingKeys.forEach((key) => lines.push(`  ${key}: python=${JSON.stringify(expected[key])} web=${JSON.stringify(actual[key])}`));
+                    }
+
+                    if (fixture.mctsDeterministic) {
+                        const search = new MctsSearch(evaluator, RulesRuntime, { cPuct: 2.0, maximumMilliseconds: 120000 });
+                        const result = await search.search(game, benchmark.mctsSimulations);
+                        lines.push(`mcts deterministic: python=${fixture.mctsDeterministic.action} web=${result.action}`);
+                        lines.push(`python top=${JSON.stringify(fixture.mctsDeterministic.top.slice(0, 5))}`);
+                        lines.push(`web top=${JSON.stringify(result.top.slice(0, 5))}`);
+                    }
+                }
+                lines.push('\nCOMPARISON COMPLETE');
+            } catch (error) {
+                lines.push(`\nFAIL: ${error && error.stack ? error.stack : error}`);
+            }
+            output.textContent = lines.join('\n');
+        })();
+    </script>
+</body>
+</html>

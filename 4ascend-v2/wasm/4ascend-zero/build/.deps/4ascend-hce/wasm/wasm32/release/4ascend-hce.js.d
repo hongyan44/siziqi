@@ -1,0 +1,42 @@
+{
+    files = {
+        [[build\.objs\4ascend-hce\wasm\wasm32\release\src\board.cpp.o]],
+        [[build\.objs\4ascend-hce\wasm\wasm32\release\src\game.cpp.o]],
+        [[build\.objs\4ascend-hce\wasm\wasm32\release\src\main.cpp.o]],
+        [[build\.objs\4ascend-hce\wasm\wasm32\release\src\mcts.cpp.o]],
+        [[build\.objs\4ascend-hce\wasm\wasm32\release\src\net.cpp.o]],
+        [[build\.objs\4ascend-hce\wasm\wasm32\release\src\rand.cpp.o]],
+        [[build\.objs\4ascend-hce\wasm\wasm32\release\src\utils.cpp.o]]
+    },
+    values = {
+        [[C:\MyData\App\Git\emsdk\upstream\emscripten\em++.bat]],
+        {
+            [[-LC:\MyData\Libs\StaticWasm\ncnn-20260526\x64\lib]],
+            "-O3",
+            "-lncnn",
+            "-s",
+            "DISABLE_EXCEPTION_CATCHING=1",
+            "-msimd128",
+            "-pthread",
+            "--bind",
+            "-s",
+            "MALLOC=emmalloc",
+            "-s",
+            "INLINING_LIMIT=1",
+            "-s",
+            "ERROR_ON_UNDEFINED_SYMBOLS=1",
+            "-s",
+            "SHARED_MEMORY=1",
+            "-s",
+            "SINGLE_FILE=1",
+            "-s",
+            "MODULARIZE=1",
+            "-s",
+            "EXPORT_NAME=\"create_4ascend_hce\"",
+            "--preload-file",
+            "model/4ascend_zero.param@/4ascend_zero.param",
+            "--preload-file",
+            "model/4ascend_zero.bin@/4ascend_zero.bin"
+        }
+    }
+}

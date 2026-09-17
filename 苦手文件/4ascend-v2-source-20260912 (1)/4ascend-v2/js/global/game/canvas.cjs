@@ -1,0 +1,1162 @@
+/*
+ * @Author: CsVeryLoveXieWenLi
+ * @Description: 绘制
+ * @Copyright (c) 2026 by CsVeryLoveXieWenLi, All Rights Reserved.
+ */
+import { Effect } from './effect.cjs';
+import { AscendFx } from './ascendfx.cjs';
+
+class Canvas {
+    /**
+     * @description: 游戏绘制
+     * @param {HTMLCanvasElement} canvas_board
+     * 
+     * @param {HTMLCanvasElement} canvas_stone_fill
+     * @param {HTMLCanvasElement} canvas_stone_ascend
+     * 
+     * @param {HTMLCanvasElement} canvas_plant
+     * 
+     * @param {HTMLCanvasElement} canvas_view_turn
+     * @param {HTMLCanvasElement} canvas_view_ascend
+     * @param {HTMLCanvasElement} canvas_view_move
+     * 
+     * @param {number} w
+     * @param {number} h
+     * 
+     * @param {number} stone_radius
+     * @param {number} plant_radius
+     * 
+     * @param {number} pad
+     * @param {number} size
+     * @return {Canvas}
+     */
+    constructor(
+        canvas_board,
+
+        canvas_stone_fill,
+        canvas_stone_ascend,
+
+        canvas_plant,
+
+        canvas_view_turn,
+        canvas_view_ascend,
+        canvas_view_move,
+
+        w, h,
+
+        stone_radius,
+        plant_radius,
+
+        pad,
+        size
+    ) {
+        this.canvas_board = canvas_board;
+
+        this.canvas_stone_fill = canvas_stone_fill;
+        this.canvas_stone_ascend = canvas_stone_ascend;
+
+        this.canvas_plant = canvas_plant;
+
+        this.canvas_view_turn = canvas_view_turn;
+        this.canvas_view_ascend = canvas_view_ascend;
+        this.canvas_view_move = canvas_view_move;
+
+        this.w = w;
+        this.h = h;
+
+        this.stone_radius = stone_radius;
+        this.plant_radius = plant_radius;
+
+        this.pad = pad;
+        this.size = size;
+
+        this.dpr = window.devicePixelRatio || 1;
+
+        this.effect = new Effect();
+        this.canvas_effect = null;
+
+        this.ascendfx = new AscendFx();
+        this.canvas_ascendfx = null;
+        this.canvas_ascend_marker = null;
+
+        this.waiters_click = new Set();
+        this.waiters_move = new Set();
+
+        this.handler_click_ = this.handler_click.bind(this);
+        this.handler_move_ = this.handler_move.bind(this);
+    };
+
+    set_sound(sound) {
+        this.sound = sound;
+        if (this.ascendfx) this.ascendfx.sound = sound;
+    };
+
+    /**
+     * @description: 初始化
+     * @return {void}
+     */
+    init() {
+        const size = this.size;
+
+
+        // 设置尺寸
+        this.canvas_board.width = size;
+        this.canvas_board.height = size;
+
+        this.canvas_stone_fill.width = size;
+        this.canvas_stone_fill.height = size;
+
+        this.canvas_stone_ascend.width = size;
+        this.canvas_stone_ascend.height = size;
+
+        this.canvas_plant.width = size;
+        this.canvas_plant.height = size;
+
+        this.canvas_view_turn.width = size;
+        this.canvas_view_turn.height = size;
+
+        this.canvas_view_ascend.width = size;
+        this.canvas_view_ascend.height = size;
+
+        this.canvas_view_move.width = size;
+        this.canvas_view_move.height = size;
+
+
+        // 清晰度提升
+        const dpr = this.dpr;
+
+        this.canvas_board.width = size * dpr;
+        this.canvas_board.height = size * dpr;
+        this.canvas_board.style.width = size + 'px';
+        this.canvas_board.style.height = size + 'px';
+        this.canvas_board.getContext('2d').scale(dpr, dpr);
+
+        this.canvas_stone_fill.width = size * dpr;
+        this.canvas_stone_fill.height = size * dpr;
+        this.canvas_stone_fill.style.width = size + 'px';
+        this.canvas_stone_fill.style.height = size + 'px';
+        this.canvas_stone_fill.getContext('2d').scale(dpr, dpr);
+
+        this.canvas_stone_ascend.width = size * dpr;
+        this.canvas_stone_ascend.height = size * dpr;
+        this.canvas_stone_ascend.style.width = size + 'px';
+        this.canvas_stone_ascend.style.height = size + 'px';
+        this.canvas_stone_ascend.getContext('2d').scale(dpr, dpr);
+
+        this.canvas_plant.width = size * dpr;
+        this.canvas_plant.height = size * dpr;
+        this.canvas_plant.style.width = size + 'px';
+        this.canvas_plant.style.height = size + 'px';
+        this.canvas_plant.getContext('2d').scale(dpr, dpr);
+
+        this.canvas_view_turn.width = size * dpr;
+        this.canvas_view_turn.height = size * dpr;
+        this.canvas_view_turn.style.width = size + 'px';
+        this.canvas_view_turn.style.height = size + 'px';
+        this.canvas_view_turn.getContext('2d').scale(dpr, dpr);
+
+        this.canvas_view_ascend.width = size * dpr;
+        this.canvas_view_ascend.height = size * dpr;
+        this.canvas_view_ascend.style.width = size + 'px';
+        this.canvas_view_ascend.style.height = size + 'px';
+        this.canvas_view_ascend.getContext('2d').scale(dpr, dpr);
+
+        this.canvas_view_move.width = size * dpr;
+        this.canvas_view_move.height = size * dpr;
+        this.canvas_view_move.style.width = size + 'px';
+        this.canvas_view_move.style.height = size + 'px';
+        this.canvas_view_move.getContext('2d').scale(dpr, dpr);
+
+
+        // 特效层（动态创建的最顶层画布，无需改动 HTML）
+        if (!this.canvas_effect) {
+            this.canvas_effect = document.createElement('canvas');
+            this.canvas_effect.id = 'canvas_effect';
+            this.canvas_effect.className = this.canvas_view_move.className;
+            this.canvas_view_move.parentElement.appendChild(this.canvas_effect);
+        }
+
+        this.canvas_effect.width = size * dpr;
+        this.canvas_effect.height = size * dpr;
+        this.canvas_effect.style.width = size + 'px';
+        this.canvas_effect.style.height = size + 'px';
+        this.canvas_effect.style.zIndex = '10';
+        this.canvas_effect.getContext('2d').scale(dpr, dpr);
+
+        this.effect.bind(this.canvas_effect, size);
+
+
+        // ASCEND 抵消动画层（最顶层，动态创建）
+        if (!this.canvas_ascendfx) {
+            this.canvas_ascendfx = document.createElement('canvas');
+            this.canvas_ascendfx.id = 'canvas_ascendfx';
+            this.canvas_ascendfx.className = this.canvas_view_move.className;
+            this.canvas_ascendfx.style.zIndex = '100';
+            this.canvas_view_move.parentElement.appendChild(this.canvas_ascendfx);
+        }
+
+        this.canvas_ascendfx.width = size * dpr;
+        this.canvas_ascendfx.height = size * dpr;
+        this.canvas_ascendfx.style.width = size + 'px';
+        this.canvas_ascendfx.style.height = size + 'px';
+        this.canvas_ascendfx.style.zIndex = '100';
+        this.canvas_ascendfx.getContext('2d').scale(dpr, dpr);
+
+        this.ascendfx.bind(this.canvas_ascendfx, size, this.effect, this.sound);
+
+        // 原棋盘位置标记层：独立于动画层，确保红/蓝位置提示持续存在
+        if (!this.canvas_ascend_marker) {
+            this.canvas_ascend_marker = document.createElement('canvas');
+            this.canvas_ascend_marker.id = 'canvas_ascend_marker';
+            this.canvas_ascend_marker.className = this.canvas_view_move.className;
+            this.canvas_ascend_marker.style.zIndex = '20';
+            this.canvas_view_move.parentElement.appendChild(this.canvas_ascend_marker);
+        }
+        this.canvas_ascend_marker.width = size * dpr;
+        this.canvas_ascend_marker.height = size * dpr;
+        this.canvas_ascend_marker.style.width = size + 'px';
+        this.canvas_ascend_marker.style.height = size + 'px';
+        this.canvas_ascend_marker.getContext('2d').scale(dpr, dpr);
+        this.clear_ascend_marker();
+
+        this.rect = this.canvas_board.getBoundingClientRect();
+    };
+
+
+    // /**
+    //  * @description: 绘制棋盘
+    //  * @return {void}
+    //  */
+    // draw_board() {
+    //     const ctx = this.canvas_board.getContext('2d');
+
+
+    //     // 清空背景
+    //     ctx.fillStyle = '#ffffff';
+    //     ctx.fillRect(0, 0, this.size, this.size);
+
+    //     // 绘制最外层粗描边
+    //     ctx.strokeStyle = '#333333';
+    //     ctx.lineWidth = 4;
+    //     ctx.strokeRect(0, 0, this.size, this.size);
+
+
+    //     // 计算内部棋盘逻辑
+    //     // 为了给棋子留空，我们需要从总宽度中减去两边的“安全区”
+    //     // 安全区大小至少要等于棋子的实际像素半径
+    //     const cell_w = this.w - 1;
+    //     const cell_h = this.h - 1;
+
+    //     // 填充，约 0.4 棋子 为 0.062填充
+    //     const padding = this.size * this.pad;
+    //     const draw_size = this.size - (padding * 2);
+
+    //     // 计算网格间距
+    //     const spacing_w = draw_size / cell_w;
+    //     const spacing_h = draw_size / cell_h;
+
+
+    //     // 绘制内部封闭网格线
+    //     ctx.strokeStyle = '#cccccc';
+    //     ctx.lineWidth = 1;
+
+
+    //     ctx.beginPath();
+
+    //     // 绘制所有横线与纵线
+    //     for (let i = 0; i < this.w; i++) {
+    //         const x = padding + i * spacing_w;
+    //         ctx.moveTo(x, padding);
+    //         ctx.lineTo(x, padding + draw_size);
+    //     }
+
+    //     for (let j = 0; j < this.h; j++) {
+    //         const y = padding + j * spacing_h;
+    //         ctx.moveTo(padding, y);
+    //         ctx.lineTo(padding + draw_size, y);
+    //     }
+
+    //     ctx.stroke();
+    //     ctx.closePath();
+
+
+    //     // 储存计算数值
+    //     this.spacing = spacing_w;
+    //     this.offset = padding;
+    // };
+
+
+    /**
+     * @description: 绘制棋盘（保留完美布局，追加自适应数字坐标）
+     * @return {void}
+     */
+    draw_board() {
+        const ctx = this.canvas_board.getContext('2d');
+
+        // 清空背景
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, this.size, this.size);
+
+        // 绘制最外层粗描边
+        ctx.strokeStyle = '#333333';
+        ctx.lineWidth = 4;
+        ctx.strokeRect(0, 0, this.size, this.size);
+
+
+        // 计算内部棋盘逻辑
+        const cell_w = this.w - 1;
+        const cell_h = this.h - 1;
+
+        // 填充，约 0.4 棋子 为 0.062填充
+        const padding = this.size * this.pad;
+        const draw_size = this.size - (padding * 2);
+
+        // 计算网格间距
+        const spacing_w = draw_size / cell_w;
+        const spacing_h = draw_size / cell_h;
+
+
+        // 绘制内部封闭网格线
+        ctx.strokeStyle = '#cccccc';
+        ctx.lineWidth = 1;
+
+        ctx.beginPath();
+
+        // 绘制所有横线与纵线
+        for (let i = 0; i < this.w; i++) {
+            const x = padding + i * spacing_w;
+            ctx.moveTo(x, padding);
+            ctx.lineTo(x, padding + draw_size);
+        }
+
+        for (let j = 0; j < this.h; j++) {
+            const y = padding + j * spacing_h;
+            ctx.moveTo(padding, y);
+            ctx.lineTo(padding + draw_size, y);
+        }
+
+        ctx.stroke();
+        ctx.closePath();
+
+
+        // 储存计算数值
+        this.spacing = spacing_w;
+        this.offset = padding;
+
+        // 同步给 ASCEND 动画引擎
+        this.ascendfx.geometry(padding, spacing_w, this.stone_radius);
+
+
+        // ==================== 以下为新增的纯动态坐标提示绘制 ====================
+        
+        // 1. 动态计算字号：让字体大小完美契合安全留白区域（留白的 80%，确保不压边）
+        const font_size = Math.floor(padding * 0.8);
+        
+        ctx.font = `bold ${font_size}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.55)'; 
+
+        // 2. 动态计算文字居中的轴线位置
+        // 左侧文字中轴线：死死居中在最外框 (0) 到 棋盘线起点 (padding) 的中间
+        const text_left_x = padding / 2;  
+        // 底部文字中轴线：死死居中在棋盘线终点 (padding + draw_size) 到 最外框 (this.size) 的中间
+        const text_bottom_y = (padding + draw_size + this.size) / 2;
+
+        // 3. 复现 HTML 示例的对齐与排布逻辑（左侧上下界微调校准）
+        const left_start_y = padding;
+        const left_end_y = padding + (this.h - 2) * spacing_h;
+        const left_spacing = (left_end_y - left_start_y) / (this.h - 2);
+
+        // 底部第一个“1”往左探出的安全位移（动态关联格子大小，取格子宽度的 10%）
+        const first_num_offset = spacing_w * 0.1;
+
+        for (let i = 0; i < this.w; i++) {
+            // --- A. 左侧数字绘制（从下到上递增，去掉最下方的 1 以防与底部重叠） ---
+            const display_num = this.h - i; 
+            if (display_num !== 1) {
+                const left_y = left_start_y + i * left_spacing;
+                ctx.fillText(display_num, text_left_x, left_y);
+            }
+
+            // --- B. 底部数字绘制（1 到 N 严格对齐纵线坐标） ---
+            const line_pos = padding + i * spacing_w;
+            if (i === 0) {
+                // 第一个数字“1”应用安全位移
+                ctx.fillText(i + 1, line_pos - first_num_offset, text_bottom_y);
+            } else {
+                ctx.fillText(i + 1, line_pos, text_bottom_y);
+            }
+        }
+        // ====================================================================
+    };
+    
+
+    /**
+     * @description: 绘制常态棋子
+     * @param {number} gx
+     * @param {number} gy
+     * @param {string} color
+     * @return {void}
+     */
+    draw_stone_fill(gx, gy, color) {
+        const ctx = this.canvas_stone_fill.getContext('2d');
+
+        // 根据逻辑坐标计算画布上的像素位置
+        const x = this.offset + gx * this.spacing;
+        const y = this.offset + gy * this.spacing;
+
+        // 设定棋子半径
+        const radius = this.spacing * this.stone_radius;
+
+
+        ctx.beginPath();
+        ctx.save();
+
+        ctx.arc(x, y, radius, 0, Math.PI * 2); // 圆
+
+        // 填充颜色
+        ctx.fillStyle = color;
+        // ctx.fillStyle = '#2c3e50';
+        // ctx.fillStyle = '#ecf0f1';
+        ctx.fill();
+
+        // 绘制细描边
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 1; // 细线
+        ctx.stroke();
+
+        ctx.closePath();
+        ctx.restore();
+    };
+
+    /**
+     * @description: 绘制ASCEND棋子
+     * @param {number} gx
+     * @param {number} gy
+     * @param {string} color
+     * @return {void}
+     */
+    draw_stone_ascend(gx, gy, color) {
+        const ctx = this.canvas_stone_ascend.getContext('2d');
+
+        // 根据逻辑坐标计算画布上的像素位置
+        const x = this.offset + gx * this.spacing;
+        const y = this.offset + gy * this.spacing;
+
+        // 设定棋子半径
+        const radius = this.spacing * this.stone_radius;
+
+
+        ctx.beginPath();
+        ctx.save();
+
+        ctx.arc(x, y, radius, 0, Math.PI * 2); // 圆
+
+        // 填充颜色
+        ctx.fillStyle = color;
+        ctx.shadowColor = color;
+        // ctx.shadowColor = p.color === 'black' ? '#e74c3c' : '#3498db';
+        ctx.shadowBlur = 9;
+        ctx.fill();
+
+        ctx.closePath();
+        ctx.restore();
+    };
+
+    /**
+     * @description: 绘制移动虚线棋子
+     * @param {number} gx
+     * @param {number} gy
+     * @param {string} color
+     * @return {void}
+     */
+    draw_stone_move(gx, gy, color) {
+        const ctx = this.canvas_view_move.getContext('2d');
+
+        // 根据逻辑坐标计算画布上的像素位置
+        const x = this.offset + gx * this.spacing;
+        const y = this.offset + gy * this.spacing;
+
+        // 设定棋子半径
+        const radius = this.spacing * this.stone_radius + this.spacing * this.stone_radius * 0.1;
+
+        ctx.save(); // 保存当前画布状态
+        ctx.beginPath();
+
+        // 设置虚线样式：[实线长度, 间隙长度]
+        // 这里设置为 [5, 5]，你可以根据视觉效果微调
+        ctx.setLineDash([5, 5]);
+
+        // 绘制圆弧
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+
+        // 设置描边属性
+        ctx.strokeStyle = color; // 使用传入的颜色
+        ctx.lineWidth = 2;       // 虚线建议稍微粗一点（比如2），否则看不清
+
+        // 仅描边，不填充 (no ctx.fill)
+        ctx.stroke();
+
+        ctx.closePath();
+        ctx.restore(); // 恢复状态，避免 setLineDash 影响后续其他绘制
+    };
+
+    /**
+     * @description: 普通落子特效（冲击环 + 粒子 + 闪光）
+     * @param {number} gx
+     * @param {number} gy
+     * @param {string} color
+     * @return {void}
+     */
+    draw_effect_place(gx, gy, color) {
+        if (!this.effect || !this.canvas_effect) return;
+
+        const x = this.offset + gx * this.spacing;
+        const y = this.offset + gy * this.spacing;
+
+        this.effect.place(x, y, this.spacing * this.stone_radius, color);
+    };
+
+    /**
+     * @description: ASCEND 落子特效（强化版）
+     * @param {number} gx
+     * @param {number} gy
+     * @param {string} color
+     * @return {void}
+     */
+    draw_effect_ascend(gx, gy, color) {
+        if (!this.effect || !this.canvas_effect) return;
+
+        const x = this.offset + gx * this.spacing;
+        const y = this.offset + gy * this.spacing;
+
+        this.effect.ascend(x, y, this.spacing * this.stone_radius, color);
+    };
+
+    /**
+     * @description: ASCEND 棋子升起盘旋
+     * @param {object[]} metas [{ gx, gy, power, color, stone_color }]
+     * @param {string} side 'left' | 'right'
+     * @return {Promise<void>}
+     */
+    ascend_lift(metas, side) {
+        if (!this.ascendfx || !this.canvas_ascendfx) return Promise.resolve();
+
+        // 先清除这一批棋子在原棋盘上的实体绘制；红/蓝位置提示单独保留
+        metas.forEach((meta) => {
+            this.clear_stone_fill(meta.gx, meta.gy);
+            this.clear_plant(meta.gx, meta.gy);
+            this.draw_ascend_marker(meta.gx, meta.gy, meta.marker_color, meta.plant || 0);
+        });
+
+        // 黑/白实体棋子在顶层动画层中升起
+        return this.ascendfx.lift(metas, side);
+    };
+
+    /**
+     * @description: 持续绘制原棋盘拿起位置标记
+     * @param {number} gx
+     * @param {number} gy
+     * @param {string} color 红色=黑子，蓝色=白子
+     * @param {number} plant 0=无草，1=一草，2=两草
+     * @return {void}
+     */
+    draw_ascend_marker(gx, gy, color, plant = 0) {
+        if (!this.canvas_ascend_marker) return;
+        const ctx = this.canvas_ascend_marker.getContext('2d');
+        const x = this.offset + gx * this.spacing;
+        const y = this.offset + gy * this.spacing;
+        const radius = this.spacing * this.stone_radius;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.9;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 8;
+        ctx.fill();
+        ctx.closePath();
+
+        // 只在原位标记上显示草：无草不画绿色圈；一草/两草显示对应绿点
+        const pip_count = Math.min(2, Number(plant) || 0);
+        for (let i = 0; i < pip_count; i++) {
+            const px = x + (i - (pip_count - 1) / 2) * radius * 0.82;
+            ctx.beginPath();
+            ctx.arc(px, y, radius * 0.24, 0, Math.PI * 2);
+            ctx.fillStyle = '#2ecc71';
+            ctx.shadowColor = '#2ecc71';
+            ctx.shadowBlur = 5;
+            ctx.fill();
+            ctx.closePath();
+        }
+        ctx.restore();
+    };
+
+    /**
+     * @description: 清除所有原棋盘拿起位置标记
+     * @return {void}
+     */
+    clear_ascend_marker(gx, gy) {
+        if (!this.canvas_ascend_marker) return;
+        const ctx = this.canvas_ascend_marker.getContext('2d');
+        if (gx === undefined || gy === undefined) {
+            ctx.clearRect(0, 0, this.size, this.size);
+            return;
+        }
+        const x = this.offset + gx * this.spacing;
+        const y = this.offset + gy * this.spacing;
+        const clear = this.spacing * this.stone_radius * 1.4;
+        ctx.clearRect(x - clear, y - clear, clear * 2, clear * 2);
+    };
+
+    /**
+     * @description: 反击/卖血：击落指定位置的盘旋棋子
+     * @param {number} gx
+     * @param {number} gy
+     * @return {boolean}
+     */
+    ascend_counter(gx, gy) {
+        if (!this.ascendfx || !this.canvas_ascendfx) return false;
+        const hit = this.ascendfx.counter(gx, gy);
+        if (hit) this.clear_ascend_marker(gx, gy);
+        return hit;
+    };
+
+    /**
+     * @description: ASCEND 结算动画：碰撞抵消 + 打血
+     * @param {object} targets { left: HTMLElement, right: HTMLElement }
+     * @return {Promise<{damageLeft: number, damageRight: number}>}
+     */
+    ascend_settle(targets, on_damage_start, on_summary) {
+        if (!this.ascendfx || !this.canvas_ascendfx) return Promise.resolve({ 'damageLeft': 0, 'damageRight': 0 });
+        return this.ascendfx.settle(targets, on_damage_start, on_summary).then((result) => {
+            // 抵消动画完成后再移除原棋盘上的红/蓝位置标记
+            this.clear_ascend_marker();
+            return result;
+        });
+    };
+
+    /**
+     * @description: 某点是否存在盘旋中的棋子
+     * @param {number} gx
+     * @param {number} gy
+     * @return {boolean}
+     */
+    ascend_is_lifted(gx, gy) {
+        if (!this.ascendfx) return false;
+        return this.ascendfx.is_lifted(gx, gy);
+    };
+
+    /**
+     * @description: 绘制回合棋子
+     * @param {number} gx
+     * @param {number} gy
+     * @param {string} color
+     * @param {number} line
+     * @return {void}
+     */
+    draw_stone_turn(gx, gy, color, line) {
+        const ctx = this.canvas_view_turn.getContext('2d');
+
+        // 根据逻辑坐标计算画布上的像素位置
+        const x = this.offset + gx * this.spacing;
+        const y = this.offset + gy * this.spacing;
+
+        // 设定棋子半径
+        const radius = this.spacing * this.stone_radius + this.spacing * this.stone_radius * 0.1;
+
+        ctx.save(); // 保存当前画布状态
+        ctx.beginPath();
+
+        // 设置虚线样式：[实线长度, 间隙长度]
+        // 这里设置为 [5, 5]，你可以根据视觉效果微调
+        ctx.setLineDash([5, 5]);
+
+        // 绘制圆弧
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+
+        // 设置描边属性
+        ctx.strokeStyle = color; // 使用传入的颜色
+        ctx.lineWidth = line;       // 虚线建议稍微粗一点（比如2），否则看不清
+
+        // 仅描边，不填充 (no ctx.fill)
+        ctx.stroke();
+
+        ctx.closePath();
+        ctx.restore(); // 恢复状态，避免 setLineDash 影响后续其他绘制
+    };
+
+    /**
+     * @description: 绘制ASCEND确认棋子
+     * @param {number} gx
+     * @param {number} gy
+     * @param {string} color
+     * @return {void}
+     */
+    draw_stone_validate(gx, gy, color) {
+        const ctx = this.canvas_view_ascend.getContext('2d');
+
+        // 根据逻辑坐标计算画布上的像素位置
+        const x = this.offset + gx * this.spacing;
+        const y = this.offset + gy * this.spacing;
+
+        // 设定棋子半径
+        const radius = this.spacing * this.stone_radius;
+
+
+        ctx.beginPath();
+        ctx.save();
+
+        ctx.arc(x, y, radius, 0, Math.PI * 2); // 圆
+
+        // 填充颜色
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.2;
+        // ctx.fillStyle = '#2c3e50';
+        // ctx.fillStyle = '#ecf0f1';
+        ctx.fill();
+
+        // 绘制细描边
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 1; // 细线
+        ctx.stroke();
+
+        ctx.closePath();
+        ctx.restore();
+    };
+
+    /**
+     * @description: 草生成特效
+     * @param {number} gx
+     * @param {number} gy
+     * @param {number} count 生成的草数量
+     * @return {void}
+     */
+    draw_effect_plant(gx, gy, count = 1) {
+        if (!this.effect || !this.canvas_effect) return;
+
+        const x = this.offset + gx * this.spacing;
+        const y = this.offset + gy * this.spacing;
+        const radius = this.spacing * this.plant_radius;
+
+        this.effect.plant(x, y, radius, count);
+    };
+
+    /**
+     * @description: 绘制植物
+     * @param {number} gx
+     * @param {number} gy
+     * @param {string} color
+     * @return {void}
+     */
+    draw_plant(gx, gy, color = '#2ecc71') {
+        const ctx = this.canvas_plant.getContext('2d');
+
+        // 根据逻辑坐标计算画布上的像素位置
+        const x = this.offset + gx * this.spacing;
+        const y = this.offset + gy * this.spacing;
+
+        // 设定棋子半径
+        const radius = this.spacing * this.plant_radius;
+
+
+        ctx.beginPath();
+        ctx.save();
+
+        ctx.arc(x, y, radius, 0, Math.PI * 2); // 圆
+
+        // 填充颜色
+        ctx.fillStyle = color;
+        // ctx.fillStyle = '#2ecc71'; // 实体鲜亮绿色
+        ctx.shadowBlur = 7;
+        ctx.shadowColor = color;
+
+        ctx.fill();
+
+        ctx.closePath();
+        ctx.restore();
+    };
+
+    /**
+     * @description: 绘制双植物
+     * @param {number} gx
+     * @param {number} gy
+     * @param {string} color
+     * @return {void}
+     */
+    draw_2plant(gx, gy, color = '#2ecc71') {
+        const ctx = this.canvas_plant.getContext('2d');
+
+        // 根据逻辑坐标计算画布上的像素位置
+        const x = this.offset + gx * this.spacing;
+        const y = this.offset + gy * this.spacing;
+
+        // 设定棋子半径
+        const radius = this.spacing * this.plant_radius;
+
+
+        ctx.beginPath();
+        ctx.save();
+
+        ctx.arc(x - radius * 1.3, y, radius, 0, Math.PI * 2);
+
+        // 填充颜色
+        ctx.fillStyle = color;
+        // ctx.fillStyle = '#2ecc71'; // 实体鲜亮绿色
+        ctx.shadowBlur = 7;
+        ctx.shadowColor = color;
+
+        ctx.fill();
+
+        ctx.closePath();
+
+
+        ctx.beginPath();
+
+        ctx.arc(x + radius * 1.3, y, radius, 0, Math.PI * 2); // 圆
+
+        // 填充颜色
+        ctx.fillStyle = color;
+        // ctx.fillStyle = '#2ecc71'; // 实体鲜亮绿色
+        ctx.shadowBlur = 2;
+        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+
+        ctx.fill();
+
+        ctx.closePath();
+        ctx.restore();
+    };
+
+
+    /**
+     * @description: 擦除常态棋子
+     * @param {number} gx
+     * @param {number} gy
+     * @return {void}
+     */
+    clear_stone_fill(gx, gy) {
+        const ctx = this.canvas_stone_fill.getContext('2d');
+
+        // 计算棋子中心点
+        const x = this.offset + gx * this.spacing;
+        const y = this.offset + gy * this.spacing;
+
+        // 计算擦除区域的大小
+        // 这里稍微比棋子半径多加 2 像素，确保描边也能被擦干净
+        const clear = this.spacing * this.stone_radius + this.spacing * (this.stone_radius * 0.3);
+
+        ctx.clearRect(x - clear, y - clear, clear * 2, clear * 2);
+    };
+
+    /**
+     * @description: 擦除ASCEND棋子
+     * @param {number} gx
+     * @param {number} gy
+     * @return {void}
+     */
+    clear_stone_ascend(gx, gy) {
+        const ctx = this.canvas_stone_ascend.getContext('2d');
+
+        // 计算棋子中心点
+        const x = this.offset + gx * this.spacing;
+        const y = this.offset + gy * this.spacing;
+
+        // 计算擦除区域的大小
+        // 这里稍微比棋子半径多加 2 像素，确保描边也能被擦干净
+        const clear = this.spacing * this.stone_radius + this.spacing * (this.stone_radius * 0.35);
+
+        ctx.clearRect(x - clear, y - clear, clear * 2, clear * 2);
+    };
+
+    /**
+     * @description: 擦除移动落子预览
+     * @return {void}
+     */
+    clear_view_move() {
+        const ctx = this.canvas_view_move.getContext('2d');
+        ctx.clearRect(0, 0, this.size, this.size);
+    };
+
+    /**
+     * @description: 擦除回合落子预览
+     * @return {void}
+     */
+    clear_view_turn() {
+        const ctx = this.canvas_view_turn.getContext('2d');
+        ctx.clearRect(0, 0, this.size, this.size);
+    };
+
+    /**
+     * @description: 擦除回合落子预览
+     * @param {number} gx
+     * @param {number} gy
+     * @return {void}
+     */
+    clear_view_turnp(gx, gy) {
+        const ctx = this.canvas_view_turn.getContext('2d');
+
+        // 计算棋子中心点
+        const x = this.offset + gx * this.spacing;
+        const y = this.offset + gy * this.spacing;
+
+        // 计算擦除区域的大小
+        // 这里稍微比棋子半径多加 2 像素，确保描边也能被擦干净
+        const clear = this.spacing * this.stone_radius + this.spacing * (this.stone_radius * 0.3);
+
+        ctx.clearRect(x - clear, y - clear, clear * 2, clear * 2);
+    };
+
+    /**
+     * @description: 擦除ASCEND确认预览
+     * @return {void}
+     */
+    clear_stone_validate() {
+        const ctx = this.canvas_view_ascend.getContext('2d');
+        ctx.clearRect(0, 0, this.size, this.size);
+    };
+
+    /**
+     * @description: 擦除植物
+     * @param {number} gx
+     * @param {number} gy
+     * @return {void}
+     */
+    clear_plant(gx, gy) {
+        const ctx = this.canvas_plant.getContext('2d');
+
+        // 计算棋子中心点
+        const x = this.offset + gx * this.spacing;
+        const y = this.offset + gy * this.spacing;
+
+        // 计算擦除区域的大小
+        // 这里稍微比棋子半径多加 2 像素，确保描边也能被擦干净
+        const clear = this.spacing * this.stone_radius;
+
+        ctx.clearRect(
+            x - clear,
+            y - clear,
+            clear * 2,
+            clear * 2
+        );
+    };
+
+    /**
+     * @description: 擦除棋盘
+     * @return {void}
+     */
+    clear_board() {
+        const ctx = this.canvas_board.getContext('2d');
+        ctx.clearRect(0, 0, this.size, this.size);
+    };
+
+    /**
+     * @description: 擦除全部层级
+     * @return {void}
+     */
+    clear() {
+        this.canvas_board.getContext('2d').clearRect(0, 0, this.size, this.size);
+        this.canvas_stone_fill.getContext('2d').clearRect(0, 0, this.size, this.size);
+        this.canvas_stone_ascend.getContext('2d').clearRect(0, 0, this.size, this.size);
+        this.canvas_view_ascend.getContext('2d').clearRect(0, 0, this.size, this.size);
+        this.canvas_view_move.getContext('2d').clearRect(0, 0, this.size, this.size);
+        this.canvas_view_turn.getContext('2d').clearRect(0, 0, this.size, this.size);
+
+        this.effect.clear();
+        if (this.canvas_effect) {
+            this.canvas_effect.style.width = 0;
+            this.canvas_effect.style.height = 0;
+        }
+
+        this.ascendfx.reset();
+        if (this.sound) this.sound.stop_orbit();
+        this.clear_ascend_marker();
+        if (this.canvas_ascendfx) {
+            this.canvas_ascendfx.style.width = 0;
+            this.canvas_ascendfx.style.height = 0;
+        }
+        if (this.canvas_ascend_marker) {
+            this.canvas_ascend_marker.style.width = 0;
+            this.canvas_ascend_marker.style.height = 0;
+        }
+        this.canvas_board.style.width = 0;
+        this.canvas_board.style.height = 0;
+
+        this.canvas_stone_fill.style.width = 0;
+        this.canvas_stone_fill.style.height = 0;
+
+        this.canvas_stone_ascend.style.width = 0;
+        this.canvas_stone_ascend.style.height = 0;
+
+        this.canvas_view_ascend.style.width = 0;
+        this.canvas_view_ascend.style.height = 0;
+
+        this.canvas_view_move.style.width = 0;
+        this.canvas_view_move.style.height = 0;
+
+        this.canvas_view_turn.style.width = 0;
+        this.canvas_view_turn.style.height = 0;
+    };
+
+
+    /**
+     * @description: 点击坐标转换为点位
+     * @param {number} cx
+     * @param {number} cy
+     * @return {[number, number] | void}
+     */
+    cxcy2grid(cx, cy) {
+        const ox = this.offset;
+        // 建议：spW 和 spH 最好在初始化棋盘时计算好，不要每次点击都算
+        const spW = this.spacing;
+        const spH = this.spacing; // 通常棋盘格子是正方形
+
+        // 1. 减去边距，得到相对于第一个交叉点 (0,0) 的偏移
+        const dx = cx - ox;
+        const dy = cy - ox;
+
+        // 2. 计算浮点索引
+        const floatX = dx / spW;
+        const floatY = dy / spH;
+
+        // 3. 四舍五入到最近的交叉点
+        const gridX = Math.round(floatX);
+        const gridY = Math.round(floatY);
+
+        // 4. 边界过滤
+        if (gridX >= 0 && gridX < this.w && gridY >= 0 && gridY < this.h) {
+            // 5. 校验点击是否在“感应圆”内
+            const centerX = gridX * spW;
+            const centerY = gridY * spH;
+
+            // 计算点击点到交叉点的欧氏距离
+            const distSq = Math.pow(dx - centerX, 2) + Math.pow(dy - centerY, 2);
+            const radius = spW * this.stone_radius;
+
+            if (distSq < radius * radius) return [gridX, gridY];
+        }
+
+        return;
+    };
+
+
+    /**
+     * @description: 点击
+     * @param {PointerEvent} event
+     * @return {void}
+     */
+    handler_click(event) {
+        this.rect = this.canvas_board.getBoundingClientRect(); // ？
+
+        const rect = this.rect;
+        const size = this.size;
+
+        const cssx = event.clientX - rect.left;
+        const cssy = event.clientY - rect.top;
+
+        const scalex = size / rect.width;
+        const scaley = size / rect.height;
+
+        const drawx = cssx * scalex;
+        const drawy = cssy * scaley;
+
+        this.notify_click(this.cxcy2grid(drawx, drawy));
+    };
+
+    /**
+     * @description: 移动
+     * @param {PointerEvent} event
+     * @return {void}
+     */
+    handler_move(event) {
+        if (this.moveing) return;
+
+        this.moveing = true;
+        requestAnimationFrame(() => {
+            this.rect = this.canvas_board.getBoundingClientRect(); // ？
+
+            const rect = this.rect;
+            const size = this.size;
+
+            const cssx = event.clientX - rect.left;
+            const cssy = event.clientY - rect.top;
+
+            const scalex = size / rect.width;
+            const scaley = size / rect.height;
+
+            const drawx = cssx * scalex;
+            const drawy = cssy * scaley;
+
+            this.notify_move(this.cxcy2grid(drawx, drawy));
+            this.moveing = false;
+        });
+    };
+
+
+    /**
+     * @description: 开始监听点击与移动
+     * @return {void}
+     */
+    start_click2move() {
+        this.canvas_board.addEventListener('pointerdown', this.handler_click_);
+        this.canvas_board.addEventListener('pointermove', this.handler_move_);
+    };
+
+    /**
+     * @description: 停止监听点击与移动
+     * @return {void}
+     */
+    stop_click2move() {
+        this.canvas_board.removeEventListener('pointerdown', this.handler_click_);
+        this.canvas_board.removeEventListener('pointermove', this.handler_move_);
+
+        this.notify_move('$', null);
+        // this.notify_click('$', null);
+
+        this.moveing = false;
+    };
+
+
+    /**
+     * @description: 分发响应
+     * @param {[number, number, boolean] | void} pos
+     * @return {void}
+     */
+    notify_click(pos) {
+        const current_waiters = Array.from(this.waiters_click);
+        this.waiters_click.clear();
+        current_waiters.forEach((resolve) => resolve(pos));
+    };
+
+    /**
+     * @description: 分发响应
+     * @param {[number, number] | void} pos
+     * @return {void}
+     */
+    notify_move(pos) {
+        const current_waiters = Array.from(this.waiters_move);
+        this.waiters_move.clear();
+        current_waiters.forEach((resolve) => resolve(pos));
+    };
+
+
+    /**
+     * @description: 生成器 点击
+     * @return {Promise<void>}
+     */
+    async *iterator_click() {
+        while (true) yield await new Promise((resolve) => this.waiters_click.add(resolve));
+    };
+
+    /**
+     * @description: 生成器 移动
+     * @return {Promise<void>}
+     */
+    async *iterator_move() {
+        while (true) yield await new Promise((resolve) => this.waiters_move.add(resolve));
+    };
+}
+
+
+export { Canvas };

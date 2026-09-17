@@ -1,0 +1,227 @@
+<!--
+ * @Author: CsVeryLoveXieWenLi
+ * @Description: ZERO AI 手动验招实验台
+ * @Copyright (c) 2026 by CsVeryLoveXieWenLi, All Rights Reserved.
+-->
+<!DOCTYPE html>
+<html lang='zh-CN'>
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <title>四子棋 ZERO AI 验招实验台</title>
+    <link href='https://quantil.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css' rel='stylesheet'>
+    <style>
+        :root { color-scheme: dark; }
+        body { min-height: 100vh; background: #111827; color: #e5e7eb; }
+        .panel { background: #1f2937; border: 1px solid #374151; border-radius: 14px; }
+        .board-wrap { width: min(92vw, 720px); aspect-ratio: 1; margin: auto; padding: 12px; background: #d6b27a; border-radius: 16px; box-shadow: 0 20px 50px rgba(0,0,0,.3); }
+        #board { width: 100%; height: 100%; display: block; border-radius: 10px; touch-action: none; cursor: crosshair; }
+        .small-muted { color: #9ca3af; font-size: .86rem; }
+        .coord { color: #6b7280; font-size: .78rem; }
+        .move-good { color: #fbbf24; font-weight: 700; }
+        .move-ai { color: #60a5fa; font-weight: 700; }
+        .log { max-height: 300px; overflow: auto; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .82rem; }
+        .form-control, .form-select { background: #111827; color: #e5e7eb; border-color: #4b5563; }
+        .form-control:focus, .form-select:focus { background: #111827; color: #fff; }
+        .btn-outline-light:hover { color: #111827; }
+        .badge-soft { background: #374151; color: #d1d5db; }
+    </style>
+</head>
+<body>
+    <main class='container-fluid py-3'>
+        <div class='d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3'>
+            <div>
+                <h1 class='h4 mb-1'>ZERO AI 手动验招实验台</h1>
+                <div class='small-muted'>直接把当前盘面注入同一个 4ascend-zero WASM，观察真实落点；不经过残局页面的分支逻辑。</div>
+            </div>
+            <a class='btn btn-sm btn-outline-light' href='/pages/endgame/challenge.html'>返回残局挑战</a>
+        </div>
+
+        <div class='row g-3'>
+            <div class='col-12 col-xl-8'>
+                <section class='panel p-3'>
+                    <div class='d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2'>
+                        <div>
+                            <span class='badge badge-soft me-1' id='engine_status'>引擎未初始化</span>
+                            <span class='badge badge-soft' id='board_status'>黑方回合</span>
+                        </div>
+                        <div class='coord'>坐标原点：左上角；x=列，y=行</div>
+                    </div>
+                    <div class='board-wrap'><canvas id='board' width='720' height='720'></canvas></div>
+                    <div class='small-muted mt-2'>左键按当前工具落子；右键清空格子。AI 落子只写入画面，重新思考前会自动恢复到当前盘面。</div>
+                </section>
+            </div>
+
+            <div class='col-12 col-xl-4'>
+                <section class='panel p-3 mb-3'>
+                    <h2 class='h6'>盘面工具</h2>
+                    <div class='row g-2'>
+                        <div class='col-6'><label class='form-label small'>棋子</label><select id='stone' class='form-select form-select-sm'><option value='1'>黑子</option><option value='2'>白子</option><option value='0'>清空</option></select></div>
+                        <div class='col-6'><label class='form-label small'>草数</label><select id='plant' class='form-select form-select-sm'><option value='0'>无草</option><option value='1'>一草</option><option value='2'>二草</option></select></div>
+                        <div class='col-6'><label class='form-label small'>当前回合</label><select id='turn' class='form-select form-select-sm'><option value='0'>黑方</option><option value='1'>白方</option></select></div>
+                        <div class='col-6'><label class='form-label small'>已走手数</label><input id='turn_count' class='form-control form-control-sm' type='number' min='0' max='65535' value='0'></div>
+                        <div class='col-6'><label class='form-label small'>HP</label><input id='hp' class='form-control form-control-sm' type='number' min='0' max='127' value='6'></div>
+                        <div class='col-6'><label class='form-label small'>模拟次数</label><input id='sim' class='form-control form-control-sm' type='number' min='1' max='100000' value='1600'></div>
+                        <div class='col-6'><label class='form-label small'>基础种子</label><input id='seed' class='form-control form-control-sm' type='number' min='1' value='20260912'></div>
+                        <div class='col-6 form-check ms-2 mt-2'><input id='plant_mode' class='form-check-input' type='checkbox'><label class='form-check-label small' for='plant_mode'>自然刷草</label></div>
+                        <div class='col-6 form-check mt-2'><input id='overload' class='form-check-input' type='checkbox'><label class='form-check-label small' for='overload'>强制 overload</label></div>
+                    </div>
+                    <div class='d-grid gap-2 mt-3'>
+                        <div class='col-12 small-muted mt-2'>引擎状态模式：<strong id='state_mode'>直接注入</strong></div>
+                        <div class='col-12 small-muted'>规则扫描：<strong id='tactical_hint'>暂无</strong></div>
+                        <button id='preset_daily' class='btn btn-sm btn-outline-info'>载入每日残局初始盘面</button>
+                        <button id='preset_tactical' class='btn btn-sm btn-outline-warning'>载入战术必防局面</button>
+                        <button id='clear' class='btn btn-sm btn-outline-secondary'>清空棋盘</button>
+                    </div>
+                </section>
+
+                <section class='panel p-3 mb-3'>
+                    <h2 class='h6'>AI 验招</h2>
+                    <div class='d-grid gap-2'>
+                        <button id='think' class='btn btn-primary'>ZERO 思考一次</button>
+                        <button id='sample' class='btn btn-warning'>低成本重复采样 8 次</button>
+                        <button id='apply' class='btn btn-success'>采用当前 AI 落点并切换回合</button>
+                    </div>
+                    <div id='result' class='small mt-3'>等待操作。</div>
+                </section>
+
+                <section class='panel p-3'>
+                    <div class='d-flex justify-content-between align-items-center'><h2 class='h6 mb-0'>验招记录</h2><button id='clear_log' class='btn btn-sm btn-outline-secondary'>清空</button></div>
+                    <div id='log' class='log mt-2'></div>
+                </section>
+            </div>
+        </div>
+    </main>
+
+    <script src='https://quantil.jsdelivr.net/npm/comlink@4.4.1/dist/umd/comlink.min.js'></script>
+    <script>
+        const SIZE = 9;
+        const canvas = document.getElementById('board');
+        const ctx = canvas.getContext('2d');
+        const cells = Array.from({ length: SIZE * SIZE }, () => ({ stone: 0, plant: 0 }));
+        const indexOf = (x, y) => y * SIZE + x;
+        const xyOf = (index) => [index % SIZE, Math.floor(index / SIZE)];
+        const el = (id) => document.getElementById(id);
+        let worker = null;
+        let ready = false;
+        let lastMove = null;
+        let lastSeed = 0;
+        let injectionMode = 'direct';
+
+        const dailyBlack = [[1, 1], [2, 2], [5, 4], [7, 6], [4, 7]];
+        const dailyWhite = [[2, 1], [3, 3], [6, 5], [5, 7]];
+        const setCell = (x, y, stone, plant = 0) => { cells[indexOf(x, y)] = { stone, plant }; };
+        const clearCells = () => cells.forEach((cell) => { cell.stone = 0; cell.plant = 0; });
+        const loadDaily = () => {
+            clearCells();
+            dailyBlack.forEach(([x, y]) => setCell(x, y, 1));
+            dailyWhite.forEach(([x, y]) => setCell(x, y, 2, 1));
+            setCell(4, 4, 0, 2);
+            el('turn').value = '0';
+            el('turn_count').value = String(dailyBlack.length + dailyWhite.length + 1);
+            el('state_mode').textContent = '直接注入';
+            injectionMode = 'direct';
+            lastMove = null;
+            render();
+            writeLog('载入每日残局初始盘面：黑方先手。');
+        };
+        const loadTactical = () => {
+            clearCells();
+            [[0, 0], [1, 0], [2, 0]].forEach(([x, y]) => setCell(x, y, 1));
+            [[0, 1], [1, 1]].forEach(([x, y]) => setCell(x, y, 2));
+            el('turn').value = '0';
+            el('turn_count').value = '10';
+            el('state_mode').textContent = '直接注入';
+            injectionMode = 'direct';
+            lastMove = null;
+            render();
+            writeLog('载入战术局面：黑方三连，黑方应优先走 (3,0) 或 (3,1) 制造/扩大 ASCEND 威胁。');
+        };
+        const cellSize = () => canvas.width / SIZE;
+        const render = () => {
+            const s = cellSize();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#d6b27a'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = 'rgba(54, 36, 18, .55)'; ctx.lineWidth = 2;
+            for (let i = 0; i < SIZE; i++) { const p = (i + .5) * s; ctx.beginPath(); ctx.moveTo(s / 2, p); ctx.lineTo(canvas.width - s / 2, p); ctx.stroke(); ctx.beginPath(); ctx.moveTo(p, s / 2); ctx.lineTo(p, canvas.height - s / 2); ctx.stroke(); }
+            ctx.font = `${Math.max(12, s * .18)}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            cells.forEach((cell, index) => {
+                if (!cell.stone) { if (cell.plant) drawPlant(...xyOf(index), cell.plant); return; }
+                const [x, y] = xyOf(index); const cx = (x + .5) * s; const cy = (y + .5) * s;
+                ctx.beginPath(); ctx.arc(cx, cy, s * .34, 0, Math.PI * 2); ctx.fillStyle = cell.stone === 1 ? '#1f2937' : '#f3f4f6'; ctx.fill(); ctx.strokeStyle = cell.stone === 1 ? '#111827' : '#6b7280'; ctx.stroke();
+                if (cell.plant) drawPlant(x, y, cell.plant);
+            });
+            if (lastMove) { const [x, y] = lastMove; ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 4; ctx.strokeRect(x * s + s * .12, y * s + s * .12, s * .76, s * .76); }
+        };
+        const drawPlant = (x, y, count) => { const s = cellSize(); const cx = (x + .5) * s; const cy = (y + .5) * s; ctx.fillStyle = count === 2 ? '#ef4444' : '#22c55e'; ctx.beginPath(); ctx.arc(cx + s * .22, cy - s * .24, s * .08, 0, Math.PI * 2); ctx.fill(); if (count === 2) { ctx.beginPath(); ctx.arc(cx + s * .30, cy - s * .10, s * .06, 0, Math.PI * 2); ctx.fill(); } };
+        const point = (event) => { const r = canvas.getBoundingClientRect(); return [Math.max(0, Math.min(8, Math.floor((event.clientX - r.left) / r.width * 9))), Math.max(0, Math.min(8, Math.floor((event.clientY - r.top) / r.height * 9)))]; };
+        canvas.addEventListener('pointerdown', (event) => { event.preventDefault(); const [x, y] = point(event); if (event.button === 2) setCell(x, y, 0); else setCell(x, y, Number(el('stone').value), Number(el('plant').value)); lastMove = null; scanHint(); render(); });
+        canvas.addEventListener('contextmenu', (event) => event.preventDefault());
+
+        const snapshot = () => cells.map((cell) => ({ ...cell }));
+        const restore = (data) => data.forEach((cell, index) => { cells[index] = { ...cell }; });
+        const inject = async (seed) => {
+            const hp = Math.max(0, Math.min(127, Number(el('hp').value) || 6));
+            await worker.ZERO_RESET(seed >>> 0, (seed ^ 0x4a534b) >>> 0, Number(el('turn').value), hp, el('plant_mode').checked, el('overload').checked);
+            for (let i = 0; i < cells.length; i++) await worker.ZERO_SET_CELL(i, cells[i].stone, cells[i].plant);
+            if (!Number(el('turn_count').value)) el('turn_count').value = String(cells.filter((cell) => cell.stone).length);
+            const turnCount = Math.max(0, Math.min(65535, Number(el('turn_count').value) || 0));
+            await worker.ZERO_SET_TURN(Number(el('turn').value), turnCount, hp, hp);
+        };
+        const replayCurrent = async (seed) => {
+            const hp = Math.max(0, Math.min(127, Number(el('hp').value) || 6));
+            const occupied = cells.map((cell, index) => ({ ...cell, index })).filter((cell) => cell.stone);
+            await worker.ZERO_RESET(seed >>> 0, (seed ^ 0x4a534b) >>> 0, 0, hp, el('plant_mode').checked, el('overload').checked);
+            // 仅用于对照：逐手重放棋子，保留 Zero 的 history_boards；草仍通过 SET_CELL 注入。
+            for (let i = 0; i < occupied.length; i++) {
+                const cell = occupied[i];
+                await worker.ZERO_SET_CELL(cell.index, cell.stone, cell.plant);
+                await worker.ZERO_TURN(cell.index);
+            }
+            await worker.ZERO_SET_TURN(Number(el('turn').value), Math.max(0, Number(el('turn_count').value) || occupied.length), hp, hp);
+            el('state_mode').textContent = '逐手重放（保留历史）';
+            injectionMode = 'replay';
+        };
+        const think = async (seed) => { if (injectionMode !== 'replay') await inject(seed); const index = await worker.ZERO_THINK(Math.max(1, Number(el('sim').value) || 1600)); return { index, move: xyOf(index), seed }; };
+        const scanHint = () => {
+            const lines = [];
+            for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++) {
+                if (cells[indexOf(x, y)].stone) continue;
+                for (const [dx, dy] of [[1, 0], [0, 1], [1, 1], [1, -1]]) {
+                    const near = (n, stone) => { const xx = x + dx * n, yy = y + dy * n; return xx >= 0 && xx < SIZE && yy >= 0 && yy < SIZE && cells[indexOf(xx, yy)].stone === stone; };
+                    if (near(1, 1) && near(2, 1) && near(3, 1)) lines.push(`黑方在 (${x},${y}) 直接形成四连`);
+                    if (near(1, 2) && near(2, 2) && near(3, 2)) lines.push(`白方在 (${x},${y}) 直接形成四连`);
+                }
+            }
+            el('tactical_hint').textContent = lines.length ? lines.join('；') : '未发现一步直接成四点';
+        };
+        const moveText = ([x, y]) => `(${x},${y})`;
+        const writeLog = (text) => { const row = document.createElement('div'); row.textContent = `[${new Date().toLocaleTimeString()}] ${text}`; el('log').prepend(row); };
+        const setResult = (html) => { el('result').innerHTML = html; };
+        const doThink = async () => {
+            if (!ready) return setResult('引擎尚未准备好。');
+            el('think').disabled = true; el('sample').disabled = true; setResult('ZERO 正在思考...');
+            try { const result = await think(Number(el('seed').value) || 1); lastMove = result.move; lastSeed = result.seed; render(); setResult(`<span class='move-ai'>AI 落点 ${moveText(result.move)}</span> · seed=${result.seed} · ${el('sim').value} simulations`); writeLog(`单次思考：${moveText(result.move)}，seed=${result.seed}，模拟=${el('sim').value}`); } catch (error) { setResult(`思考失败：${error.message || error}`); writeLog(`错误：${error.message || error}`); } finally { el('think').disabled = false; el('sample').disabled = false; }
+        };
+        const doSample = async () => {
+            if (!ready) return setResult('引擎尚未准备好。');
+            el('think').disabled = true; el('sample').disabled = true; const base = Number(el('seed').value) || 1; const results = [];
+            const sampleSim = Math.min(512, Math.max(64, Math.floor((Number(el('sim').value) || 1600) / 4)));
+            setResult(`正在重复采样 8 个独立 Zero 实例（每次 ${sampleSim} simulations）...`);
+            try { for (let i = 0; i < 8; i++) { const originalSim = el('sim').value; el('sim').value = String(sampleSim); const result = await think((base + i * 7919) >>> 0); el('sim').value = originalSim; results.push(result.move); writeLog(`采样 ${i + 1}/8：${moveText(result.move)}，seed=${result.seed}，模拟=${sampleSim}`); } const counts = new Map(); results.forEach((move) => { const key = moveText(move); counts.set(key, (counts.get(key) || 0) + 1); }); const summary = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([move, count]) => `${move} × ${count}`).join('；'); lastMove = results[results.length - 1]; render(); setResult(`<span class='move-ai'>采样结果：</span>${summary}`); } catch (error) { setResult(`采样失败：${error.message || error}`); } finally { el('think').disabled = false; el('sample').disabled = false; }
+        };
+        el('think').addEventListener('click', doThink);
+        el('sample').addEventListener('click', doSample);
+        el('replay').addEventListener('click', async () => { if (!ready) return; el('think').disabled = true; try { await replayCurrent(Number(el('seed').value) || 1); setResult('已用逐手重放方式注入，点击 ZERO 思考一次进行对照。'); writeLog('当前盘面已逐手重放，保留 Zero 最近历史。'); } catch (error) { setResult(`重放失败：${error.message || error}`); } finally { el('think').disabled = false; } });
+        el('apply').addEventListener('click', () => { if (!lastMove) return setResult('请先让 AI 思考一次。'); const [x, y] = lastMove; if (cells[indexOf(x, y)].stone) return setResult('AI 落点已被当前画面占用，请重新思考。'); setCell(x, y, Number(el('turn').value), 0); el('turn').value = Number(el('turn').value) ? '0' : '1'; lastMove = null; render(); setResult('已采用 AI 落点，并切换回合。'); writeLog(`采用落点 ${moveText([x, y])}，回合切换。`); });
+        el('clear').addEventListener('click', () => { clearCells(); lastMove = null; render(); writeLog('清空棋盘。'); });
+        el('preset_daily').addEventListener('click', loadDaily);
+        el('preset_tactical').addEventListener('click', loadTactical);
+        el('clear_log').addEventListener('click', () => { el('log').innerHTML = ''; });
+        el('turn').addEventListener('change', () => el('board_status').textContent = Number(el('turn').value) ? '白方回合' : '黑方回合');
+        (async () => { try { worker = Comlink.wrap(new Worker('/js/worker/ai.min.js?v=ai-probe-20260912')); await worker.AI_INIT(); ready = true; el('engine_status').textContent = 'ZERO 已连接'; el('engine_status').classList.add('text-bg-success'); loadDaily(); } catch (error) { el('engine_status').textContent = '引擎加载失败'; setResult(`初始化失败：${error.message || error}`); } })();
+        render();
+        scanHint();
+    </script>
+</body>
+</html>

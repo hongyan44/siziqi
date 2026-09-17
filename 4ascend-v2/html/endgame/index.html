@@ -1,0 +1,540 @@
+<!--
+ * @Author: CsVeryLoveXieWenLi
+ * @Description: 残局系统功能选择
+ * @Copyright (c) 2026 by CsVeryLoveXieWenLi, All Rights Reserved.
+-->
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset='UTF-8'>
+    <meta http-equiv='X-UA-Compatible' content='IE=edge'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0, user-scalable=no'>
+
+    <link rel='shortcut icon' href='/favicon.png' type='image/png'>
+    <title>四子棋 残局系统</title>
+
+    <!-- Bootstrap V5 -->
+    <link href='https://quantil.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css' rel='stylesheet'>
+
+    <!-- Shoelace -->
+    <link href='https://quantil.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/themes/light.css' rel='stylesheet'>
+    <script src='https://quantil.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/shoelace-autoloader.js'
+        type='module'></script>
+
+    <!-- MY -->
+    <script src='/js/global/ui.min.js?v=replace'></script>
+    <script src='/js/global/endgame.min.js?v=replace'></script>
+    <script src='/js/risk/api.min.js?v=replace'></script>
+    <script src='/js/ref/must.min.js?v=replace'></script>
+    <script src='/js/ref/music.min.js?v=replace'></script>
+    <script src='/js/ref/global-music.min.js?v=replace'></script>
+    <script src='/js/ref/http.min.js?v=replace'></script>
+    <link href='/css/global.min.css?v=replace' rel='stylesheet'>
+
+    <style>
+        .loading-a {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 1);
+            transition: all 0.4s ease;
+        }
+
+        .loading-p {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            animation: loading-spin 1s linear infinite;
+        }
+
+        .loading-t {
+            margin-top: 15px;
+            font-family: sans-serif;
+            color: #666;
+            font-size: 14px;
+        }
+
+        @keyframes loading-spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .category-title {
+            font-size: 1.1rem;
+            color: var(--sl-color-neutral-600);
+            border-left: 4px solid var(--sl-color-primary-500);
+            padding-left: 8px;
+            margin-bottom: 0.5rem;
+        }
+
+        .challenge-card {
+            cursor: pointer;
+            border: 1px solid rgba(13, 110, 253, 0.16);
+            transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+        }
+
+        .challenge-card:hover,
+        .challenge-card:focus-within {
+            border-color: rgba(13, 110, 253, 0.42);
+            box-shadow: 0 0.35rem 1rem rgba(13, 110, 253, 0.12) !important;
+            transform: translateY(-2px);
+        }
+
+        .challenge-board-wrap {
+            width: min(100%, 210px);
+            aspect-ratio: 1;
+            flex: 0 0 auto;
+            background: #fff;
+            border-radius: 0.75rem;
+            overflow: hidden;
+        }
+
+        #challenge_board {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .challenge-dialog::part(panel) { max-width: 460px; }
+        .challenge-option { text-align: left; height: auto; }
+        .challenge-option::part(label) { white-space: normal; }
+        .challenge-option small { display: block; margin-top: 0.2rem; color: var(--sl-color-neutral-600); }
+        .puzzle-list { max-height: 360px; overflow-y: auto; }
+        .puzzle-item { border: 1px solid rgba(13, 110, 253, 0.12); }
+        .puzzle-code { max-width: 11rem; }
+        .endgame-corner-actions { gap: .35rem; }
+    </style>
+
+    <div id='loading' class='loading-a'>
+        <div class='loading-p'></div>
+        <p class='loading-t'>正在初始化...</p>
+    </div>
+
+    <script>
+        (async () => {
+            const icons = Array.from(document.querySelectorAll('sl-icon'));
+            const st = Date.now();
+
+            await Promise.allSettled([
+                customElements.whenDefined('sl-button'),
+                customElements.whenDefined('sl-icon'),
+            ]);
+
+            if (document.readyState === 'loading') await new Promise((resolve) => document.addEventListener('DOMContentLoaded', resolve, { 'once': true }));
+
+            await Promise.allSettled(icons.map((icon) => new Promise((resolve) => {
+                if (icon.hasAttribute('library')) resolve();
+                icon.addEventListener('sl-load', () => requestAnimationFrame(() => requestAnimationFrame(resolve)), { 'once': true });
+            })));
+
+            await new Promise((resolve) => {
+                if (document.readyState === 'complete') resolve();
+                else window.addEventListener('load', resolve, { 'once': true });
+            });
+
+            const elapsed = Date.now() - st;
+            setTimeout(() => {
+                window.loaded = true;
+                const loader = document.getElementById('loading');
+                if (loader) {
+                    loader.style.opacity = '0';
+                    loader.style.visibility = 'hidden';
+                    setTimeout(() => loader.remove(), 400);
+                }
+            }, Math.max(0, 300 - elapsed));
+        })();
+    </script>
+</head>
+
+<body class='d-flex flex-column w-100 h-100 bg-light'>
+    <div class='position-fixed top-0 start-0 d-flex p-2 endgame-corner-actions' style='z-index: 1050;'>
+        <sl-button variant='default' href='/' circle aria-label='返回主页' title='返回主页'><sl-icon name='arrow-left'></sl-icon></sl-button>
+        <sl-button id='button_music_toggle' variant='default' circle title='单击切换下一首；1 秒内双击开始/停止播放' aria-label='单击切换下一首；1 秒内双击开始/停止播放'>
+            <sl-icon id='icon_music_toggle' name='volume-up'></sl-icon>
+        </sl-button>
+    </div>
+
+    <div class='d-flex flex-column w-100 h-100'>
+        <header></header>
+
+        <main class='container py-4 flex-grow-1 justify-content-center align-items-center overflow-auto' style='max-width: 960px;'>
+            <header class='text-center'>
+                <sl-icon name='puzzle' style='font-size: 3.5rem; color: var(--sl-color-primary-600);'></sl-icon>
+                <h1 class='display-5 fw-bold mt-2 mb-1' style='letter-spacing: -1px;'>残局系统</h1>
+                <p class='text-secondary'>残局相关 · 选择功能</p>
+            </header>
+
+            <div class='d-flex flex-column gap-4 px-2'>
+                <section id='published_puzzles_section' class='d-none'>
+                    <div class='category-title fw-bold'>已发布残局</div>
+                    <div id='published_puzzles' class='row g-2'></div>
+                </section>
+
+                <!-- 上排：残局功能标题与状态 -->
+                <section>
+                    <div class='category-title fw-bold'>残局功能</div>
+                    <div class='text-secondary small mb-2'>选择一个入口继续</div>
+                    <div class='d-flex flex-column gap-2'>
+                        <sl-button id='button_endgame_levels' variant='default' size='large' href='/pages/endgame/levels.html' pill outline class='w-100 justify-content-start'>
+                            <sl-icon slot='prefix' name='signpost-split'></sl-icon>残局闯关
+                        </sl-button>
+                        <div class='card challenge-card shadow-sm' id='challenge_entry' role='button' tabindex='0' aria-label='打开残局挑战'>
+                            <div class='card-body d-flex align-items-center gap-3 p-3'>
+                                <div class='challenge-board-wrap'>
+                                    <canvas id='challenge_board' aria-label='今日残局棋盘预览'></canvas>
+                                </div>
+                                <div class='flex-grow-1'>
+                                    <div class='d-flex align-items-center gap-2 mb-1'>
+                                        <sl-icon name='lightning-charge' class='text-primary'></sl-icon>
+                                        <span class='fw-bold'>残局挑战</span>
+                                        <sl-badge variant='primary' pill>今日开放</sl-badge>
+                                    </div>
+                                    <div class='text-secondary small'>点击棋局棋盘，选择每日挑战或输入残局码破解。</div>
+                                    <div class='text-secondary small mt-2'>连续挑战 · 记录最佳解法</div>
+                                </div>
+                                <sl-icon name='chevron-right' class='text-secondary'></sl-icon>
+                            </div>
+                        </div>
+                        <sl-button id='button_endgame_submit' variant='default' size='large' href='/pages/endgame/submit.html' pill outline class='w-100 justify-content-start'>
+                            <sl-icon slot='prefix' name='pencil-square'></sl-icon>残局投稿编辑器
+                        </sl-button>
+                    </div>
+                </section>
+
+                <!-- 中排：残局说明与当前状态 -->
+                <section>
+                    <div class='category-title fw-bold'>残局状态</div>
+                    <div class='border rounded p-3 bg-white'>
+                        <div class='d-flex flex-column gap-2 text-secondary small'>
+                            <div class='d-flex justify-content-between'><span>闯关进度</span><strong class='text-body'>准备开始</strong></div>
+                            <div class='d-flex justify-content-between'><span>挑战记录</span><strong class='text-body'>暂无数据</strong></div>
+                            <div class='d-flex justify-content-between'><span>投稿编辑器</span><strong class='text-success'>可用</strong></div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 下排：账号信息入口 -->
+                <section>
+                    <div class='category-title fw-bold'>账号信息</div>
+                    <div class='border rounded p-3 bg-white'>
+                        <div class='d-flex align-items-center gap-2'>
+                            <sl-icon name='person-gear' class='text-primary' style='font-size: 1.5rem;'></sl-icon>
+                            <div class='flex-grow-1'>
+                                <div class='fw-bold'>账号与投稿身份</div>
+                                <div id='endgame_user_summary' class='text-secondary small'>登录后管理昵称、权限等级与残局投稿身份</div>
+                            </div>
+                            <sl-button id='button_endgame_user' variant='primary' outline pill>账号信息</sl-button>
+                        </div>
+                        <div id='endgame_admin_entry' class='d-none border-top mt-3 pt-3'>
+                            <div class='d-flex align-items-center justify-content-between gap-2 mb-2'>
+                                <div>
+                                    <div class='fw-bold'>残局关卡管理</div>
+                                    <div class='text-secondary small'>仅权限等级4管理员可新增或删除已发布残局</div>
+                                </div>
+                                <sl-badge variant='warning' pill>管理员</sl-badge>
+                            </div>
+                            <div id='puzzle_list' class='puzzle-list d-flex flex-column gap-2 mb-2'></div>
+                            <div id='puzzle_empty' class='text-secondary small border rounded p-2 mb-2'>暂无已发布残局。</div>
+                            <div class='d-flex flex-column gap-2'>
+                                <sl-input id='input_puzzle_title' size='small' label='残局名称' placeholder='例如：中央突破'></sl-input>
+                                <sl-textarea id='input_puzzle_code' size='small' label='残局码' placeholder='粘贴编辑器生成的残局码' rows='2' resize='auto'></sl-textarea>
+                                <sl-button id='button_puzzle_add' size='small' variant='primary'><sl-icon slot='prefix' name='plus-lg'></sl-icon>添加残局</sl-button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <footer class='text-center text-muted py-1' style='font-size: 0.74rem;'>
+            <a href='/' class='text-decoration-none text-secondary'>返回功能选择</a>
+        </footer>
+    </div>
+
+    <sl-dialog id='dialog_challenge' class='challenge-dialog d-none' label='残局挑战'>
+        <div class='d-flex flex-column gap-3'>
+            <div class='text-center'>
+                <sl-icon name='lightning-charge' class='text-primary' style='font-size: 2.4rem;'></sl-icon>
+                <div class='fw-bold mt-2'>选择挑战方式</div>
+                <div class='text-secondary small'>准备好后，从下面两种方式开始一局残局挑战。</div>
+            </div>
+            <div class='d-flex flex-column gap-2'>
+                <sl-button id='button_daily_challenge' class='challenge-option' variant='primary' size='large' outline>
+                    <sl-icon slot='prefix' name='calendar3'></sl-icon>
+                    <span>进行每日挑战</span>
+                    <small>挑战今天的固定残局，完成后记录进度。</small>
+                </sl-button>
+                <sl-button id='button_code_challenge' class='challenge-option' variant='default' size='large' outline>
+                    <sl-icon slot='prefix' name='key'></sl-icon>
+                    <span>输入残局码进行残局破解</span>
+                    <small>使用分享的残局码，载入指定盘面。</small>
+                </sl-button>
+                <sl-button id='button_daily_edit' class='challenge-option d-none' variant='warning' size='large' outline>
+                    <sl-icon slot='prefix' name='pencil-square'></sl-icon>
+                    <span>编辑每日挑战</span>
+                    <small>仅权限等级4管理员可替换今天的残局并发布到服务端。</small>
+                </sl-button>
+            </div>
+            <sl-input id='input_challenge_code' class='d-none' label='残局码' placeholder='填入残局码' clearable></sl-input>
+            <sl-input id='input_daily_title' class='d-none' label='挑战标题' value='每日挑战' placeholder='可选，默认每日挑战'></sl-input>
+            <div id='challenge_code_error' class='text-danger small d-none'>请输入有效的残局码。</div>
+        </div>
+        <div slot='footer' class='d-flex gap-2'>
+            <sl-button id='button_challenge_cancel' variant='neutral'>取消</sl-button>
+            <sl-button id='button_challenge_start' variant='primary' disabled>开始挑战</sl-button>
+        </div>
+    </sl-dialog>
+
+    <sl-dialog id='dialog_endgame_user' class='d-none' label='账号信息'>
+        <div class='d-flex flex-column gap-3'>
+            <div class='p-3 rounded border bg-light'>
+                <small class='text-secondary d-block mb-1'>当前权限等级</small>
+                <span id='endgame_user_level' class='fw-bold text-primary'>登录后查看账号等级</span>
+            </div>
+            <div class='p-3 rounded border bg-light'>
+                <small class='text-secondary d-block mb-1'>残局投稿身份</small>
+                <span id='endgame_user_role' class='text-body'>登录后可管理昵称并提交残局</span>
+            </div>
+            <div class='text-secondary small'>账号信息与主页保持一致，登录入口不重复维护。</div>
+        </div>
+        <div slot='footer' class='gap-2'>
+            <sl-button onclick='this.closest("sl-dialog").hide();' variant='neutral'>关闭</sl-button>
+            <sl-button href='/' variant='primary'>前往主页登录</sl-button>
+        </div>
+    </sl-dialog>
+
+    <script>
+        const endgameUserButton = document.getElementById('button_endgame_user');
+        const endgameUserDialog = document.getElementById('dialog_endgame_user');
+        const endgameUserSummary = document.getElementById('endgame_user_summary');
+        const endgameUserLevel = document.getElementById('endgame_user_level');
+        const endgameUserRole = document.getElementById('endgame_user_role');
+        const adminEntry = document.getElementById('endgame_admin_entry');
+        const publishedSection = document.getElementById('published_puzzles_section');
+        const publishedPuzzles = document.getElementById('published_puzzles');
+        const puzzleList = document.getElementById('puzzle_list');
+        const puzzleEmpty = document.getElementById('puzzle_empty');
+        const puzzleTitle = document.getElementById('input_puzzle_title');
+        const puzzleCode = document.getElementById('input_puzzle_code');
+        const puzzleAdd = document.getElementById('button_puzzle_add');
+        const challengeEntry = document.getElementById('challenge_entry');
+        const challengeDialog = document.getElementById('dialog_challenge');
+        const submitButton = document.getElementById('button_endgame_submit');
+        const dailyButton = document.getElementById('button_daily_challenge');
+        const codeButton = document.getElementById('button_code_challenge');
+        const dailyEditButton = document.getElementById('button_daily_edit');
+        const codeInput = document.getElementById('input_challenge_code');
+        const dailyTitleInput = document.getElementById('input_daily_title');
+        const codeError = document.getElementById('challenge_code_error');
+        const startChallengeButton = document.getElementById('button_challenge_start');
+        let challengeMode = 'daily';
+        let dailyChallenge = null;
+        const USER_LEVEL_NAMES = { 1: '普通用户', 2: '进阶用户', 3: '高级用户', 4: '管理员' };
+        let endgameUserInfo = null;
+        let puzzleRecords = [];
+        const hasToken = () => Boolean(window.get_token && window.get_token());
+        const safeLevel = (level) => Math.min(4, Math.max(1, Number(level) || 1));
+        const challengeHref = (code) => `/pages/endgame/challenge.html?mode=code&code=${encodeURIComponent(code)}`;
+        const renderPuzzles = () => {
+            publishedSection.classList.toggle('d-none', puzzleRecords.length === 0);
+            publishedPuzzles.innerHTML = '';
+            puzzleList.innerHTML = '';
+            puzzleEmpty.classList.toggle('d-none', puzzleRecords.length > 0);
+            puzzleRecords.forEach((item) => {
+                const col = document.createElement('div');
+                col.className = 'col-12 col-md-6';
+                col.innerHTML = `<div class='card challenge-card shadow-sm h-100'><div class='card-body d-flex align-items-center gap-2'><div class='flex-grow-1'><div class='fw-bold'>${item.title}</div><div class='text-secondary small text-truncate puzzle-code' title='${item.code}'>残局码已发布</div></div><sl-button size='small' variant='primary' outline href='${challengeHref(item.code)}'>挑战</sl-button></div></div>`;
+                publishedPuzzles.appendChild(col);
+                const row = document.createElement('div');
+                row.className = 'puzzle-item d-flex align-items-center gap-2 rounded p-2';
+                row.innerHTML = `<div class='flex-grow-1'><div class='fw-bold small'>${item.title}</div><div class='text-secondary small'>发布者：${item.creator}</div></div>`;
+                const challenge = document.createElement('sl-button');
+                challenge.size = 'small'; challenge.variant = 'default'; challenge.outline = true; challenge.textContent = '挑战';
+                challenge.addEventListener('click', () => { window.location.href = challengeHref(item.code); });
+                row.appendChild(challenge);
+                if (endgameUserInfo && safeLevel(endgameUserInfo.level) === 4) {
+                    const remove = document.createElement('sl-button');
+                    remove.size = 'small'; remove.variant = 'danger'; remove.outline = true; remove.textContent = '删除';
+                    remove.addEventListener('click', () => deletePuzzle(item.id));
+                    row.appendChild(remove);
+                }
+                puzzleList.appendChild(row);
+            });
+        };
+        const renderAccount = (info) => {
+            endgameUserInfo = info;
+            dailyEditButton.classList.toggle('d-none', !info || safeLevel(info.level) !== 4);
+            if (!info) {
+                endgameUserSummary.textContent = '登录后管理昵称、权限等级与残局投稿身份';
+                endgameUserLevel.textContent = '登录后查看账号等级';
+                endgameUserRole.textContent = '登录后可管理昵称并提交残局';
+                adminEntry.classList.add('d-none');
+                renderPuzzles();
+                return;
+            }
+            const level = safeLevel(info.level);
+            endgameUserSummary.textContent = `${info.name || '无名氏'} · 等级 ${level} · ${USER_LEVEL_NAMES[level]}`;
+            endgameUserLevel.textContent = `等级 ${level} · ${USER_LEVEL_NAMES[level]}`;
+            endgameUserRole.textContent = level === 4 ? '管理员：可管理昵称、提交并新增或删除残局' : '可管理昵称并提交残局';
+            adminEntry.classList.toggle('d-none', level !== 4);
+            renderPuzzles();
+        };
+        const loadPuzzles = async () => {
+            try { puzzleRecords = await window.http_puzzle_query(); renderPuzzles(); } catch (_) { puzzleRecords = []; }
+        };
+        const loadAccount = async () => {
+            if (!hasToken()) { renderAccount(null); return; }
+            try { renderAccount(await window.http_user_info(window.get_token())); } catch (_) { renderAccount(null); }
+        };
+        const addPuzzle = async () => {
+            if (!endgameUserInfo || safeLevel(endgameUserInfo.level) !== 4) return;
+            const title = puzzleTitle.value.trim();
+            const code = puzzleCode.value.trim();
+            if (!title || !code) return window.UiExports && new window.UiExports.ShToast().error('请填写残局名称和残局码！');
+            try {
+                window.EndgameExports.EndgameArchive.decode(code);
+                const id = await window.http_puzzle_add(window.get_token(), title, code);
+                if (!id) throw new Error('新增残局失败');
+                puzzleTitle.value = ''; puzzleCode.value = '';
+                await loadPuzzles();
+                new window.UiExports.ShToast().success('残局添加成功！');
+            } catch (error) { new window.UiExports.ShToast().error(error.message || '残局码无效或新增失败！'); }
+        };
+        const deletePuzzle = async (id) => {
+            if (!endgameUserInfo || safeLevel(endgameUserInfo.level) !== 4 || !window.confirm('确定删除这个残局吗？')) return;
+            try {
+                if (!await window.http_puzzle_delete(window.get_token(), id)) throw new Error('删除残局失败');
+                await loadPuzzles();
+                new window.UiExports.ShToast().success('残局已删除！');
+            } catch (error) { new window.UiExports.ShToast().error(error.message || '删除残局失败！'); }
+        };
+        endgameUserButton.addEventListener('click', () => {
+            endgameUserDialog.classList.remove('d-none');
+            endgameUserDialog.show();
+            loadAccount();
+        });
+        puzzleAdd.addEventListener('click', addPuzzle);
+        loadAccount();
+        loadPuzzles();
+
+        submitButton.addEventListener('click', () => { window.location.href = '/pages/endgame/submit.html'; });
+
+        const setChallengeMode = (mode) => {
+            challengeMode = mode;
+            const codeMode = mode === 'code' || mode === 'daily-edit';
+            dailyButton.variant = mode === 'daily' ? 'primary' : 'default';
+            codeButton.variant = mode === 'code' ? 'primary' : 'default';
+            dailyEditButton.variant = mode === 'daily-edit' ? 'warning' : 'default';
+            codeInput.classList.toggle('d-none', !codeMode);
+            dailyTitleInput.classList.toggle('d-none', mode !== 'daily-edit');
+            codeError.classList.add('d-none');
+            startChallengeButton.textContent = mode === 'daily-edit' ? '发布每日挑战' : '开始挑战';
+            startChallengeButton.disabled = codeMode && !codeInput.value.trim();
+            if (codeMode) codeInput.focus();
+        };
+
+        const openChallengeDialog = () => {
+            setChallengeMode('daily');
+            codeInput.value = '';
+            dailyTitleInput.value = dailyChallenge && dailyChallenge.title ? dailyChallenge.title : '每日挑战';
+            challengeDialog.classList.remove('d-none');
+            challengeDialog.show();
+        };
+
+        challengeEntry.addEventListener('click', openChallengeDialog);
+        challengeEntry.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openChallengeDialog(); }
+        });
+        dailyButton.addEventListener('click', () => setChallengeMode('daily'));
+        codeButton.addEventListener('click', () => setChallengeMode('code'));
+        dailyEditButton.addEventListener('click', () => setChallengeMode('daily-edit'));
+        codeInput.addEventListener('sl-input', () => {
+            codeError.classList.add('d-none');
+            startChallengeButton.disabled = !codeInput.value.trim();
+        });
+        document.getElementById('button_challenge_cancel').addEventListener('click', () => challengeDialog.hide());
+        const setChallengeSubmitting = (submitting) => {
+            startChallengeButton.loading = submitting;
+            startChallengeButton.disabled = submitting || ((challengeMode === 'code' || challengeMode === 'daily-edit') && !codeInput.value.trim());
+            dailyEditButton.disabled = submitting;
+            dailyButton.disabled = submitting;
+            codeButton.disabled = submitting;
+        };
+        startChallengeButton.addEventListener('click', async () => {
+            const code = codeInput.value.trim();
+            if (challengeMode === 'daily-edit') {
+                if (!endgameUserInfo || safeLevel(endgameUserInfo.level) !== 4) { codeError.textContent = '只有权限等级4管理员可以编辑每日挑战。'; codeError.classList.remove('d-none'); return; }
+                if (!code) { codeError.textContent = '请输入有效的残局码。'; codeError.classList.remove('d-none'); return; }
+                try { window.EndgameExports.EndgameArchive.decode(code); }
+                catch (error) { codeError.textContent = error.message || '残局码无效，请检查后重试。'; codeError.classList.remove('d-none'); return; }
+                setChallengeSubmitting(true);
+                try {
+                    const title = dailyTitleInput.value.trim() || '每日挑战';
+                    if (!await window.http_puzzle_daily_update(window.get_token(), code, title)) throw new Error('服务端拒绝了发布请求，请检查登录状态。');
+                    const uploaded = await window.http_puzzle_daily_query();
+                    if (!uploaded || uploaded.code !== code || uploaded.title !== title) throw new Error('服务端校验失败，发布内容未正确保存。');
+                    dailyChallenge = uploaded;
+                    drawDailyPreview(uploaded.code);
+                    codeError.textContent = '';
+                    codeError.classList.add('d-none');
+                    new window.UiExports.ShToast().success('已上传：每日挑战已保存到服务端，页面未关闭。');
+                } catch (error) {
+                    new window.UiExports.ShToast().error(`未上传成功：${error.message || '服务端保存失败，请稍后重试。'}`);
+                    codeError.textContent = error.message || '发布每日挑战失败，请稍后重试。';
+                    codeError.classList.remove('d-none');
+                }
+                setChallengeSubmitting(false);
+                return;
+            }
+            if (challengeMode === 'code') {
+                if (!code) { codeError.textContent = '请输入有效的残局码。'; codeError.classList.remove('d-none'); return; }
+                try { window.EndgameExports.EndgameArchive.decode(code); }
+                catch (error) { codeError.textContent = error.message || '残局码无效，请检查后重试。'; codeError.classList.remove('d-none'); return; }
+                window.location.href = `/pages/endgame/challenge.html?mode=code&code=${encodeURIComponent(code)}`;
+                return;
+            }
+            window.location.href = '/pages/endgame/challenge.html?mode=daily';
+        });
+
+        const challengeCanvas = document.getElementById('challenge_board');
+        const challengeContext = challengeCanvas.getContext('2d');
+        let previewCells = Array.from({ length: 81 }, () => ({ stone: 'none', plant: 0 }));
+        [[1, 1], [2, 2], [5, 4], [7, 6], [4, 7]].forEach(([x, y]) => previewCells[y * 9 + x].stone = 'black');
+        [[2, 1], [3, 3], [6, 5], [5, 7]].forEach(([x, y]) => { previewCells[y * 9 + x].stone = 'white'; previewCells[y * 9 + x].plant = 1; });
+        previewCells[4 * 9 + 4].plant = 2;
+        const drawDailyPreview = (code) => {
+            try {
+                const archive = window.EndgameExports.EndgameArchive.decode(code);
+                previewCells = archive.cells.map((item) => ({ stone: item.stone || 'none', plant: Number(item.plant) || 0 }));
+                redrawChallengeBoard();
+            } catch (_) { /* 发布前已校验，预览失败不影响发布结果 */ }
+        };
+        const redrawChallengeBoard = () => {
+            const size = challengeCanvas.clientWidth || 210;
+            const dpr = window.devicePixelRatio || 1;
+            challengeCanvas.width = size * dpr; challengeCanvas.height = size * dpr;
+            challengeContext.setTransform(dpr, 0, 0, dpr, 0, 0);
+            challengeContext.fillStyle = '#fff'; challengeContext.fillRect(0, 0, size, size);
+            const pad = size * 0.1; const spacing = (size - pad * 2) / 8;
+            challengeContext.strokeStyle = '#d0d0d0'; challengeContext.lineWidth = 1;
+            for (let i = 0; i < 9; i++) { const point = pad + i * spacing; challengeContext.beginPath(); challengeContext.moveTo(point, pad); challengeContext.lineTo(point, size - pad); challengeContext.stroke(); challengeContext.beginPath(); challengeContext.moveTo(pad, point); challengeContext.lineTo(size - pad, point); challengeContext.stroke(); }
+            previewCells.forEach((item, index) => { if (item.stone === 'none') return; const x = index % 9; const y = Math.floor(index / 9); const px = pad + x * spacing; const py = pad + y * spacing; challengeContext.beginPath(); challengeContext.arc(px, py, spacing * 0.31, 0, Math.PI * 2); challengeContext.fillStyle = item.stone === 'black' ? '#2c3e50' : '#ecf0f1'; challengeContext.fill(); if (item.stone === 'white') { challengeContext.strokeStyle = '#8b949e'; challengeContext.stroke(); } });
+            previewCells.forEach((item, index) => { if (!item.plant) return; const x = index % 9; const y = Math.floor(index / 9); const px = pad + x * spacing; const py = pad + y * spacing; challengeContext.fillStyle = '#2ecc71'; for (let i = 0; i < item.plant; i++) { challengeContext.beginPath(); challengeContext.arc(px + (i - (item.plant - 1) / 2) * spacing * 0.17, py, Math.max(2, spacing * 0.055), 0, Math.PI * 2); challengeContext.fill(); } });
+        };
+        window.addEventListener('resize', redrawChallengeBoard);
+        redrawChallengeBoard();
+        (async () => {
+            try { dailyChallenge = await window.http_puzzle_daily_query(); if (dailyChallenge && dailyChallenge.code) drawDailyPreview(dailyChallenge.code); }
+            catch (_) { /* 服务端未配置每日残局时使用内置兼容盘面 */ }
+        })();
+    </script>
+</body>
+
+</html>

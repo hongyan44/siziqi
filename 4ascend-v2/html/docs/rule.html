@@ -1,0 +1,150 @@
+<!--
+ * @Author: CsVeryLoveXieWenLi
+ * @Description: 游戏规则
+ * @Copyright (c) 2026 by CsVeryLoveXieWenLi, All Rights Reserved.
+-->
+<!DOCTYPE html>
+<html>
+
+
+<head>
+    <meta charset='UTF-8'>
+    <meta http-equiv='X-UA-Compatible' content='IE=edge'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0, user-scalable=no'>
+
+
+    <link rel='shortcut icon' href='/favicon.png' type='image/png'>
+
+    <title>四子棋 游戏规则</title>
+
+
+    <!-- Github MD -->
+    <link href='https://quantil.jsdelivr.net/npm/github-markdown-css@4.7.0/github-markdown-light.min.css'
+        rel='stylesheet'>
+
+    <!-- Bootstrap V5 -->
+    <link href='https://quantil.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css' rel='stylesheet'>
+
+    <!-- Highlightjs  -->
+    <link href='https://quantil.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css'
+        rel='stylesheet'>
+    <script src='https://quantil.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js'></script>
+
+    <!-- Marked -->
+    <script src='https://quantil.jsdelivr.net/npm/marked@3.0.8/lib/marked.min.js'></script>
+
+    <!-- MY -->
+    <link href='/css/docs.min.css?v=replace' rel='stylesheet'>
+
+    <script src='/js/ref/must.min.js?v=replace'></script>
+    <script src='/js/ref/global-music.min.js?v=replace'></script>
+    <script src='/js/ref/http.min.js?v=replace'></script>
+
+
+    <!-- 加载动画 -->
+    <style>
+        .loading-a {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 1);
+            transition: all 0.4s ease;
+        }
+
+        .loading-p {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            animation: loading-spin 1s linear infinite;
+        }
+
+        .loading-t {
+            margin-top: 15px;
+            font-family: sans-serif;
+            color: #666;
+            font-size: 14px;
+        }
+
+        @keyframes loading-spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+
+    <div id='loading' class='loading-a'>
+        <div class='loading-p'></div>
+        <p class='loading-t'>正在初始化...</p>
+    </div>
+
+    <script>
+        (async () => {
+            const st = Date.now();
+
+            if (document.readyState === 'loading') await new Promise((resolve) => document.addEventListener('DOMContentLoaded', resolve, { 'once': true }));
+
+            await new Promise((resolve) => {
+                if (document.readyState === 'complete') resolve();
+                else window.addEventListener('load', resolve, { 'once': true });
+            });
+
+            await Promise.allSettled([...document.images]
+                .map((image) => image.complete ? Promise.resolve() : new Promise((resolve) => image.onload = resolve)));
+
+            await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+            await document.fonts.ready;
+
+            const md = await (await fetch(`/md/rule.md?v=${Math.random()}`)).text();
+
+            marked.setOptions({
+                'renderer': new marked.Renderer(),
+                'highlight': function (code, lang) {
+                    const language = hljs.getLanguage(lang) ? lang : 'plaintext';
+                    return hljs.highlight('code', { 'language': language }).value;
+                },
+                'gfm': true,
+                'tables': true,
+                'breaks': true,
+                'pedantic': false,
+                'sanitize': false,
+                'smartLists': true,
+                'smartypants': false
+            });
+
+            document.getElementById('content').innerHTML = marked(md);
+
+            const elapsed = Date.now() - st;
+            const delay = Math.max(0, 300 - elapsed); // 至少运行0.5s
+
+            setTimeout(() => {
+                window.loaded = true;
+
+                const loader = document.getElementById('loading');
+                if (loader) {
+                    loader.style.opacity = '0';
+                    loader.style.visibility = 'hidden';
+                    setTimeout(() => loader.remove(), 400);
+                }
+            }, delay);
+        })();
+    </script>
+</head>
+
+
+<body class='p-0'>
+    <div id='content' class='markdown-body'></div>
+</body>
+
+
+</html>

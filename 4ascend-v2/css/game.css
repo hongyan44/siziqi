@@ -1,0 +1,151 @@
+/* 回合呼吸灯初始化 */
+.turn-init {
+    border: 2px solid transparent;
+    /* box-shadow: 0 0 10px rgba(152, 251, 152, 0.0); */
+}
+
+
+/* TURN P1 MY */
+.turn-green {
+    border: 2px solid #98fb98;
+    box-shadow: 0 0 10px rgba(152, 251, 152, 0.6);
+    animation: pulse-green 2s infinite;
+}
+
+@keyframes pulse-green {
+    0% {
+        box-shadow: 0 0 5px rgba(152, 251, 152, 0.4);
+        border-color: rgba(152, 251, 152, 0.7);
+    }
+
+    50% {
+        box-shadow: 0 0 20px rgba(152, 251, 152, 0.9);
+        border-color: #7cfc00;
+    }
+
+    100% {
+        box-shadow: 0 0 5px rgba(152, 251, 152, 0.4);
+        border-color: rgba(152, 251, 152, 0.7);
+    }
+}
+
+/* TURN P2 FOE */
+.turn-blue {
+    border: 2px solid #add8e6;
+    box-shadow: 0 0 10px rgba(173, 216, 230, 0.6);
+    animation: pulse-blue 2s infinite;
+}
+
+@keyframes pulse-blue {
+    0% {
+        box-shadow: 0 0 5px rgba(173, 216, 230, 0.4);
+        border-color: rgba(173, 216, 230, 0.7);
+    }
+
+    50% {
+        box-shadow: 0 0 20px rgba(173, 216, 230, 0.9);
+        border-color: rgba(135, 206, 250, 1);
+    }
+
+    100% {
+        box-shadow: 0 0 5px rgba(173, 216, 230, 0.4);
+        border-color: rgba(173, 216, 230, 0.7);
+    }
+}
+
+
+/* TURN P1 VIEW */
+.turn-purple {
+    border: 2px solid #e1bee7;
+    box-shadow: 0 0 10px rgba(225, 190, 231, 0.6);
+    animation: pulse-purple 2s infinite;
+}
+
+@keyframes pulse-purple {
+    0% {
+        box-shadow: 0 0 5px rgba(225, 190, 231, 0.4);
+        border-color: rgba(225, 190, 231, 0.7);
+    }
+
+    50% {
+        box-shadow: 0 0 20px rgba(225, 190, 231, 0.9);
+        border-color: #ce93d8;
+    }
+
+    100% {
+        box-shadow: 0 0 5px rgba(225, 190, 231, 0.4);
+        border-color: rgba(225, 190, 231, 0.7);
+    }
+}
+
+/* TURN P2 VIEW */
+.turn-orange {
+    border: 2px solid #ffcc80;
+    box-shadow: 0 0 10px rgba(255, 204, 128, 0.6);
+    animation: pulse-orange 2s infinite;
+}
+
+@keyframes pulse-orange {
+    0% {
+        box-shadow: 0 0 5px rgba(255, 204, 128, 0.4);
+        border-color: rgba(255, 204, 128, 0.7);
+    }
+
+    50% {
+        box-shadow: 0 0 20px rgba(255, 204, 128, 0.9);
+        border-color: #ffb74d;
+    }
+
+    100% {
+        box-shadow: 0 0 5px rgba(255, 204, 128, 0.4);
+        border-color: rgba(255, 204, 128, 0.7);
+    }
+}
+
+
+:root {
+    --hp-color-p1: -1;
+    --hp-color-p2: -1;
+}
+
+.hp-color-p1 {
+    --hue: calc((var(--hp-color-p1) - 50) * 3);
+    --safe-hue: clamp(-40, var(--hue), 120);
+    --light: calc(10% + var(--hp-color-p1) * 0.25%);
+    --sat: calc(40% + var(--hp-color-p1) * 0.5%);
+    color: hsl(var(--safe-hue), var(--sat), var(--light));
+
+    transition: color 0.5s ease;
+}
+
+.hp-color-p2 {
+    --hue: calc((var(--hp-color-p2) - 50) * 3);
+    --safe-hue: clamp(-40, var(--hue), 120);
+    --light: calc(10% + var(--hp-color-p2) * 0.25%);
+    --sat: calc(40% + var(--hp-color-p2) * 0.5%);
+    color: hsl(var(--safe-hue), var(--sat), var(--light));
+
+    transition: color 0.5s ease;
+}
+
+:root[style*="--hp-color-p1: -1"] .hp-color-p1,
+:root[style*="--hp-color-p1:-1"] .hp-color-p1 {
+    color: initial !important;
+}
+
+:root[style*="--hp-color-p2: -1"] .hp-color-p2,
+:root[style*="--hp-color-p2:-1"] .hp-color-p2 {
+    color: initial !important;
+}
+
+.text-color {
+    transition: color 0.5s ease;
+}
+
+.text-purple {
+    color: rgb(225, 190, 231);
+}
+
+.text-orange {
+    color: rgb(255, 204, 128);
+}

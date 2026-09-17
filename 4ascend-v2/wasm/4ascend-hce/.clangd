@@ -1,0 +1,24 @@
+CompileFlags:
+  Add: [
+    "-target", "wasm32-unknown-emscripten",
+    "-D__EMSCRIPTEN__",
+    "-std=c++20",
+    "-nostdinc",  # 关键：切断与 Windows 系统头文件的所有联系
+    "-nostdinc++",
+    
+    # --- 严格按照顺序排列路径 ---
+    # 1. 首先是 C++ 标准库 (libc++)
+    "-isystem", "C:/MyData/App/Git/emsdk/upstream/emscripten/cache/sysroot/include/c++/v1",
+    # 2. 其次是 Emscripten 的 C 标准库
+    "-isystem", "C:/MyData/App/Git/emsdk/upstream/emscripten/cache/sysroot/include",
+    # 3. 最后是兼容层和其它路径
+    "-isystem", "C:/MyData/App/Git/emsdk/upstream/emscripten/cache/sysroot/include/compat",
+
+    "-I", "C:/MyData/Libs/StaticWasm/ncnn-20260113/x64/include",
+    
+    "-fms-extensions"
+  ]
+  Remove: [-m64, -m32, -march=*, --target=*]
+
+Index:
+  Background: Build

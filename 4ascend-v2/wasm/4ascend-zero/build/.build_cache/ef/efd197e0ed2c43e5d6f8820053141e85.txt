@@ -1,0 +1,16 @@
+{
+    errdata = "clang: warning: argument unused during compilation: '-c' [-Wunused-command-line-argument]\
+In file included from src\\main.cpp:7:\
+In file included from src\\mcts.h:9:\
+In file included from src\\net.h:10:\
+In file included from C:\\MyData\\Libs\\StaticWasm\\ncnn-20260526\\x64\\include\\ncnn/net.h:7:\
+In file included from C:\\MyData\\Libs\\StaticWasm\\ncnn-20260526\\x64\\include\\ncnn\\blob.h:7:\
+C:\\MyData\\Libs\\StaticWasm\\ncnn-20260526\\x64\\include\\ncnn\\mat.h:1177:9: warning: expression result unused [-Wunused-value]\
+ 1177 |         (int)__sync_fetch_and_add((unsigned*)(m.refcount), (unsigned)(1));\
+      |         ^    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\
+C:\\MyData\\Libs\\StaticWasm\\ncnn-20260526\\x64\\include\\ncnn\\mat.h:1201:9: warning: expression result unused [-Wunused-value]\
+ 1201 |         (int)__sync_fetch_and_add((unsigned*)(refcount), (unsigned)(1));\
+      |         ^    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\
+2 warnings generated.\
+"
+}

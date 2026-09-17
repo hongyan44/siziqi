@@ -1,0 +1,215 @@
+<!--
+ * @Author: CsVeryLoveXieWenLi
+ * @Description: 赛事大厅功能选择
+ * @Copyright (c) 2026 by CsVeryLoveXieWenLi, All Rights Reserved.
+-->
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset='UTF-8'>
+    <meta http-equiv='X-UA-Compatible' content='IE=edge'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0, user-scalable=no'>
+
+    <link rel='shortcut icon' href='/favicon.png' type='image/png'>
+    <title>四子棋 赛事大厅</title>
+
+    <!-- Bootstrap V5 -->
+    <link href='https://quantil.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css' rel='stylesheet'>
+
+    <!-- Shoelace -->
+    <link href='https://quantil.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/themes/light.css' rel='stylesheet'>
+    <script src='https://quantil.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/shoelace-autoloader.js'
+        type='module'></script>
+
+    <!-- MY -->
+    <script src='/js/global/ui.min.js?v=replace'></script>
+    <script src='/js/ref/must.min.js?v=replace'></script>
+    <script src='/js/ref/music.min.js?v=replace'></script>
+    <script src='/js/ref/global-music.min.js?v=replace'></script>
+    <script src='/js/ref/http.min.js?v=replace'></script>
+    <link href='/css/global.min.css?v=replace' rel='stylesheet'>
+
+    <style>
+        .loading-a {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 1);
+            transition: all 0.4s ease;
+        }
+
+        .loading-p {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            animation: loading-spin 1s linear infinite;
+        }
+
+        .loading-t {
+            margin-top: 15px;
+            font-family: sans-serif;
+            color: #666;
+            font-size: 14px;
+        }
+
+        @keyframes loading-spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .category-title {
+            font-size: 1.1rem;
+            color: var(--sl-color-neutral-600);
+            border-left: 4px solid var(--sl-color-primary-500);
+            padding-left: 8px;
+            margin-bottom: 0.5rem;
+        }
+
+        .match-entry {
+            cursor: pointer;
+            border: 1px solid rgba(13, 110, 253, 0.16);
+            transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+        }
+
+        .match-entry:hover,
+        .match-entry:focus-within {
+            border-color: rgba(13, 110, 253, 0.42);
+            box-shadow: 0 0.35rem 1rem rgba(13, 110, 253, 0.12) !important;
+            transform: translateY(-2px);
+        }
+
+        .match-entry-icon {
+            width: 2.75rem;
+            height: 2.75rem;
+            flex: 0 0 auto;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 0.75rem;
+            background: rgba(13, 110, 253, 0.1);
+            color: var(--sl-color-primary-600);
+            font-size: 1.35rem;
+        }
+    </style>
+
+    <div id='loading' class='loading-a'>
+        <div class='loading-p'></div>
+        <p class='loading-t'>正在初始化...</p>
+    </div>
+
+    <script>
+        (async () => {
+            const icons = Array.from(document.querySelectorAll('sl-icon'));
+            const st = Date.now();
+
+            await Promise.allSettled([
+                customElements.whenDefined('sl-button'),
+                customElements.whenDefined('sl-icon'),
+            ]);
+
+            if (document.readyState === 'loading') await new Promise((resolve) => document.addEventListener('DOMContentLoaded', resolve, { 'once': true }));
+
+            await Promise.allSettled(icons.map((icon) => new Promise((resolve) => {
+                if (icon.hasAttribute('library')) resolve();
+                icon.addEventListener('sl-load', () => requestAnimationFrame(() => requestAnimationFrame(resolve)), { 'once': true });
+            })));
+
+            await new Promise((resolve) => {
+                if (document.readyState === 'complete') resolve();
+                else window.addEventListener('load', resolve, { 'once': true });
+            });
+
+            const elapsed = Date.now() - st;
+            setTimeout(() => {
+                window.loaded = true;
+                const loader = document.getElementById('loading');
+                if (loader) {
+                    loader.style.opacity = '0';
+                    loader.style.visibility = 'hidden';
+                    setTimeout(() => loader.remove(), 400);
+                }
+            }, Math.max(0, 300 - elapsed));
+        })();
+    </script>
+</head>
+
+<body class='d-flex flex-column w-100 h-100 bg-light'>
+    <div id='button_music_wrap' class='position-fixed top-0 start-0 d-flex p-2' style='z-index: 1050;'>
+        <sl-button id='button_music_toggle' variant='default' circle title='单击切换下一首；1 秒内双击开始/停止播放' aria-label='单击切换下一首；1 秒内双击开始/停止播放'>
+            <sl-icon id='icon_music_toggle' name='volume-up'></sl-icon>
+        </sl-button>
+    </div>
+
+    <div class='d-flex flex-column w-100 h-100'>
+        <header></header>
+
+        <main class='container py-4 flex-grow-1 justify-content-center align-items-center overflow-auto' style='max-width: 960px;'>
+            <header class='text-center'>
+                <sl-icon name='diagram-3' style='font-size: 3.5rem; color: var(--sl-color-primary-600);'></sl-icon>
+                <h1 class='display-5 fw-bold mt-2 mb-1' style='letter-spacing: -1px;'>赛事大厅</h1>
+                <p class='text-secondary'>赛事相关 · 选择功能</p>
+            </header>
+
+            <div class='d-flex flex-column gap-4 px-2'>
+                <section>
+                    <div class='category-title fw-bold'>当前赛事</div>
+                    <div class='text-secondary small mb-2'>选择一个入口继续</div>
+                    <div class='d-flex flex-column gap-2'>
+                        <div class='card match-entry shadow-sm' id='match_registration_entry' role='button' tabindex='0' aria-label='打开当前赛事报名与抽签'>
+                            <div class='card-body d-flex align-items-center gap-3 p-3'>
+                                <div class='match-entry-icon'>
+                                    <sl-icon name='person-plus'></sl-icon>
+                                </div>
+                                <div class='flex-grow-1'>
+                                    <div class='d-flex align-items-center gap-2 mb-1'>
+                                        <span class='fw-bold'>当前赛事报名与抽签</span>
+                                        <sl-badge variant='success' pill>报名中</sl-badge>
+                                    </div>
+                                    <div class='text-secondary small'>报名参赛并查看当前赛事的随机分组结果。</div>
+                                </div>
+                                <sl-icon name='chevron-right' class='text-secondary'></sl-icon>
+                            </div>
+                        </div>
+
+                        <div class='card match-entry shadow-sm' role='button' tabindex='0' aria-label='打开当前赛事介绍与须知'>
+                            <div class='card-body d-flex align-items-center gap-3 p-3'>
+                                <div class='match-entry-icon'>
+                                    <sl-icon name='info-circle'></sl-icon>
+                                </div>
+                                <div class='flex-grow-1'>
+                                    <div class='d-flex align-items-center gap-2 mb-1'>
+                                        <span class='fw-bold'>当前赛事介绍与须知</span>
+                                        <sl-badge variant='neutral' pill>即将开放</sl-badge>
+                                    </div>
+                                    <div class='text-secondary small'>查看赛事说明、参与条件与注意事项，后续开放。</div>
+                                </div>
+                                <sl-icon name='chevron-right' class='text-secondary'></sl-icon>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <footer class='text-center text-muted py-1' style='font-size: 0.74rem;'>
+            <a href='/' class='text-decoration-none text-secondary'>返回功能选择</a>
+        </footer>
+    </div>
+    <script>
+        const registrationEntry = document.getElementById('match_registration_entry');
+        const openRegistration = () => { window.location.href = '/pages/mod/match-registration.html'; };
+        registrationEntry.addEventListener('click', openRegistration);
+        registrationEntry.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openRegistration(); }
+        });
+    </script>
+</body>
+
+</html>

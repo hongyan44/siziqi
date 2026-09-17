@@ -1,0 +1,60 @@
+/* 1. 基础布局复位 */
+body {
+    margin: 0;
+    padding: 0;
+    background-color: #ffffff;
+    /* 确保背景纯净 */
+}
+
+/* 2. 优化 Markdown 容器 */
+.markdown-body {
+    box-sizing: border-box;
+    margin: 0 auto;
+    /* 电脑端水平居中 */
+    padding: 45px;
+    /* 电脑端留白 */
+    max-width: 900px;
+    /* 限制最大宽度，防止单行太长阅读疲劳 */
+    min-width: 200px;
+    border: 1px solid #e1e4e8;
+    /* 增加轻微边框，更有手册感 */
+    border-radius: 8px;
+    margin-top: 20px;
+    /* 顶部留一点空隙 */
+    margin-bottom: 20px;
+}
+
+/* 3. 核心：手机端适配 (响应式) */
+@media (max-width: 767px) {
+    body {
+        padding: 0;
+        /* 手机端取消 body 外边距 */
+    }
+
+    .markdown-body {
+        padding: 20px;
+        /* 手机端缩小内边距 */
+        margin: 0;
+        /* 手机端取消垂直外边距，占满屏幕 */
+        border: none;
+        /* 手机端去掉边框，节省空间 */
+        border-radius: 0;
+        font-size: 15px;
+        /* 适配手机阅读的字号 */
+    }
+
+    /* 优化手机端表格显示，防止撑开页面 */
+    .markdown-body table {
+        display: block;
+        width: 100%;
+        overflow-x: auto;
+    }
+}
+
+/* 4. 自定义标题样式 (美化) */
+.markdown-body h2 {
+    padding-bottom: 0.3em;
+    border-bottom: 2px solid #3498db;
+    /* 改用蓝色线条，更有活力 */
+    color: #2c3e50;
+}

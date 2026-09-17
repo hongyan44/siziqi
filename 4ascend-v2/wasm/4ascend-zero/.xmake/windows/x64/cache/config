@@ -1,0 +1,9 @@
+{
+    recheck = false,
+    mtimes = {
+        ["xmake.lua"] = 1784104523
+    },
+    options = {
+        plat = "wasm"
+    }
+}

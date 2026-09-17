@@ -1,0 +1,71 @@
+{
+    find_program = {
+        ["C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\emcc.bat"] = [[C:\MyData\App\Git\emsdk\upstream\emscripten\emcc.bat]],
+        ["C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\em++.bat"] = [[C:\MyData\App\Git\emsdk\upstream\emscripten\em++.bat]]
+    },
+    find_program_emcc_arch_wasm32_plat_wasm_checktoolcc = {
+        ["emcc.bat"] = [[C:\MyData\App\Git\emsdk\upstream\emscripten\emcc.bat]]
+    },
+    ["core.tools.gcc.has_ldflags"] = {
+        ["C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\em++.bat_"] = { }
+    },
+    ["core.tools.gcc.has_cflags"] = {
+        ["C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\emcc.bat_"] = {
+            ["------------------------------------------------------------------"] = true,
+            ["---------"] = true,
+            ["-g3"] = true,
+            ["-g1"] = true,
+            ["--embed-file"] = true,
+            ["--output-eol"] = true,
+            ["--source-map-"] = true,
+            ["--version"] = true,
+            ["--pre-js"] = true,
+            ["--help"] = true
+        }
+    },
+    ["lib.detect.has_flags"] = {
+        ["wasm_wasm32_C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\em++.bat__ld_ldflags_ _-s ERROR_ON_UNDEFINED_SYMBOLS=1"] = true,
+        ["wasm_wasm32_C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\emcc.bat__cxx_cxflags__-std=c++20"] = true,
+        ["wasm_wasm32_C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\em++.bat__ld_ldflags_ _-s WASM=1"] = true,
+        ["wasm_wasm32_C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\em++.bat__ld__ _-O3"] = true,
+        ["wasm_wasm32_C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\em++.bat__ld__ _-fPIC"] = true,
+        ["wasm_wasm32_C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\emcc.bat__cxx_cxflags__-fno-exceptions"] = true,
+        ["wasm_wasm32_C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\emcc.bat__cxx_cxflags__-pthread"] = true,
+        ["wasm_wasm32_C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\em++.bat__ld_ldflags_ _-s MODULARIZE=1"] = true,
+        ["wasm_wasm32_C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\em++.bat__ld_ldflags_ _-s WASM_BIGINT=1"] = true,
+        ["wasm_wasm32_C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\emcc.bat__cxx___-O3"] = true,
+        ["wasm_wasm32_C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\emcc.bat__cxx_cxflags__-fvisibility-inlines-hidden"] = true,
+        ["wasm_wasm32_C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\emcc.bat__cxx___-fPIC"] = true,
+        ["wasm_wasm32_C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\em++.bat__ld_ldflags_ _-s DISABLE_EXCEPTION_CATCHING=1"] = true,
+        ["wasm_wasm32_C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\emcc.bat__cxx_cxflags__-ffast-math"] = true,
+        ["wasm_wasm32_C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\emcc.bat__cxx_cxflags__-msimd128"] = true,
+        ["wasm_wasm32_C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\em++.bat__ld_ldflags_ _-s INLINING_LIMIT=100"] = false,
+        ["wasm_wasm32_C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\emcc.bat__cxx_cxflags__-DNDEBUG"] = true,
+        ["wasm_wasm32_C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\emcc.bat__cxx_cxflags__--bind"] = true,
+        ["wasm_wasm32_C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\em++.bat__ld_ldflags_ _-s MALLOC=emmalloc"] = true,
+        ["wasm_wasm32_C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\em++.bat__ld_ldflags_ _-s EXPORT_NAME=\"create_4ascend_zero\""] = true,
+        ["wasm_wasm32_C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\em++.bat__ld_ldflags_ _--bind"] = true,
+        ["wasm_wasm32_C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\em++.bat__ld_ldflags_ _-s SHARED_MEMORY=1"] = true,
+        ["wasm_wasm32_C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\em++.bat__ld_ldflags_ _-s SINGLE_FILE=1"] = true,
+        ["wasm_wasm32_C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\em++.bat__ld_ldflags_ _-msimd128"] = true,
+        ["wasm_wasm32_C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\emcc.bat__cxx_cxflags__-funsafe-math-optimizations"] = true,
+        ["wasm_wasm32_C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\em++.bat__ld_ldflags_ _-pthread"] = true,
+        ["wasm_wasm32_C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\em++.bat__ld_ldflags_ _-s INITIAL_MEMORY=320MB"] = true,
+        ["wasm_wasm32_C:\\MyData\\App\\Git\\emsdk\\upstream\\emscripten\\emcc.bat__cxx_cxflags__-fno-math-errno"] = true
+    },
+    find_program_emcc_arch_wasm32_plat_wasm_checktoolar = {
+        ["emar.bat"] = [[C:\MyData\App\Git\emsdk\upstream\emscripten\emar.bat]]
+    },
+    find_program_emcc_arch_wasm32_plat_wasm_checktoolld = {
+        ["em++.bat"] = [[C:\MyData\App\Git\emsdk\upstream\emscripten\em++.bat]]
+    },
+    find_program_emcc_arch_wasm32_plat_wasm_checktoolcxx = {
+        ["emcc.bat"] = [[C:\MyData\App\Git\emsdk\upstream\emscripten\emcc.bat]]
+    },
+    ["detect.sdks.find_emsdk"] = {
+        sdk = {
+            sdkdir = [[C:\MyData\App\Git\emsdk]],
+            emscripten = [[C:\MyData\App\Git\emsdk\upstream\emscripten]]
+        }
+    }
+}

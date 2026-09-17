@@ -1,0 +1,141 @@
+[
+{
+  "directory": "/root/martcat2js/projects-long/cpp/4ascend/4ascend-online",
+  "arguments": ["/root/libs/toolchain/x86_64-unknown-linux-musl/bin/x86_64-unknown-linux-musl-g++", "-c", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-mavx2", "-std=c++20", "-I", "build/.objs/4ascend-online/linux/x86_64/release/src/cxx", "-include", "Pch.h", "-I/root/libs/static-lto/libressl-4.3.2/x64/include", "-I/root/libs/static-lto/sqlite-amalgamation-3530100/x64/include", "-I/root/libs/static-lto/cryptopp-cmake-8.9.0/x64/include", "-I/root/libs/header-only/cinatra-1.0.0", "-I/root/libs/header-only/jsoncons-1.7.0", "-DYLT_ENABLE_SSL", "-DCRYPTOPP_ENABLE_NAMESPACE_WEAK=1", "-flto", "-flto=auto", "-DNDEBUG", "-o", "build/.objs/4ascend-online/linux/x86_64/release/src/Main.cpp.o", "src/Main.cpp"],
+  "file": "src/Main.cpp"
+},
+{
+  "directory": "/root/martcat2js/projects-long/cpp/4ascend/4ascend-online",
+  "arguments": ["/root/libs/toolchain/x86_64-unknown-linux-musl/bin/x86_64-unknown-linux-musl-g++", "-c", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-mavx2", "-std=c++20", "-I", "build/.objs/4ascend-online/linux/x86_64/release/src/cxx", "-include", "Pch.h", "-I/root/libs/static-lto/libressl-4.3.2/x64/include", "-I/root/libs/static-lto/sqlite-amalgamation-3530100/x64/include", "-I/root/libs/static-lto/cryptopp-cmake-8.9.0/x64/include", "-I/root/libs/header-only/cinatra-1.0.0", "-I/root/libs/header-only/jsoncons-1.7.0", "-DYLT_ENABLE_SSL", "-DCRYPTOPP_ENABLE_NAMESPACE_WEAK=1", "-flto", "-flto=auto", "-DNDEBUG", "-o", "build/.objs/4ascend-online/linux/x86_64/release/src/online/Ranked.cpp.o", "src/online/Ranked.cpp"],
+  "file": "src/online/Ranked.cpp"
+},
+{
+  "directory": "/root/martcat2js/projects-long/cpp/4ascend/4ascend-online",
+  "arguments": ["/root/libs/toolchain/x86_64-unknown-linux-musl/bin/x86_64-unknown-linux-musl-g++", "-c", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-mavx2", "-std=c++20", "-I", "build/.objs/4ascend-online/linux/x86_64/release/src/cxx", "-include", "Pch.h", "-I/root/libs/static-lto/libressl-4.3.2/x64/include", "-I/root/libs/static-lto/sqlite-amalgamation-3530100/x64/include", "-I/root/libs/static-lto/cryptopp-cmake-8.9.0/x64/include", "-I/root/libs/header-only/cinatra-1.0.0", "-I/root/libs/header-only/jsoncons-1.7.0", "-DYLT_ENABLE_SSL", "-DCRYPTOPP_ENABLE_NAMESPACE_WEAK=1", "-flto", "-flto=auto", "-DNDEBUG", "-o", "build/.objs/4ascend-online/linux/x86_64/release/src/online/Friend.cpp.o", "src/online/Friend.cpp"],
+  "file": "src/online/Friend.cpp"
+},
+{
+  "directory": "/root/martcat2js/projects-long/cpp/4ascend/4ascend-online",
+  "arguments": ["/root/libs/toolchain/x86_64-unknown-linux-musl/bin/x86_64-unknown-linux-musl-g++", "-c", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-mavx2", "-std=c++20", "-I", "build/.objs/4ascend-online/linux/x86_64/release/src/cxx", "-include", "Pch.h", "-I/root/libs/static-lto/libressl-4.3.2/x64/include", "-I/root/libs/static-lto/sqlite-amalgamation-3530100/x64/include", "-I/root/libs/static-lto/cryptopp-cmake-8.9.0/x64/include", "-I/root/libs/header-only/cinatra-1.0.0", "-I/root/libs/header-only/jsoncons-1.7.0", "-DYLT_ENABLE_SSL", "-DCRYPTOPP_ENABLE_NAMESPACE_WEAK=1", "-flto", "-flto=auto", "-DNDEBUG", "-o", "build/.objs/4ascend-online/linux/x86_64/release/src/api/ws/Ranked.cpp.o", "src/api/ws/Ranked.cpp"],
+  "file": "src/api/ws/Ranked.cpp"
+},
+{
+  "directory": "/root/martcat2js/projects-long/cpp/4ascend/4ascend-online",
+  "arguments": ["/root/libs/toolchain/x86_64-unknown-linux-musl/bin/x86_64-unknown-linux-musl-g++", "-c", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-mavx2", "-std=c++20", "-I", "build/.objs/4ascend-online/linux/x86_64/release/src/cxx", "-include", "Pch.h", "-I/root/libs/static-lto/libressl-4.3.2/x64/include", "-I/root/libs/static-lto/sqlite-amalgamation-3530100/x64/include", "-I/root/libs/static-lto/cryptopp-cmake-8.9.0/x64/include", "-I/root/libs/header-only/cinatra-1.0.0", "-I/root/libs/header-only/jsoncons-1.7.0", "-DYLT_ENABLE_SSL", "-DCRYPTOPP_ENABLE_NAMESPACE_WEAK=1", "-flto", "-flto=auto", "-DNDEBUG", "-o", "build/.objs/4ascend-online/linux/x86_64/release/src/api/ws/Ping.cpp.o", "src/api/ws/Ping.cpp"],
+  "file": "src/api/ws/Ping.cpp"
+},
+{
+  "directory": "/root/martcat2js/projects-long/cpp/4ascend/4ascend-online",
+  "arguments": ["/root/libs/toolchain/x86_64-unknown-linux-musl/bin/x86_64-unknown-linux-musl-g++", "-c", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-mavx2", "-std=c++20", "-I", "build/.objs/4ascend-online/linux/x86_64/release/src/cxx", "-include", "Pch.h", "-I/root/libs/static-lto/libressl-4.3.2/x64/include", "-I/root/libs/static-lto/sqlite-amalgamation-3530100/x64/include", "-I/root/libs/static-lto/cryptopp-cmake-8.9.0/x64/include", "-I/root/libs/header-only/cinatra-1.0.0", "-I/root/libs/header-only/jsoncons-1.7.0", "-DYLT_ENABLE_SSL", "-DCRYPTOPP_ENABLE_NAMESPACE_WEAK=1", "-flto", "-flto=auto", "-DNDEBUG", "-o", "build/.objs/4ascend-online/linux/x86_64/release/src/api/ws/Friend.cpp.o", "src/api/ws/Friend.cpp"],
+  "file": "src/api/ws/Friend.cpp"
+},
+{
+  "directory": "/root/martcat2js/projects-long/cpp/4ascend/4ascend-online",
+  "arguments": ["/root/libs/toolchain/x86_64-unknown-linux-musl/bin/x86_64-unknown-linux-musl-g++", "-c", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-mavx2", "-std=c++20", "-I", "build/.objs/4ascend-online/linux/x86_64/release/src/cxx", "-include", "Pch.h", "-I/root/libs/static-lto/libressl-4.3.2/x64/include", "-I/root/libs/static-lto/sqlite-amalgamation-3530100/x64/include", "-I/root/libs/static-lto/cryptopp-cmake-8.9.0/x64/include", "-I/root/libs/header-only/cinatra-1.0.0", "-I/root/libs/header-only/jsoncons-1.7.0", "-DYLT_ENABLE_SSL", "-DCRYPTOPP_ENABLE_NAMESPACE_WEAK=1", "-flto", "-flto=auto", "-DNDEBUG", "-o", "build/.objs/4ascend-online/linux/x86_64/release/src/api/http/Replay.cpp.o", "src/api/http/Replay.cpp"],
+  "file": "src/api/http/Replay.cpp"
+},
+{
+  "directory": "/root/martcat2js/projects-long/cpp/4ascend/4ascend-online",
+  "arguments": ["/root/libs/toolchain/x86_64-unknown-linux-musl/bin/x86_64-unknown-linux-musl-g++", "-c", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-mavx2", "-std=c++20", "-I", "build/.objs/4ascend-online/linux/x86_64/release/src/cxx", "-include", "Pch.h", "-I/root/libs/static-lto/libressl-4.3.2/x64/include", "-I/root/libs/static-lto/sqlite-amalgamation-3530100/x64/include", "-I/root/libs/static-lto/cryptopp-cmake-8.9.0/x64/include", "-I/root/libs/header-only/cinatra-1.0.0", "-I/root/libs/header-only/jsoncons-1.7.0", "-DYLT_ENABLE_SSL", "-DCRYPTOPP_ENABLE_NAMESPACE_WEAK=1", "-flto", "-flto=auto", "-DNDEBUG", "-o", "build/.objs/4ascend-online/linux/x86_64/release/src/api/http/User.cpp.o", "src/api/http/User.cpp"],
+  "file": "src/api/http/User.cpp"
+},
+{
+  "directory": "/root/martcat2js/projects-long/cpp/4ascend/4ascend-online",
+  "arguments": ["/root/libs/toolchain/x86_64-unknown-linux-musl/bin/x86_64-unknown-linux-musl-g++", "-c", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-mavx2", "-std=c++20", "-I", "build/.objs/4ascend-online/linux/x86_64/release/src/cxx", "-include", "Pch.h", "-I/root/libs/static-lto/libressl-4.3.2/x64/include", "-I/root/libs/static-lto/sqlite-amalgamation-3530100/x64/include", "-I/root/libs/static-lto/cryptopp-cmake-8.9.0/x64/include", "-I/root/libs/header-only/cinatra-1.0.0", "-I/root/libs/header-only/jsoncons-1.7.0", "-DYLT_ENABLE_SSL", "-DCRYPTOPP_ENABLE_NAMESPACE_WEAK=1", "-flto", "-flto=auto", "-DNDEBUG", "-o", "build/.objs/4ascend-online/linux/x86_64/release/src/manager/Ranked.cpp.o", "src/manager/Ranked.cpp"],
+  "file": "src/manager/Ranked.cpp"
+},
+{
+  "directory": "/root/martcat2js/projects-long/cpp/4ascend/4ascend-online",
+  "arguments": ["/root/libs/toolchain/x86_64-unknown-linux-musl/bin/x86_64-unknown-linux-musl-g++", "-c", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-mavx2", "-std=c++20", "-I", "build/.objs/4ascend-online/linux/x86_64/release/src/cxx", "-include", "Pch.h", "-I/root/libs/static-lto/libressl-4.3.2/x64/include", "-I/root/libs/static-lto/sqlite-amalgamation-3530100/x64/include", "-I/root/libs/static-lto/cryptopp-cmake-8.9.0/x64/include", "-I/root/libs/header-only/cinatra-1.0.0", "-I/root/libs/header-only/jsoncons-1.7.0", "-DYLT_ENABLE_SSL", "-DCRYPTOPP_ENABLE_NAMESPACE_WEAK=1", "-flto", "-flto=auto", "-DNDEBUG", "-o", "build/.objs/4ascend-online/linux/x86_64/release/src/manager/Puzzle.cpp.o", "src/manager/Puzzle.cpp"],
+  "file": "src/manager/Puzzle.cpp"
+},
+{
+  "directory": "/root/martcat2js/projects-long/cpp/4ascend/4ascend-online",
+  "arguments": ["/root/libs/toolchain/x86_64-unknown-linux-musl/bin/x86_64-unknown-linux-musl-g++", "-c", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-mavx2", "-std=c++20", "-I", "build/.objs/4ascend-online/linux/x86_64/release/src/cxx", "-include", "Pch.h", "-I/root/libs/static-lto/libressl-4.3.2/x64/include", "-I/root/libs/static-lto/sqlite-amalgamation-3530100/x64/include", "-I/root/libs/static-lto/cryptopp-cmake-8.9.0/x64/include", "-I/root/libs/header-only/cinatra-1.0.0", "-I/root/libs/header-only/jsoncons-1.7.0", "-DYLT_ENABLE_SSL", "-DCRYPTOPP_ENABLE_NAMESPACE_WEAK=1", "-flto", "-flto=auto", "-DNDEBUG", "-o", "build/.objs/4ascend-online/linux/x86_64/release/src/manager/Token.cpp.o", "src/manager/Token.cpp"],
+  "file": "src/manager/Token.cpp"
+},
+{
+  "directory": "/root/martcat2js/projects-long/cpp/4ascend/4ascend-online",
+  "arguments": ["/root/libs/toolchain/x86_64-unknown-linux-musl/bin/x86_64-unknown-linux-musl-g++", "-c", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-mavx2", "-std=c++20", "-I", "build/.objs/4ascend-online/linux/x86_64/release/src/cxx", "-include", "Pch.h", "-I/root/libs/static-lto/libressl-4.3.2/x64/include", "-I/root/libs/static-lto/sqlite-amalgamation-3530100/x64/include", "-I/root/libs/static-lto/cryptopp-cmake-8.9.0/x64/include", "-I/root/libs/header-only/cinatra-1.0.0", "-I/root/libs/header-only/jsoncons-1.7.0", "-DYLT_ENABLE_SSL", "-DCRYPTOPP_ENABLE_NAMESPACE_WEAK=1", "-flto", "-flto=auto", "-DNDEBUG", "-o", "build/.objs/4ascend-online/linux/x86_64/release/src/manager/Replay.cpp.o", "src/manager/Replay.cpp"],
+  "file": "src/manager/Replay.cpp"
+},
+{
+  "directory": "/root/martcat2js/projects-long/cpp/4ascend/4ascend-online",
+  "arguments": ["/root/libs/toolchain/x86_64-unknown-linux-musl/bin/x86_64-unknown-linux-musl-g++", "-c", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-mavx2", "-std=c++20", "-I", "build/.objs/4ascend-online/linux/x86_64/release/src/cxx", "-include", "Pch.h", "-I/root/libs/static-lto/libressl-4.3.2/x64/include", "-I/root/libs/static-lto/sqlite-amalgamation-3530100/x64/include", "-I/root/libs/static-lto/cryptopp-cmake-8.9.0/x64/include", "-I/root/libs/header-only/cinatra-1.0.0", "-I/root/libs/header-only/jsoncons-1.7.0", "-DYLT_ENABLE_SSL", "-DCRYPTOPP_ENABLE_NAMESPACE_WEAK=1", "-flto", "-flto=auto", "-DNDEBUG", "-o", "build/.objs/4ascend-online/linux/x86_64/release/src/manager/Sms.cpp.o", "src/manager/Sms.cpp"],
+  "file": "src/manager/Sms.cpp"
+},
+{
+  "directory": "/root/martcat2js/projects-long/cpp/4ascend/4ascend-online",
+  "arguments": ["/root/libs/toolchain/x86_64-unknown-linux-musl/bin/x86_64-unknown-linux-musl-g++", "-c", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-mavx2", "-std=c++20", "-I", "build/.objs/4ascend-online/linux/x86_64/release/src/cxx", "-include", "Pch.h", "-I/root/libs/static-lto/libressl-4.3.2/x64/include", "-I/root/libs/static-lto/sqlite-amalgamation-3530100/x64/include", "-I/root/libs/static-lto/cryptopp-cmake-8.9.0/x64/include", "-I/root/libs/header-only/cinatra-1.0.0", "-I/root/libs/header-only/jsoncons-1.7.0", "-DYLT_ENABLE_SSL", "-DCRYPTOPP_ENABLE_NAMESPACE_WEAK=1", "-flto", "-flto=auto", "-DNDEBUG", "-o", "build/.objs/4ascend-online/linux/x86_64/release/src/manager/Contest.cpp.o", "src/manager/Contest.cpp"],
+  "file": "src/manager/Contest.cpp"
+},
+{
+  "directory": "/root/martcat2js/projects-long/cpp/4ascend/4ascend-online",
+  "arguments": ["/root/libs/toolchain/x86_64-unknown-linux-musl/bin/x86_64-unknown-linux-musl-g++", "-c", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-mavx2", "-std=c++20", "-I", "build/.objs/4ascend-online/linux/x86_64/release/src/cxx", "-include", "Pch.h", "-I/root/libs/static-lto/libressl-4.3.2/x64/include", "-I/root/libs/static-lto/sqlite-amalgamation-3530100/x64/include", "-I/root/libs/static-lto/cryptopp-cmake-8.9.0/x64/include", "-I/root/libs/header-only/cinatra-1.0.0", "-I/root/libs/header-only/jsoncons-1.7.0", "-DYLT_ENABLE_SSL", "-DCRYPTOPP_ENABLE_NAMESPACE_WEAK=1", "-flto", "-flto=auto", "-DNDEBUG", "-o", "build/.objs/4ascend-online/linux/x86_64/release/src/manager/User.cpp.o", "src/manager/User.cpp"],
+  "file": "src/manager/User.cpp"
+},
+{
+  "directory": "/root/martcat2js/projects-long/cpp/4ascend/4ascend-online",
+  "arguments": ["/root/libs/toolchain/x86_64-unknown-linux-musl/bin/x86_64-unknown-linux-musl-g++", "-c", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-mavx2", "-std=c++20", "-I", "build/.objs/4ascend-online/linux/x86_64/release/src/cxx", "-include", "Pch.h", "-I/root/libs/static-lto/libressl-4.3.2/x64/include", "-I/root/libs/static-lto/sqlite-amalgamation-3530100/x64/include", "-I/root/libs/static-lto/cryptopp-cmake-8.9.0/x64/include", "-I/root/libs/header-only/cinatra-1.0.0", "-I/root/libs/header-only/jsoncons-1.7.0", "-DYLT_ENABLE_SSL", "-DCRYPTOPP_ENABLE_NAMESPACE_WEAK=1", "-flto", "-flto=auto", "-DNDEBUG", "-o", "build/.objs/4ascend-online/linux/x86_64/release/src/libs/db/Sqlite3.cpp.o", "src/libs/db/Sqlite3.cpp"],
+  "file": "src/libs/db/Sqlite3.cpp"
+},
+{
+  "directory": "/root/martcat2js/projects-long/cpp/4ascend/4ascend-online",
+  "arguments": ["/root/libs/toolchain/x86_64-unknown-linux-musl/bin/x86_64-unknown-linux-musl-g++", "-c", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-mavx2", "-std=c++20", "-I", "build/.objs/4ascend-online/linux/x86_64/release/src/cxx", "-include", "Pch.h", "-I/root/libs/static-lto/libressl-4.3.2/x64/include", "-I/root/libs/static-lto/sqlite-amalgamation-3530100/x64/include", "-I/root/libs/static-lto/cryptopp-cmake-8.9.0/x64/include", "-I/root/libs/header-only/cinatra-1.0.0", "-I/root/libs/header-only/jsoncons-1.7.0", "-DYLT_ENABLE_SSL", "-DCRYPTOPP_ENABLE_NAMESPACE_WEAK=1", "-flto", "-flto=auto", "-DNDEBUG", "-o", "build/.objs/4ascend-online/linux/x86_64/release/src/libs/digest/Hash.cpp.o", "src/libs/digest/Hash.cpp"],
+  "file": "src/libs/digest/Hash.cpp"
+},
+{
+  "directory": "/root/martcat2js/projects-long/cpp/4ascend/4ascend-online",
+  "arguments": ["/root/libs/toolchain/x86_64-unknown-linux-musl/bin/x86_64-unknown-linux-musl-g++", "-c", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-mavx2", "-std=c++20", "-I", "build/.objs/4ascend-online/linux/x86_64/release/src/cxx", "-include", "Pch.h", "-I/root/libs/static-lto/libressl-4.3.2/x64/include", "-I/root/libs/static-lto/sqlite-amalgamation-3530100/x64/include", "-I/root/libs/static-lto/cryptopp-cmake-8.9.0/x64/include", "-I/root/libs/header-only/cinatra-1.0.0", "-I/root/libs/header-only/jsoncons-1.7.0", "-DYLT_ENABLE_SSL", "-DCRYPTOPP_ENABLE_NAMESPACE_WEAK=1", "-flto", "-flto=auto", "-DNDEBUG", "-o", "build/.objs/4ascend-online/linux/x86_64/release/src/libs/digest/Hmac.cpp.o", "src/libs/digest/Hmac.cpp"],
+  "file": "src/libs/digest/Hmac.cpp"
+},
+{
+  "directory": "/root/martcat2js/projects-long/cpp/4ascend/4ascend-online",
+  "arguments": ["/root/libs/toolchain/x86_64-unknown-linux-musl/bin/x86_64-unknown-linux-musl-g++", "-c", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-mavx2", "-std=c++20", "-I", "build/.objs/4ascend-online/linux/x86_64/release/src/cxx", "-include", "Pch.h", "-I/root/libs/static-lto/libressl-4.3.2/x64/include", "-I/root/libs/static-lto/sqlite-amalgamation-3530100/x64/include", "-I/root/libs/static-lto/cryptopp-cmake-8.9.0/x64/include", "-I/root/libs/header-only/cinatra-1.0.0", "-I/root/libs/header-only/jsoncons-1.7.0", "-DYLT_ENABLE_SSL", "-DCRYPTOPP_ENABLE_NAMESPACE_WEAK=1", "-flto", "-flto=auto", "-DNDEBUG", "-o", "build/.objs/4ascend-online/linux/x86_64/release/src/libs/coder/Base64.cpp.o", "src/libs/coder/Base64.cpp"],
+  "file": "src/libs/coder/Base64.cpp"
+},
+{
+  "directory": "/root/martcat2js/projects-long/cpp/4ascend/4ascend-online",
+  "arguments": ["/root/libs/toolchain/x86_64-unknown-linux-musl/bin/x86_64-unknown-linux-musl-g++", "-c", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-mavx2", "-std=c++20", "-I", "build/.objs/4ascend-online/linux/x86_64/release/src/cxx", "-include", "Pch.h", "-I/root/libs/static-lto/libressl-4.3.2/x64/include", "-I/root/libs/static-lto/sqlite-amalgamation-3530100/x64/include", "-I/root/libs/static-lto/cryptopp-cmake-8.9.0/x64/include", "-I/root/libs/header-only/cinatra-1.0.0", "-I/root/libs/header-only/jsoncons-1.7.0", "-DYLT_ENABLE_SSL", "-DCRYPTOPP_ENABLE_NAMESPACE_WEAK=1", "-flto", "-flto=auto", "-DNDEBUG", "-o", "build/.objs/4ascend-online/linux/x86_64/release/src/libs/crypto/AES.cpp.o", "src/libs/crypto/AES.cpp"],
+  "file": "src/libs/crypto/AES.cpp"
+},
+{
+  "directory": "/root/martcat2js/projects-long/cpp/4ascend/4ascend-online",
+  "arguments": ["/root/libs/toolchain/x86_64-unknown-linux-musl/bin/x86_64-unknown-linux-musl-g++", "-c", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-mavx2", "-std=c++20", "-I", "build/.objs/4ascend-online/linux/x86_64/release/src/cxx", "-include", "Pch.h", "-I/root/libs/static-lto/libressl-4.3.2/x64/include", "-I/root/libs/static-lto/sqlite-amalgamation-3530100/x64/include", "-I/root/libs/static-lto/cryptopp-cmake-8.9.0/x64/include", "-I/root/libs/header-only/cinatra-1.0.0", "-I/root/libs/header-only/jsoncons-1.7.0", "-DYLT_ENABLE_SSL", "-DCRYPTOPP_ENABLE_NAMESPACE_WEAK=1", "-flto", "-flto=auto", "-DNDEBUG", "-o", "build/.objs/4ascend-online/linux/x86_64/release/src/libs/crypto/Pad.cpp.o", "src/libs/crypto/Pad.cpp"],
+  "file": "src/libs/crypto/Pad.cpp"
+},
+{
+  "directory": "/root/martcat2js/projects-long/cpp/4ascend/4ascend-online",
+  "arguments": ["/root/libs/toolchain/x86_64-unknown-linux-musl/bin/x86_64-unknown-linux-musl-g++", "-c", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-mavx2", "-std=c++20", "-I", "build/.objs/4ascend-online/linux/x86_64/release/src/cxx", "-include", "Pch.h", "-I/root/libs/static-lto/libressl-4.3.2/x64/include", "-I/root/libs/static-lto/sqlite-amalgamation-3530100/x64/include", "-I/root/libs/static-lto/cryptopp-cmake-8.9.0/x64/include", "-I/root/libs/header-only/cinatra-1.0.0", "-I/root/libs/header-only/jsoncons-1.7.0", "-DYLT_ENABLE_SSL", "-DCRYPTOPP_ENABLE_NAMESPACE_WEAK=1", "-flto", "-flto=auto", "-DNDEBUG", "-o", "build/.objs/4ascend-online/linux/x86_64/release/src/libs/crypto/UnPad.cpp.o", "src/libs/crypto/UnPad.cpp"],
+  "file": "src/libs/crypto/UnPad.cpp"
+},
+{
+  "directory": "/root/martcat2js/projects-long/cpp/4ascend/4ascend-online",
+  "arguments": ["/root/libs/toolchain/x86_64-unknown-linux-musl/bin/x86_64-unknown-linux-musl-g++", "-c", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-mavx2", "-std=c++20", "-I", "build/.objs/4ascend-online/linux/x86_64/release/src/cxx", "-include", "Pch.h", "-I/root/libs/static-lto/libressl-4.3.2/x64/include", "-I/root/libs/static-lto/sqlite-amalgamation-3530100/x64/include", "-I/root/libs/static-lto/cryptopp-cmake-8.9.0/x64/include", "-I/root/libs/header-only/cinatra-1.0.0", "-I/root/libs/header-only/jsoncons-1.7.0", "-DYLT_ENABLE_SSL", "-DCRYPTOPP_ENABLE_NAMESPACE_WEAK=1", "-flto", "-flto=auto", "-DNDEBUG", "-o", "build/.objs/4ascend-online/linux/x86_64/release/src/libs/crypto/DES.cpp.o", "src/libs/crypto/DES.cpp"],
+  "file": "src/libs/crypto/DES.cpp"
+},
+{
+  "directory": "/root/martcat2js/projects-long/cpp/4ascend/4ascend-online",
+  "arguments": ["/root/libs/toolchain/x86_64-unknown-linux-musl/bin/x86_64-unknown-linux-musl-g++", "-c", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-mavx2", "-std=c++20", "-I", "build/.objs/4ascend-online/linux/x86_64/release/src/cxx", "-include", "Pch.h", "-I/root/libs/static-lto/libressl-4.3.2/x64/include", "-I/root/libs/static-lto/sqlite-amalgamation-3530100/x64/include", "-I/root/libs/static-lto/cryptopp-cmake-8.9.0/x64/include", "-I/root/libs/header-only/cinatra-1.0.0", "-I/root/libs/header-only/jsoncons-1.7.0", "-DYLT_ENABLE_SSL", "-DCRYPTOPP_ENABLE_NAMESPACE_WEAK=1", "-flto", "-flto=auto", "-DNDEBUG", "-o", "build/.objs/4ascend-online/linux/x86_64/release/src/libs/only/String.cpp.o", "src/libs/only/String.cpp"],
+  "file": "src/libs/only/String.cpp"
+},
+{
+  "directory": "/root/martcat2js/projects-long/cpp/4ascend/4ascend-online",
+  "arguments": ["/root/libs/toolchain/x86_64-unknown-linux-musl/bin/x86_64-unknown-linux-musl-g++", "-c", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-mavx2", "-std=c++20", "-I", "build/.objs/4ascend-online/linux/x86_64/release/src/cxx", "-include", "Pch.h", "-I/root/libs/static-lto/libressl-4.3.2/x64/include", "-I/root/libs/static-lto/sqlite-amalgamation-3530100/x64/include", "-I/root/libs/static-lto/cryptopp-cmake-8.9.0/x64/include", "-I/root/libs/header-only/cinatra-1.0.0", "-I/root/libs/header-only/jsoncons-1.7.0", "-DYLT_ENABLE_SSL", "-DCRYPTOPP_ENABLE_NAMESPACE_WEAK=1", "-flto", "-flto=auto", "-DNDEBUG", "-o", "build/.objs/4ascend-online/linux/x86_64/release/src/libs/only/Random.cpp.o", "src/libs/only/Random.cpp"],
+  "file": "src/libs/only/Random.cpp"
+},
+{
+  "directory": "/root/martcat2js/projects-long/cpp/4ascend/4ascend-online",
+  "arguments": ["/root/libs/toolchain/x86_64-unknown-linux-musl/bin/x86_64-unknown-linux-musl-g++", "-c", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-mavx2", "-std=c++20", "-I", "build/.objs/4ascend-online/linux/x86_64/release/src/cxx", "-include", "Pch.h", "-I/root/libs/static-lto/libressl-4.3.2/x64/include", "-I/root/libs/static-lto/sqlite-amalgamation-3530100/x64/include", "-I/root/libs/static-lto/cryptopp-cmake-8.9.0/x64/include", "-I/root/libs/header-only/cinatra-1.0.0", "-I/root/libs/header-only/jsoncons-1.7.0", "-DYLT_ENABLE_SSL", "-DCRYPTOPP_ENABLE_NAMESPACE_WEAK=1", "-flto", "-flto=auto", "-DNDEBUG", "-o", "build/.objs/4ascend-online/linux/x86_64/release/src/libs/only/Time.cpp.o", "src/libs/only/Time.cpp"],
+  "file": "src/libs/only/Time.cpp"
+},
+{
+  "directory": "/root/martcat2js/projects-long/cpp/4ascend/4ascend-online",
+  "arguments": ["/root/libs/toolchain/x86_64-unknown-linux-musl/bin/x86_64-unknown-linux-musl-g++", "-c", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-mavx2", "-std=c++20", "-I", "build/.objs/4ascend-online/linux/x86_64/release/src/cxx", "-include", "Pch.h", "-I/root/libs/static-lto/libressl-4.3.2/x64/include", "-I/root/libs/static-lto/sqlite-amalgamation-3530100/x64/include", "-I/root/libs/static-lto/cryptopp-cmake-8.9.0/x64/include", "-I/root/libs/header-only/cinatra-1.0.0", "-I/root/libs/header-only/jsoncons-1.7.0", "-DYLT_ENABLE_SSL", "-DCRYPTOPP_ENABLE_NAMESPACE_WEAK=1", "-flto", "-flto=auto", "-DNDEBUG", "-o", "build/.objs/4ascend-online/linux/x86_64/release/src/libs/only/Flie.cpp.o", "src/libs/only/Flie.cpp"],
+  "file": "src/libs/only/Flie.cpp"
+},
+{
+  "directory": "/root/martcat2js/projects-long/cpp/4ascend/4ascend-online",
+  "arguments": ["/root/libs/toolchain/x86_64-unknown-linux-musl/bin/x86_64-unknown-linux-musl-g++", "-c", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-mavx2", "-std=c++20", "-I", "build/.objs/4ascend-online/linux/x86_64/release/src/cxx", "-include", "Pch.h", "-I/root/libs/static-lto/libressl-4.3.2/x64/include", "-I/root/libs/static-lto/sqlite-amalgamation-3530100/x64/include", "-I/root/libs/static-lto/cryptopp-cmake-8.9.0/x64/include", "-I/root/libs/header-only/cinatra-1.0.0", "-I/root/libs/header-only/jsoncons-1.7.0", "-DYLT_ENABLE_SSL", "-DCRYPTOPP_ENABLE_NAMESPACE_WEAK=1", "-flto", "-flto=auto", "-DNDEBUG", "-o", "build/.objs/4ascend-online/linux/x86_64/release/src/libs/security/Bytes.cpp.o", "src/libs/security/Bytes.cpp"],
+  "file": "src/libs/security/Bytes.cpp"
+}]

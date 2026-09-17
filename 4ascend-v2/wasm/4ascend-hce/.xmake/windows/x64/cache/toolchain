@@ -1,0 +1,53 @@
+{
+    ["tool_target_4ascend-hce_wasm_wasm32_ar"] = {
+        toolname = "emar",
+        program = [[C:\MyData\App\Git\emsdk\upstream\emscripten\emar.bat]],
+        toolchain_info = {
+            name = "emcc",
+            cachekey = "emcc_arch_wasm32_plat_wasm",
+            plat = "wasm",
+            arch = "wasm32"
+        }
+    },
+    ["tool_target_4ascend-hce_wasm_wasm32_cxx"] = {
+        toolname = "emcc",
+        program = [[C:\MyData\App\Git\emsdk\upstream\emscripten\emcc.bat]],
+        toolchain_info = {
+            name = "emcc",
+            cachekey = "emcc_arch_wasm32_plat_wasm",
+            plat = "wasm",
+            arch = "wasm32"
+        }
+    },
+    ["tool_target_4ascend-hce_wasm_wasm32_ld"] = {
+        toolname = "emxx",
+        program = [[C:\MyData\App\Git\emsdk\upstream\emscripten\em++.bat]],
+        toolchain_info = {
+            name = "emcc",
+            cachekey = "emcc_arch_wasm32_plat_wasm",
+            plat = "wasm",
+            arch = "wasm32"
+        }
+    },
+    ["tool_target_4ascend-hce_wasm_wasm32_cc"] = {
+        toolname = "emcc",
+        program = [[C:\MyData\App\Git\emsdk\upstream\emscripten\emcc.bat]],
+        toolchain_info = {
+            name = "emcc",
+            cachekey = "emcc_arch_wasm32_plat_wasm",
+            plat = "wasm",
+            arch = "wasm32"
+        }
+    },
+    emcc_arch_wasm32_plat_wasm = {
+        plat = "wasm",
+        __checked = {
+            emscripten = [[C:\MyData\App\Git\emsdk\upstream\emscripten]],
+            sdkdir = [[C:\MyData\App\Git\emsdk]]
+        },
+        arch = "wasm32",
+        __global = true,
+        sdkdir = [[C:\MyData\App\Git\emsdk]],
+        bindir = [[C:\MyData\App\Git\emsdk\upstream\emscripten]]
+    }
+}

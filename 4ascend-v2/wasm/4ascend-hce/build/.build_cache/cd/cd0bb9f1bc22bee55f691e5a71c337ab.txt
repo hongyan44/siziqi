@@ -1,0 +1,8 @@
+{
+    errdata = "emcc: \27[35m\27[1mwarning: \27[0m\27[1mlinker flag ignored during compilation: '--bind' [-Wunused-command-line-argument]\27[0m\
+clang: warning: -lembind: 'linker' input unused [-Wunused-command-line-argument]\
+clang: warning: argument unused during compilation: '-c' [-Wunused-command-line-argument]\
+emcc: \27[35m\27[1mwarning: \27[0m\27[1mlinker flag ignored during compilation: '--bind' [-Wunused-command-line-argument]\27[0m\
+clang: warning: -lembind: 'linker' input unused [-Wunused-command-line-argument]\
+"
+}

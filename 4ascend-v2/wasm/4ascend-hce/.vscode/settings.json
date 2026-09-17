@@ -1,0 +1,24 @@
+{
+    // 禁用微软自带的 C/C++ 插件的 IntelliSense，防止冲突
+    "C_Cpp.intelliSenseEngine": "disabled",
+    // 指定 clangd 可执行程序路径（你已经加了 PATH，这里写名字即可）
+    "clangd.path": "clangd",
+    // "clangd.arguments": [
+    //     "--log=verbose",
+    //     "--pretty",
+    //     "--all-scopes-completion",
+    //     "--completion-style=detailed",
+    //     "--header-insertion=never",
+    //     // 核心：指定编译数据库的位置
+    //     "--compile-commands-dir=.", 
+    //     // 核心：查询特定的 SDK 路径，防止 clangd 找不到 emscripten 系统头文件
+    //     "--query-driver=C:/MyData/App/Compress/emsdk/upstream/emscripten/cache/sysroot/bin/clang*"
+    // ]
+    "clangd.arguments": [
+        "--log=verbose",
+        "--pretty",
+        "--header-insertion=never",
+        "--compile-commands-dir=.",
+        "--query-driver=C:/MyData/App/Compress/emsdk/upstream/bin/clang*"
+    ]
+}

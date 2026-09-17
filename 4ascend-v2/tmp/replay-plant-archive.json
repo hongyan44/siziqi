@@ -1,0 +1,418 @@
+{
+  "seed": 1,
+  "turns": 39,
+  "archive": "|̴̐̅̔̀̄̀̀|̙̀̀́̀̀̀̀|̡̀̀̀̀̀̋̄|̵̬̠̘́́̏̾|̶̴̧̱̰̙̥̏|̭̳̯̑̃̍̈̚|̵̢̟̩̝̒̾̅|̵̨̤̻̣̙̤̀|̞̥̻̿̋̅̃̃",
+  "naturalFrames": [
+    {
+      "turnIndex": 10,
+      "x": 3,
+      "y": 7,
+      "plants": 2
+    },
+    {
+      "turnIndex": 31,
+      "x": 1,
+      "y": 7,
+      "plants": 2
+    }
+  ],
+  "postAscendFrames": [
+    {
+      "turnIndex": 20,
+      "x": 7,
+      "y": 5,
+      "plants": 2
+    }
+  ],
+  "frames": [
+    {
+      "i": 0,
+      "x": 6,
+      "y": 4,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 1
+    },
+    {
+      "i": 1,
+      "x": 6,
+      "y": 6,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 2
+    },
+    {
+      "i": 2,
+      "x": 6,
+      "y": 8,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 3
+    },
+    {
+      "i": 3,
+      "x": 8,
+      "y": 4,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 4
+    },
+    {
+      "i": 4,
+      "x": 7,
+      "y": 2,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 5
+    },
+    {
+      "i": 5,
+      "x": 3,
+      "y": 8,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 6
+    },
+    {
+      "i": 6,
+      "x": 8,
+      "y": 0,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 7
+    },
+    {
+      "i": 7,
+      "x": 0,
+      "y": 2,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 8
+    },
+    {
+      "i": 8,
+      "x": 2,
+      "y": 0,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 9
+    },
+    {
+      "i": 9,
+      "x": 4,
+      "y": 5,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 10
+    },
+    {
+      "i": 10,
+      "x": 3,
+      "y": 7,
+      "planted": true,
+      "plantCount": 2,
+      "combat": false,
+      "win": false,
+      "turnCount": 11
+    },
+    {
+      "i": 11,
+      "x": 6,
+      "y": 3,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 12
+    },
+    {
+      "i": 12,
+      "x": 2,
+      "y": 5,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 13
+    },
+    {
+      "i": 13,
+      "x": 2,
+      "y": 6,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 14
+    },
+    {
+      "i": 14,
+      "x": 3,
+      "y": 3,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 15
+    },
+    {
+      "i": 15,
+      "x": 8,
+      "y": 1,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 16
+    },
+    {
+      "i": 16,
+      "x": 4,
+      "y": 0,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 17
+    },
+    {
+      "i": 17,
+      "x": 8,
+      "y": 3,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 18
+    },
+    {
+      "i": 18,
+      "x": 6,
+      "y": 0,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 19
+    },
+    {
+      "i": 19,
+      "x": 8,
+      "y": 2,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 20
+    },
+    {
+      "i": 20,
+      "x": 7,
+      "y": 5,
+      "planted": true,
+      "plantCount": 2,
+      "combat": true,
+      "win": false,
+      "turnCount": 21
+    },
+    {
+      "i": 21,
+      "x": 8,
+      "y": 8,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 22
+    },
+    {
+      "i": 22,
+      "x": 3,
+      "y": 4,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 23
+    },
+    {
+      "i": 23,
+      "x": 8,
+      "y": 1,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 24
+    },
+    {
+      "i": 24,
+      "x": 0,
+      "y": 3,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 25
+    },
+    {
+      "i": 25,
+      "x": 1,
+      "y": 8,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 26
+    },
+    {
+      "i": 26,
+      "x": 0,
+      "y": 1,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 27
+    },
+    {
+      "i": 27,
+      "x": 2,
+      "y": 4,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 28
+    },
+    {
+      "i": 28,
+      "x": 5,
+      "y": 4,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 29
+    },
+    {
+      "i": 29,
+      "x": 7,
+      "y": 8,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 30
+    },
+    {
+      "i": 30,
+      "x": 0,
+      "y": 4,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 31
+    },
+    {
+      "i": 31,
+      "x": 1,
+      "y": 7,
+      "planted": true,
+      "plantCount": 2,
+      "combat": false,
+      "win": false,
+      "turnCount": 32
+    },
+    {
+      "i": 32,
+      "x": 8,
+      "y": 7,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 33
+    },
+    {
+      "i": 33,
+      "x": 5,
+      "y": 6,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 34
+    },
+    {
+      "i": 34,
+      "x": 2,
+      "y": 8,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 35
+    },
+    {
+      "i": 35,
+      "x": 0,
+      "y": 8,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 36
+    },
+    {
+      "i": 36,
+      "x": 8,
+      "y": 5,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 37
+    },
+    {
+      "i": 37,
+      "x": 3,
+      "y": 5,
+      "planted": false,
+      "plantCount": 0,
+      "combat": false,
+      "win": false,
+      "turnCount": 38
+    },
+    {
+      "i": 38,
+      "x": 8,
+      "y": 6,
+      "planted": false,
+      "combat": true,
+      "win": true,
+      "turnCount": 39
+    }
+  ]
+}
