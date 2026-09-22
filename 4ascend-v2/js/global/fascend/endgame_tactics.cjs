@@ -419,6 +419,211 @@ class EndgameTactics {
     }
 
     /**
+     * 横向/纵向/两条斜线的方向向量（横、竖、撇、捺）。
+     */
+    static AXES = [
+        [[1, 0], [-1, 0]],
+        [[0, 1], [0, -1]],
+        [[1, 1], [-1, -1]],
+        [[1, -1], [-1, 1]],
+    ];
+
+    /**
+     * 以 (x,y) 为中心、沿四条轴线统计己方同一颜色的连续子数（含中心）。
+     * @param {any} board
+     * @param {number} x
+     * @param {number} y
+     * @param {symbol} stone
+     * @return {number[]} 长度 4 的轴线长度（横、竖、撇、捺）
+     */
+    axisLines(board, x, y, stone) {
+        return EndgameTactics.AXES.map(([a, b]) => {
+            const walk = (dx, dy) => {
+                let n = 0;
+                let sx = x;
+                let sy = y;
+                while (true) {
+                    sx += dx;
+                    sy += dy;
+                    if (!board.in_bounds(sx, sy)) break;
+                    if (board.get_stone(sx, sy) !== stone) break;
+                    n += 1;
+                }
+                return n;
+            };
+            return walk(a[0], a[1]) + walk(b[0], b[1]) + 1;
+        });
+    }
+
+    /**
+     * 当前局面中，stone 一方在某一点落子能形成的最大 ASCEND（M+N 最大）。
+     * @param {any} game
+     * @param {symbol} stone
+     * @return {{MN: number, M: number, action: number, x: number, y: number} | null}
+     */
+    maxAscendNow(game, stone) {
+        const legal = this.RulesRuntime.legalMoves(game);
+        let best = null;
+        legal.forEach((action) => {
+            const x = action % game.board.w;
+            const y = Math.floor(action / game.board.w);
+            const points = game.board.get_ascend(x, y, stone);
+            if (!points) return;
+            const power = this.powerOf(points);
+            if (!best || power.MN > best.MN) best = { ...power, action, x, y };
+        });
+        return best;
+    }
+
+    /**
+     * 核弹对弈：对方存在“不能被堵住”的核弹成型威胁，或敌方最大可成 ASCEND 与
+     * 己方最大回应之差大于己方血量（简单成打仍会输）时，启用方向级回应：
+     *   1) 优先堵住对方核弹新增方向（轴线多 3 子进入 ASCEND 的生长点，通常 1~2 子）；
+     *   2) 其次扩大己方核弹（子优先级：先扩已有 2 子的轴线使其新增方向 → 再扩不影响
+     *      再次扩张的轴线 → 最后在该轴线形成 3 连并把核弹末端做成己方打点）；
+     *   3) 若己方核弹抵消对方核弹后仍能斩杀，立即斩杀（由前序 kill 分支兜底，此处不再重复）。
+     *
+     * 返回 null 表示不进入核弹对弈，交由常规防自杀/斩杀/堵点/构建逻辑处理。
+     * @param {any} game
+     * @param {ReturnType<EndgameTactics['analyzeBoard']>} analysis
+     * @param {ReturnType<EndgameTactics['evaluateAction']>[]} moves
+     */
+    pickNukeLogic(game, analysis, moves) {
+        const preferLocal = (list, compare) => {
+            if (!list.length) return null;
+            return [...list].sort(compare)[0];
+        };
+        const byMNDescLocal = (a, b) => {
+            const mn = (b.selfPower.MN - a.selfPower.MN)
+                || (b.selfPower.M - a.selfPower.M)
+                || (b.simulatedDamageToFoe - a.simulatedDamageToFoe);
+            if (mn) return mn;
+            return a.action - b.action;
+        };
+
+        // 对方已形成 ASCEND 且必须回应时，由防自杀逻辑优先接管，不在此重复。
+        if (analysis.pendingThreat && analysis.pendingThreat.M > 0) {
+            if (analysis.mustAnswer) return null;
+            if (this.foeHasUnstoppableAscend(game, analysis.foeStone, analysis.selfStone)) {
+                // 允许卖血但对方打点堵不上：仍可能进入核弹对弈，交给下方 gap/威胁判定
+            } else {
+                // 对方可回应路径存在，避免覆盖 answer-ascend 的抵消选择
+                return null;
+            }
+        }
+
+        // 斩杀同步：能杀掉对方时绝不改为核弹扩张，交由 kill 分支返回。
+        const killNow = moves.find((m) => m.winsNow || m.isKill);
+        if (killNow) return null;
+
+        // 敌方当前最大可成 ASCEND 与己方最大回应之差（敌方 ASCEND 不能堵的情况）。
+        const foeBest = this.maxAscendNow(game, analysis.foeStone);
+        const selfBestResp = moves.reduce((best, m) => (m.formsAscend && m.selfPower.MN > best ? m.selfPower.MN : best), 0);
+        const gap = (foeBest ? foeBest.MN : 0) - selfBestResp;
+
+        // 核弹对弈仅在真正威胁下启用：
+        //   - 敌方当前/已在形成 M>=7 的核弹；
+        //   - 敌方 ASCEND 堵不住，且简单的成打回应差值大于己方血量（成打仍会死）。
+        // 普通单打点靠常规 block-player-ascend 处理，绝不在此被占用。
+        const foeIsNuke = Boolean(
+            (foeBest && foeBest.M >= 7)
+            || (analysis.pendingThreat && analysis.pendingThreat.M >= 7)
+        );
+        const unblockable = this.foeHasUnstoppableAscend(game, analysis.foeStone, analysis.selfStone);
+        // 差值路径（敌方非核弹，但简单成打仍会被其反输）：仅当己方此步真能扩出核弹(M>=7)时启用，
+        // 否则交由低血绝地反击 / 常规堵点处理，避免劫持普通“多打点竞速”局面（被动去堵而放弃抢攻）。
+        const canReachNuke = moves.some((m) => m.formsAscend && !m.losesNow && !m.suicidalAscend && m.selfPower && m.selfPower.M >= 7);
+        const gapPath = unblockable && gap > analysis.Y && canReachNuke;
+        if (!foeIsNuke && !gapPath) return null;
+
+        // 核弹竞争盘面能力：己方最大可成形 ASCEND(M+N) 与对方核弹之比。
+        // 只有在己方核弹 ≥ 对方核弹（堵后己方不被斩杀、能把控/保持优势）时，才去“堵对方新方向”；
+        // 若己方核弹 < 对方核弹 且对方核弹足以斩杀己方，堵其中某个方向救不了自己，
+        // 必须转而扩大己方核弹，先把己方核弹抬到 ≥ 对方、让自己足以应对而不死。
+        const foeNukePower = foeBest ? foeBest.MN : 0;
+        const selfNukePower = selfBestResp;
+
+        // —— 1) 核弹竞争(己方核弹 ≥ 对方)时，优先堵对方核弹新增方向 —
+        // 对方在某一轴线上已有子（≥1），堵点落子后能阻止其多 3 子进入 ASCEND 的方向增长。
+        // 敌方 ASCEND 生成点（blockPoints）本身就是其可扩大的“方向种子”，优先占用原子最少者。
+        const blockSeeds = moves.filter((m) => m.blockPoint && !m.losesNow && !m.suicidalAscend);
+        if (selfNukePower >= foeNukePower && blockSeeds.length) {
+            const byBlockSeed = (a, b) => {
+                // 优先堵“对方在此落子将直接成打/扩大”的最小代价点（foe MN 越大越要堵）。
+                const fa = this.powerOf(game.board.get_ascend(a.x, a.y, analysis.foeStone));
+                const fb = this.powerOf(game.board.get_ascend(b.x, b.y, analysis.foeStone));
+                return (fb.MN - fa.MN) || (a.action - b.action);
+            };
+            const chosen = preferLocal(blockSeeds, byBlockSeed);
+            return this.toResult(chosen, 'nuke-block', analysis);
+        }
+
+        // —— 2) 扩大己方核弹 ——
+        // 只看能形成 ASCEND 且不会自杀的落点。
+        const expands = moves.filter((m) => m.formsAscend && !m.losesNow && !m.suicidalAscend);
+        if (!expands.length) return null;
+
+        const scoreExpansion = (m) => {
+            const lines = this.axisLines(game.board, m.x, m.y, analysis.selfStone);
+            let newDirection = false;      // 某轴线已有 2 子，落子成 3 → 核弹新增一个方向
+            let keepsOpen = false;         // 该轴线落子后末端仍可继续扩张（不被己方封死）
+            let endThreat = false;         // 某轴线形成 3 连，且末端会成为己方打点
+
+            EndgameTactics.AXES.forEach(([a, b], i) => {
+                const line = lines[i];
+                if (line >= 3) {
+                    // 已有 2 子：该轴线除中心外已有 2 颗己方子
+                    const walk = (dx, dy, stop) => {
+                        let n = 0;
+                        let sx = m.x;
+                        let sy = m.y;
+                        while (true) {
+                            sx += dx;
+                            sy += dy;
+                            if (!game.board.in_bounds(sx, sy)) break;
+                            if (game.board.get_stone(sx, sy) !== analysis.selfStone) break;
+                            n += 1;
+                            if (stop && n >= 3) break;
+                        }
+                        return n;
+                    };
+                    const pa = walk(a[0], a[1]);
+                    const pb = walk(b[0], b[1]);
+                    // 落点两侧各 1 子（共 2 子）→ 已是轴向蛇形“新增方向”的雏形
+                    if (pa + pb === 2) newDirection = true;
+                    // 落点两端至少一侧为空且可继续延伸 → 保留再次扩张空间
+                    const tipAx = m.x + a[0] * (pa + 1);
+                    const tipAy = m.y + a[1] * (pa + 1);
+                    const tipBx = m.x + b[0] * (pb + 1);
+                    const tipBy = m.y + b[1] * (pb + 1);
+                    const axOpen = !game.board.in_bounds(tipAx, tipAy)
+                        ? false
+                        : game.board.get_stone(tipAx, tipAy) === STONE_ENUM.NONE
+                            || game.board.get_stone(tipAx, tipAy) === analysis.foeAscendStone;
+                    const bxOpen = !game.board.in_bounds(tipBx, tipBy)
+                        ? false
+                        : game.board.get_stone(tipBx, tipBy) === STONE_ENUM.NONE
+                            || game.board.get_stone(tipBx, tipBy) === analysis.foeAscendStone;
+                    if (axOpen && bxOpen) keepsOpen = true;
+                    // 形成 3 连且至少一端可作打点（落点后自对齐>=4，末端空位成打点）
+                    if (line === 3 && (axOpen || bxOpen)) endThreat = true;
+                }
+            });
+
+            // 权重：新增方向 > 保留再次扩张 > 末端打点；同权看 M+N
+            let w = 0;
+            if (newDirection) w += 16;
+            if (keepsOpen) w += 8;
+            if (endThreat) w += 4;
+            return w;
+        };
+
+        const byExpandDesc = (a, b) => (scoreExpansion(b) - scoreExpansion(a)) || byMNDescLocal(a, b);
+        const chosen = preferLocal(expands, byExpandDesc);
+        return chosen ? this.toResult(chosen, 'nuke-expand', analysis) : null;
+    }
+
+    /**
      * @param {any} game
      * @param {ReturnType<EndgameTactics['analyzeBoard']>} analysis
      */
@@ -477,6 +682,15 @@ class EndgameTactics {
             const chosen = prefer(kills, byKillDesc);
             return this.toResult(chosen, 'kill', analysis);
         }
+
+        // —— 核弹对弈 ——
+        // 对方存在不能被堵住的核弹威胁，或敌方最大可成 ASCEND 与己方最大回应之差
+        // 大于己方血量（简单成打仍会输）时，优先堵对方核弹新增方向，其次扩大己方核弹；
+        // 若己方核弹抵消对方后仍能斩杀，已由上方 kill 分支保障同步生效。
+        // 该分支置于低血绝地反击之前：确有核弹威胁时必须优先核弹对弈，
+        // 而不能退化为一味“弃堵转攻”、简单成打。
+        const nukeMove = this.pickNukeLogic(game, analysis, moves);
+        if (nukeMove) return nukeMove;
 
         // —— 低血绝地反击（Y <= 3）：纯堵徒劳时弃堵转攻、改为形成“打/反击” ——
         // 当己方血量 <= 3（3血同样不能单纯卖血/堵着等死），本回合原本会选一个
