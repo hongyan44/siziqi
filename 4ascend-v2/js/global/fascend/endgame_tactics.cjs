@@ -229,6 +229,7 @@ class EndgameTactics {
         let simulatedWinner = null;
         let simulatedDamageToFoe = 0;
         let simulatedDamageToSelf = 0;
+        let suicidalAscend = false; // 防自杀：己方主动成打，但会被对方最强应打（核弹/草反）抵消反杀
 
         if (formsAscend) {
             isNuke = selfPower.M >= 7;
@@ -278,9 +279,13 @@ class EndgameTactics {
                 const foeBest = this.bestReplyAscend(forked, ctx.foeStone, ctx.foeAscendStone === STONE_ENUM.BLACK_ASCEND ? STONE_ENUM.WHITE_ASCEND : STONE_ENUM.BLACK_ASCEND);
                 if (!foeBest) {
                     killsAfterBestCancel = killsByUnanswered || killsBySellBloodLine;
+                    // 对手无 ASCEND 可应，只能卖血：己方拿 M-1 伤敌，己方不会被反杀
+                    suicidalAscend = false;
                 } else {
                     const cancel = this.cancelDamage(selfPower.powers, foeBest.powers);
                     killsAfterBestCancel = cancel.damageToFoe >= ctx.X;
+                    // 防自杀：抵消后对方剩余子 >= 己方血量（Y）→ 己方这个“打”会被反杀，属于自杀式下法
+                    suicidalAscend = cancel.damageToSelf >= ctx.Y;
                 }
             } else if (formsAscend && ctx.pendingThreat) {
                 killsAfterBestCancel = simulatedDamageToFoe >= ctx.X
@@ -288,6 +293,7 @@ class EndgameTactics {
                         (ctx.selfIndex === 0 && simulatedWinner === PLAYER_ENUM.BLACK)
                         || (ctx.selfIndex === 1 && simulatedWinner === PLAYER_ENUM.WHITE)
                     ));
+                suicidalAscend = simulatedDamageToSelf >= ctx.Y;
             }
         }
 
@@ -304,10 +310,10 @@ class EndgameTactics {
             )
         );
 
-        const isKill = winsNow
+        const isKill = !suicidalAscend && (winsNow
             || killsAfterBestCancel
             || (formsAscend && !ctx.pendingThreat && (killsBySellBloodLine || killsByUnanswered)
-                && this.opponentCannotSave(game, ctx, selfPower));
+                && this.opponentCannotSave(game, ctx, selfPower)));
 
         return {
             action,
@@ -323,6 +329,7 @@ class EndgameTactics {
             answersThreat,
             beatsThreat,
             suicideIfNoAscend,
+            suicidalAscend,
             isKill,
             winsNow,
             losesNow,
@@ -451,9 +458,10 @@ class EndgameTactics {
             return this.toResult(chosen, 'anti-suicide-fallback', analysis);
         }
 
-        // 对方已打但允许卖血时：若本方可形成更大 ASCEND，仍优先用于抵消。
+        // 对方已打但允许卖血时：若本方可形成更大 ASCEND，仍优先用于抵消；
+        // 但排除会被反杀的自杀式应打（此时宁可卖血生存），防自杀始终生效
         if (analysis.pendingThreat && analysis.pendingThreat.M > 0) {
-            const answers = moves.filter((move) => move.formsAscend && !move.losesNow);
+            const answers = moves.filter((move) => move.formsAscend && !move.losesNow && !move.suicidalAscend);
             const stronger = answers.filter((move) => move.beatsThreat);
             if (stronger.length) {
                 return this.toResult(prefer(stronger, byMNDesc), 'anti-suicide-stronger-ascend', analysis);
@@ -477,7 +485,7 @@ class EndgameTactics {
         // 取消该堵点，改选最佳的进攻/反击成打点，抢先逼对方应打。
         if (analysis.Y <= 3) {
             const blocks = moves.filter((move) => move.blockPoint);
-            const offense = moves.filter((move) => !move.losesNow && (move.formsAscend || move.selfAlign >= 3 || move.landsOnFoeAscend));
+            const offense = moves.filter((move) => !move.losesNow && !move.suicidalAscend && (move.formsAscend || move.selfAlign >= 3 || move.landsOnFoeAscend));
             if (blocks.length && offense.length && this.foeHasUnstoppableAscend(game, analysis.foeStone, analysis.selfStone)) {
                 const byOffenseDesc = (a, b) => {
                     // 进攻优先级：成“打”(含反击成打) > 3连 > 非成打反击(落对方打子减伤)
@@ -504,8 +512,8 @@ class EndgameTactics {
             return this.toResult(chosen, 'block-player-ascend', analysis);
         }
 
-        // 构建自己的 ASCEND（取最大 M+N）；没有则返回 null 让上层 MCTS 接管
-        const builds = moves.filter((move) => move.formsAscend);
+        // 构建自己的 ASCEND（取最大 M+N）；排除会被反杀的自杀式打，宁空不让 MCTS 接管再决
+        const builds = moves.filter((move) => move.formsAscend && !move.suicidalAscend);
         if (builds.length) {
             const chosen = prefer(builds, byMNDesc);
             return this.toResult(chosen, 'build-ascend', analysis);
