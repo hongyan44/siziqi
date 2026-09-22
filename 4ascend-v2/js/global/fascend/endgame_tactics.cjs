@@ -214,6 +214,9 @@ class EndgameTactics {
         const foeWouldAscend = Boolean(game.board.get_ascend(x, y, ctx.foeStone));
         const blockPoint = foeWouldAscend && !formsAscend;
 
+        // 己方在此落子后横向/纵向/斜向能连成的最大子数：>=4 即“打”，===3 即“3连棋形”
+        const selfAlign = game.board.get_align(x, y, ctx.selfStone)[0];
+
         let damageToFoeIfUnanswered = 0;
         let sellBloodDamageToFoe = 0;
         let isNuke = false;
@@ -312,6 +315,7 @@ class EndgameTactics {
             y,
             legal: result.legal,
             formsAscend,
+            selfAlign,
             landsOnFoeAscend,
             blockPoint,
             selfPower,
@@ -376,6 +380,38 @@ class EndgameTactics {
     }
 
     /**
+     * 对方的“打”是否堵不住：玩家存在一个己方无法占用的打点（堵不住因子），
+     * 或玩家存在 >=2 个独立打点（己方一回合只能堵住其中一个）。
+     * 用于低血量时判断“纯堵徒劳”，从而改走进攻成打。
+     * @param {any} game
+     * @param {symbol} foeStone
+     * @param {symbol} selfStone
+     */
+    foeHasUnstoppableAscend(game, foeStone, selfStone) {
+        const selfAscend = selfStone === STONE_ENUM.BLACK ? STONE_ENUM.WHITE_ASCEND : STONE_ENUM.BLACK_ASCEND;
+        const foeAscend = selfStone === STONE_ENUM.BLACK ? STONE_ENUM.BLACK_ASCEND : STONE_ENUM.WHITE_ASCEND;
+
+        const cells = new Set();
+        let hasUnstoppableCell = false;
+
+        game.board.data.forEach((pos, index) => {
+            const stone = pos.stone;
+            // 玩家能否在此落子成打：空点，或落在己方打子（反击/卖血点）
+            const foeCanPlay = stone === STONE_ENUM.NONE || stone === selfAscend;
+            if (!foeCanPlay) return;
+            const points = game.board.get_ascend(pos.x, pos.y, foeStone);
+            if (!points || !points.length) return;
+
+            cells.add(index);
+            // 己方能否占用该点反堵：空点，或玩家自己的打子
+            const aiCanBlock = stone === STONE_ENUM.NONE || stone === foeAscend;
+            if (!aiCanBlock) hasUnstoppableCell = true;
+        });
+
+        return hasUnstoppableCell || cells.size >= 2;
+    }
+
+    /**
      * @param {any} game
      * @param {ReturnType<EndgameTactics['analyzeBoard']>} analysis
      */
@@ -434,10 +470,37 @@ class EndgameTactics {
             return this.toResult(chosen, 'kill', analysis);
         }
 
+        // —— 低血绝地反击（Y <= 3）：纯堵徒劳时弃堵转攻、改为形成“打/反击” ——
+        // 当己方血量 <= 3（3血同样不能单纯卖血/堵着等死），本回合原本会选一个
+        // “堵”动作（只堵不复盘面），但己方其实能形成“打/3连/反击（落在对方打子上减伤）”，
+        // 且对方的“打”堵不住（>=2 打点或己方无法占用其打点）时，
+        // 取消该堵点，改选最佳的进攻/反击成打点，抢先逼对方应打。
+        if (analysis.Y <= 3) {
+            const blocks = moves.filter((move) => move.blockPoint);
+            const offense = moves.filter((move) => !move.losesNow && (move.formsAscend || move.selfAlign >= 3 || move.landsOnFoeAscend));
+            if (blocks.length && offense.length && this.foeHasUnstoppableAscend(game, analysis.foeStone, analysis.selfStone)) {
+                const byOffenseDesc = (a, b) => {
+                    // 进攻优先级：成“打”(含反击成打) > 3连 > 非成打反击(落对方打子减伤)
+                    const ka = a.formsAscend ? 1 : 0;
+                    const kb = b.formsAscend ? 1 : 0;
+                    if (ka !== kb) return kb - ka;
+                    if (ka) return byMNDesc(a, b);
+                    const ta = a.selfAlign >= 3 ? 1 : 0;
+                    const tb = b.selfAlign >= 3 ? 1 : 0;
+                    if (ta !== tb) return tb - ta;
+                    const la = a.landsOnFoeAscend ? 1 : 0;
+                    const lb = b.landsOnFoeAscend ? 1 : 0;
+                    if (la !== lb) return lb - la;
+                    return (b.selfAlign - a.selfAlign) || (a.action - b.action);
+                };
+                return this.toResult(prefer(offense, byOffenseDesc), 'desperate-offense', analysis);
+            }
+        }
+
         // 堵住玩家单独打点
-        const blocks = moves.filter((move) => move.blockPoint);
-        if (blocks.length) {
-            const chosen = prefer(blocks, (a, b) => a.action - b.action);
+        const blocks2 = moves.filter((move) => move.blockPoint);
+        if (blocks2.length) {
+            const chosen = prefer(blocks2, (a, b) => a.action - b.action);
             return this.toResult(chosen, 'block-player-ascend', analysis);
         }
 
