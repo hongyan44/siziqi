@@ -1567,7 +1567,7 @@ const run = async () => {
 
     // 是否逃跑，对方
     if (gl_leave && !gl_wins) {
-        span_end_win.innerText = `${my_name} (对方逃跑)`;
+        span_end_win.innerText = `${my_name}`;
         game_msg.innerText = `🏆|${my_name}|胜利${my_icon}`;
     }
 

@@ -842,8 +842,7 @@ const game_end = async () => {
     span_end_score.innerText = `我方 (${add_sub(my_p)}) | 对方 (${add_sub(foe_p)})`;
 
     // alert(String(gl_leavevv) + "||" + String(gl_leave));
-    span_end_win.innerText = (win_p === 'my' ? gl_my_name : gl_foe_name) + ((gl_leavevv || gl_leave) ? ' (对方逃跑)' : '');
-    // span_end_win.innerText = win_p === 'my' ? gl_my_name : gl_foe_name;
+    span_end_win.innerText = win_p === 'my' ? gl_my_name : gl_foe_name;
 
     // 结算画面
     dialog_end.classList.remove('d-none');
