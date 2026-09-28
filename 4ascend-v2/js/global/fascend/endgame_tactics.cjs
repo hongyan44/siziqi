@@ -283,9 +283,16 @@ class EndgameTactics {
                     suicidalAscend = false;
                 } else {
                     const cancel = this.cancelDamage(selfPower.powers, foeBest.powers);
-                    killsAfterBestCancel = cancel.damageToFoe >= ctx.X;
-                    // 防自杀：抵消后对方剩余子 >= 己方血量（Y）→ 己方这个“打”会被反杀，属于自杀式下法
-                    suicidalAscend = cancel.damageToSelf >= ctx.Y;
+                    // 对方存在反击（bestReplyAscend 找其最强可成打）。斩杀判定：
+                    // A) 吃下对方这次反击后，己方掉血 >= 己方血量(Y) → 自杀式斩杀，禁止
+                    //    （此即“打完自己会死”的唯一禁斩条件，防自杀始终生效）
+                    const selfDiesOnReply = cancel.damageToSelf >= ctx.Y;
+                    suicidalAscend = selfDiesOnReply;
+                    // 不设“对方最大打严格高于己方就禁斩”的硬限制：
+                    // 若吃反击后己方不死，则允许；对方更高打在抵消后己方剩余伤害自然为 0，
+                    // 由 damageToFoe >= X 兜底（相等/更高打都难以白斩），故单独的限制B 是多余的，
+                    // 且会误杀“对方更高但吃反击不死即可赢”的合法斩杀。
+                    killsAfterBestCancel = !selfDiesOnReply && cancel.damageToFoe >= ctx.X;
                 }
             } else if (formsAscend && ctx.pendingThreat) {
                 killsAfterBestCancel = simulatedDamageToFoe >= ctx.X
@@ -310,10 +317,10 @@ class EndgameTactics {
             )
         );
 
-        const isKill = !suicidalAscend && (winsNow
-            || killsAfterBestCancel
-            || (formsAscend && !ctx.pendingThreat && (killsBySellBloodLine || killsByUnanswered)
-                && this.opponentCannotSave(game, ctx, selfPower)));
+        // 斩杀成立 = 非自杀(吃反击不死) && 确能做到对方归零。
+        // 对方“无打可应”的卖血斩杀已在上方 if(!foeBest) 分支计入 killsAfterBestCancel；
+        // 不再需要独立的 opponentCannotSave 路径，也不设“对方最大打高于己方就禁斩”的限制B。
+        const isKill = !suicidalAscend && (winsNow || killsAfterBestCancel);
 
         return {
             action,
@@ -546,8 +553,31 @@ class EndgameTactics {
         // —— 1) 核弹竞争(己方核弹 ≥ 对方)时，优先堵对方核弹新增方向 —
         // 对方在某一轴线上已有子（≥1），堵点落子后能阻止其多 3 子进入 ASCEND 的方向增长。
         // 敌方 ASCEND 生成点（blockPoints）本身就是其可扩大的“方向种子”，优先占用原子最少者。
+        // 但堵某个方向只能延缓对方成形：若己方核弹仅与对方持平，且对方核弹将一击斩杀己方，
+        // 而己方又“尚未成形核弹级连子”(需本手去扩才够），堵救不了命，必须优先扩大己方核弹保命。
+        let selfFormedNuke = false;
+        {
+            const b = game.board.data;
+            const s = analysis.selfStone;
+            const dirs = [[1, 0], [0, 1], [1, 1], [1, -1]];
+            for (let d = 0; d < dirs.length && !selfFormedNuke; d++) {
+                const [dx, dy] = dirs[d];
+                for (let y = 0; y < 9 && !selfFormedNuke; y++) {
+                    for (let x = 0; x < 9 && !selfFormedNuke; x++) {
+                        const p = b[y * 9 + x];
+                        if (!p || p.stone !== s) continue;
+                        let c = 1;
+                        for (let t = 1; t < 9; t++) { const xi = x + dx * t, yi = y + dy * t; if (xi < 0 || yi < 0 || xi >= 9 || yi >= 9) break; if (b[yi * 9 + xi] && b[yi * 9 + xi].stone === s) c++; else break; }
+                        for (let t = 1; t < 9; t++) { const xi = x - dx * t, yi = y - dy * t; if (xi < 0 || yi < 0 || xi >= 9 || yi >= 9) break; if (b[yi * 9 + xi] && b[yi * 9 + xi].stone === s) c++; else break; }
+                        if (c >= 7) selfFormedNuke = true;
+                    }
+                }
+            }
+        }
+        const foeNukeCanKill = Boolean(foeBest && foeBest.M >= analysis.Y);
+        const safeToBlock = selfFormedNuke || !(foeNukeCanKill && selfNukePower === foeNukePower);
         const blockSeeds = moves.filter((m) => m.blockPoint && !m.losesNow && !m.suicidalAscend);
-        if (selfNukePower >= foeNukePower && blockSeeds.length) {
+        if (selfNukePower >= foeNukePower && blockSeeds.length && safeToBlock) {
             const byBlockSeed = (a, b) => {
                 // 优先堵“对方在此落子将直接成打/扩大”的最小代价点（foe MN 越大越要堵）。
                 const fa = this.powerOf(game.board.get_ascend(a.x, a.y, analysis.foeStone));
@@ -677,7 +707,10 @@ class EndgameTactics {
         }
 
         // —— 斩杀逻辑 ——
-        const kills = moves.filter((move) => move.isKill || move.winsNow);
+        // isKill 已含防自杀守卫；winsNow 是单步引擎模拟判己方胜，未必算全对方后续反击
+        // （草反/更大打是对方下回合应手，单步模拟可能漏判）。因此 winsNow 也必须在
+        // 非自杀才允许走斩杀，否则黑方"打反击白方直接死"仍会被误当斩杀打出。
+        const kills = moves.filter((move) => move.isKill || (move.winsNow && !move.suicidalAscend));
         if (kills.length) {
             const chosen = prefer(kills, byKillDesc);
             return this.toResult(chosen, 'kill', analysis);

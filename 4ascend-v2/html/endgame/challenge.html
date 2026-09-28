@@ -555,10 +555,11 @@
                 const isBookMove = Boolean(branchResult && branchResult.matched);
                 setStatus(isBookMove ? '白方正在校验正着与防自杀/斩杀逻辑...' : '白方 AI（战术矫正 + 4zero）正在计算...', 'info');
                 // 即使命中残局预案，第一步也必须先经过战术底层逻辑。
-                // 预案只作为普通应手候选；斩杀 / 防自杀矫正拥有更高优先级。
+                // 预案只作为普通应手候选；斩杀 / 防自杀 / 要素保命(扩己方核弹)
+                // 矫正拥有更高优先级。
                 // ENDGAME_THINK 是纯搜索，不会偷偷推进 Worker 棋局；所有来源的
                 // 白方落子都在 ed_tr_1 成功后通过 ENDGAME_APPLY 显式提交一次。
-                // 正着命中时也要先跑战术底层；仅斩杀 / 防自杀可覆盖正着，
+                // 正着命中时也要先跑战术底层；斩杀 / 防自杀 / 保命扩核弹可覆盖正着，
                 // 普通构建与堵点不打断作者写好的白方预案。
                 let move = null;
                 let tacticalMove = false;
@@ -569,6 +570,7 @@
                     'anti-suicide-fallback',
                     'answer-ascend',
                     'answer-stronger-ascend',
+                    'nuke-expand', // 保命优先级最高：黑方核弹将斩杀己方时，优先扩己方核弹
                 ]);
                 const decision = await aiThink();
                 const isCriticalTactical = Boolean(

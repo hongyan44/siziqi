@@ -28,6 +28,10 @@ const MIME_TYPES = {
 
 const server = http.createServer((req, res) => {
     // 1. 统一设置高防、支持 SharedArrayBuffer 及全开放 CORS 的响应头
+    // 静态资源不缓存：fascend.min.js 等经 esbuild 重建后，旧会话若复用缓存会导致
+    // 新逻辑不生效。no-store 保证浏览器每次重新拉取，彻底消除"改了没变"的缓存问题。
+    res.setHeader('Cache-Control', 'no-store');
+
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Authorization');
