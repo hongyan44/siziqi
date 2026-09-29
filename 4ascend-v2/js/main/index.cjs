@@ -156,7 +156,6 @@ const HOME_FREE_PATHS = new Set([
     '/pages/local/replay.html',
     '/pages/docs/tip.html',
     '/pages/docs/rule.html',
-    '/pages/mod/match.html',
 ]);
 
 const is_home_free_target = (target) => {

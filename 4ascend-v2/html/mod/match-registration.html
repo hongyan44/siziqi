@@ -23,6 +23,7 @@
         type='module'></script>
 
     <!-- MY -->
+    <script src='/js/risk/api.min.js?v=replace'></script>
     <script src='/js/global/ui.min.js?v=replace'></script>
     <script src='/js/ref/must.min.js?v=replace'></script>
     <script src='/js/ref/music.min.js?v=replace'></script>
@@ -341,8 +342,20 @@
     </sl-dialog>
 
     <script>
-        const isAdmin = new URLSearchParams(location.search).get('admin') === '1';
-        document.getElementById('admin_badge').classList.toggle('d-none', !isAdmin);
+        // 管理员身份检验：登录 token + 服务端权限等级（等级 4 = 管理员）
+        let isAdmin = false;
+        let userInfo = null;
+
+        const verify_admin = async () => {
+            const token = window.get_token();
+            if (!token) return;
+            try {
+                userInfo = await window.http_user_info(token);
+                isAdmin = Number(userInfo && userInfo.level) === 4;
+            } catch (_) {
+                isAdmin = false;
+            }
+        };
 
         const STORAGE_KEY = 'match_bracket_state_v1';
         const NODE_WIDTH = 240;
@@ -556,6 +569,13 @@
             renderDialog();
         });
 
+        // 管理员 UI 统一入口：鉴权结果到达后再显示管理功能
+        const apply_admin_ui = () => {
+            document.getElementById('admin_badge').classList.toggle('d-none', !isAdmin);
+            addNodeButton.classList.toggle('d-none', !isAdmin);
+            if (dialog.open) renderDialog();
+        };
+
         // 添加分支方块：与当前方块连接（管理员功能，节点地图扩展入口）
         addNodeButton.addEventListener('click', () => {
             if (!isAdmin) return;
@@ -567,9 +587,11 @@
             render();
         });
 
-        addNodeButton.classList.toggle('d-none', !isAdmin);
-
-        window.addEventListener('load', render);
+        window.addEventListener('load', async () => {
+            render();
+            await verify_admin();
+            apply_admin_ui();
+        });
         window.addEventListener('resize', render);
     </script>
 </body>
