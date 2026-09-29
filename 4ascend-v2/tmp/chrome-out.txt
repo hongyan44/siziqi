@@ -1,0 +1,2 @@
+[31108:27220:0917/221030.863:ERROR:chrome\browser\extensions\external_registry_loader_win.cc:161] File C:\Users\江承泽\AppData\Local\ChromeExtensionCache\xl_ext_chrome.crx for key Software\Google\Chrome\Extensions\ncennffkjdiamlpmcbajkmaiiiddgioo does not exist or is not readable.
+<html><head></head><body></body></html>

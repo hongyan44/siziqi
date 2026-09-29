@@ -1,0 +1,7 @@
+[16544:39928:0917/221055.001:ERROR:chrome\browser\extensions\external_registry_loader_win.cc:161] File C:\Users\江承泽\AppData\Local\ChromeExtensionCache\xl_ext_chrome.crx for key Software\Google\Chrome\Extensions\ncennffkjdiamlpmcbajkmaiiiddgioo does not exist or is not readable.
+
+DevTools listening on ws://127.0.0.1:9444/devtools/browser/625f258d-baf0-4a3f-86ce-40b635f39720
+[16544:8756:0917/221100.623:ERROR:google_apis\gcm\engine\registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+[16544:8756:0917/221125.862:ERROR:google_apis\gcm\engine\connection_factory_impl.cc:484] ConnectionHandler failed with net error: -2
+[16544:2900:0917/221125.862:ERROR:content\browser\network_service_instance_impl.cc:655] Network service crashed or was terminated, restarting service.
+[16544:2900:0917/221126.563:ERROR:content\browser\gpu\gpu_process_host.cc:1054] GPU process exited unexpectedly: exit_code=-1073741819
