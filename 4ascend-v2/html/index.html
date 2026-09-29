@@ -414,6 +414,18 @@
         <div class='d-flex flex-column gap-3'>
             <div class='d-flex flex-column gap-4'>
                 <div class='d-flex flex-column gap-3'>
+                    <span class='text-muted fw-bold'>防误触设置</span>
+                    <div class='d-flex gap-3'>
+                        <div class='d-flex flex-column flex-grow-1 gap-2'>
+                            <sl-range id='range_click_level' label='防误触等级' min='0' max='2' value='1' size='small'
+                                ooltip='top'></sl-range>
+                            <sl-range id='range_click_time' label='确认延时 (ms)' min='0' max='1888' value='0' size='small'
+                                ooltip='top'></sl-range>
+                        </div>
+                    </div>
+                </div>
+
+                <div class='d-flex flex-column gap-3'>
                     <span class='text-muted fw-bold'>音量设置</span>
                     <div class='d-flex gap-3'>
                         <div class='d-flex flex-column flex-grow-1 gap-2'>
@@ -461,17 +473,6 @@
                     </div>
                 </div>
 
-                <div class='d-flex flex-column gap-3'>
-                    <span class='text-muted fw-bold'>防误触设置</span>
-                    <div class='d-flex gap-3'>
-                        <div class='d-flex flex-column flex-grow-1 gap-2'>
-                            <sl-range id='range_click_level' label='防误触等级' min='0' max='2' value='1' size='small'
-                                ooltip='top'></sl-range>
-                            <sl-range id='range_click_time' label='确认延时 (ms)' min='0' max='1888' value='0' size='small'
-                                ooltip='top'></sl-range>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
 
