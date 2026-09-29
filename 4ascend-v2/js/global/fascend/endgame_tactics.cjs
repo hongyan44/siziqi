@@ -433,12 +433,13 @@ class EndgameTactics {
             return this.toResult(chosen, 'kill', analysis);
         }
 
-        // 堵住玩家单独打点
-        const blocks = moves.filter((move) => move.blockPoint);
-        if (blocks.length) {
-            const chosen = prefer(blocks, (a, b) => a.action - b.action);
-            return this.toResult(chosen, 'block-player-ascend', analysis);
-        }
+        // —— 堵点逻辑已停用（2026-09-29）——
+        // 用户决定改用残局专用模型，纯逻辑的"堵玩家单独打点"判断被注释，交由 MCTS/上层接管。
+        // const blocks = moves.filter((move) => move.blockPoint);
+        // if (blocks.length) {
+        //     const chosen = prefer(blocks, (a, b) => a.action - b.action);
+        //     return this.toResult(chosen, 'block-player-ascend', analysis);
+        // }
 
         // 构建自己的 ASCEND（取最大 M+N）；排除会被反杀的自杀式打，宁空不让 MCTS 接管再决
         const builds = moves.filter((move) => move.formsAscend && !move.suicidalAscend);
@@ -480,3 +481,294 @@ class EndgameTactics {
 
 
 export { EndgameTactics };
+
+
+/* ============================================================================
+ * 【已停用】2026-09-29 主动核弹对做逻辑
+ * ----------------------------------------------------------------------------
+ * 停用原因：实测发现纯逻辑判断在复杂对局中仍误判（例：7,5 后 AI 仍走 7,6 堵），
+ * 用户决定改用残局专用模型替代。下面保留本轮实现供后续参考。
+ *
+ * 涉及模块：
+ *   1. surveyNukes            核普查（三态分类：主动核 / 活核 / 死核）
+ *   2. evaluateNukeImpact     精确引爆判定（枚举对手全部应手，含拒绝抵消）
+ *   3. pickByLogic L3         核应急（双威胁对攻 / 主动核对爆 / 活核安静堵）
+ *   4. pickByLogic L4         活核扩建（沿轴延长线选安静子）
+ *   5. isOnNukeAxis           判断落点是否在核轴延长线上
+ *   6. estimateExpansionValue 扩建估值（核威力 - 距离）
+ *   7. pickBestInDespair      必败时最优着法（保留威胁 / 最大化对手需走对步数）
+ *
+ * 注：恢复时需同步在 analyzeBoard 调用 surveyNukes、在 pickByLogic 内插入 L3/L4
+ * 分支、在 safetyNet 的 criticalReasons 中加入 nuke-* 系列 reason。
+ * ============================================================================
+
+// ---------- 1) 核普查 surveyNukes ----------
+surveyNukes(game, selfStone, foeStone) {
+    const board = game.board;
+    const selfAscendStone = selfStone === STONE_ENUM.BLACK ? STONE_ENUM.BLACK_ASCEND : STONE_ENUM.WHITE_ASCEND;
+    const foeAscendStone = foeStone === STONE_ENUM.BLACK ? STONE_ENUM.BLACK_ASCEND : STONE_ENUM.WHITE_ASCEND;
+    const nukes = { self: [], foe: [] };
+    for (let x = 0; x < board.w; x++) {
+        for (let y = 0; y < board.h; y++) {
+            const stoneAt = board.get_stone(x, y);
+            const action = y * board.w + x;
+            const selfCanPlay = stoneAt === STONE_ENUM.NONE || stoneAt === foeAscendStone;
+            const foeCanPlay = stoneAt === STONE_ENUM.NONE || stoneAt === selfAscendStone;
+            // 我方核（可落子点）
+            if (selfCanPlay) {
+                const asc = board.get_ascend(x, y, selfStone);
+                if (asc) {
+                    const p = this.powerOf(asc);
+                    if (p.M >= 7) {
+                        const foeAsc = board.get_ascend(x, y, foeStone);
+                        nukes.self.push({
+                            x, y, action,
+                            M: p.M, N: p.N, MN: p.MN, powers: p.powers,
+                            isProactive: Boolean(foeAsc),
+                            foePower: foeAsc ? this.powerOf(foeAsc) : null,
+                            blockedBy: null,
+                        });
+                    }
+                }
+            }
+            // 我方死核（对方普通子堵）
+            if (!selfCanPlay && stoneAt === foeStone) {
+                board.set_stone(x, y, STONE_ENUM.NONE);
+                const asc = board.get_ascend(x, y, selfStone);
+                if (asc) {
+                    const p = this.powerOf(asc);
+                    if (p.M >= 7) {
+                        nukes.self.push({
+                            x, y, action,
+                            M: p.M, N: p.N, MN: p.MN, powers: p.powers,
+                            isProactive: false, foePower: null,
+                            blockedBy: { x, y, action }, isDead: true,
+                        });
+                    }
+                }
+                board.set_stone(x, y, foeStone);
+            }
+            // 对方核
+            if (foeCanPlay) {
+                const asc = board.get_ascend(x, y, foeStone);
+                if (asc) {
+                    const p = this.powerOf(asc);
+                    if (p.M >= 7) {
+                        const selfAsc = board.get_ascend(x, y, selfStone);
+                        nukes.foe.push({
+                            x, y, action,
+                            M: p.M, N: p.N, MN: p.MN, powers: p.powers,
+                            isProactive: Boolean(selfAsc),
+                            selfPower: selfAsc ? this.powerOf(selfAsc) : null,
+                            blockedBy: null,
+                        });
+                    }
+                }
+            }
+            // 对方死核
+            if (!foeCanPlay && stoneAt === selfStone) {
+                board.set_stone(x, y, STONE_ENUM.NONE);
+                const asc = board.get_ascend(x, y, foeStone);
+                if (asc) {
+                    const p = this.powerOf(asc);
+                    if (p.M >= 7) {
+                        nukes.foe.push({
+                            x, y, action,
+                            M: p.M, N: p.N, MN: p.MN, powers: p.powers,
+                            isProactive: false, selfPower: null,
+                            blockedBy: { x, y, action }, isDead: true,
+                        });
+                    }
+                }
+                board.set_stone(x, y, selfStone);
+            }
+        }
+    }
+    return nukes;
+}
+
+// ---------- 2) 精确引爆判定 evaluateNukeImpact ----------
+evaluateNukeImpact(game, action, ctx) {
+    const forked = this.RulesRuntime.fork(game);
+    const myResult = this.RulesRuntime.applyMove(forked, action, { collectEvents: true });
+    if (!myResult.legal) return null;
+    // 1. 已有 winner
+    if (myResult.winner) {
+        const iWin = (ctx.selfIndex === 0 && myResult.winner === PLAYER_ENUM.BLACK)
+                  || (ctx.selfIndex === 1 && myResult.winner === PLAYER_ENUM.WHITE);
+        return {
+            kills: iWin, suicide: !iWin,
+            selfHpAfter: iWin ? ctx.Y : 0,
+            foeHpAfter: iWin ? 0 : ctx.X,
+        };
+    }
+    // 2. 已有 combat（响应情况，一次 applyMove 走完 START->END）
+    const combat = (myResult.events || []).find((e) => e.type === 'combat');
+    if (combat) {
+        const selfHpAfter = combat.hpAfter[ctx.selfIndex];
+        const foeHpAfter = combat.hpAfter[ctx.foeIndex];
+        return {
+            kills: foeHpAfter <= 0 && selfHpAfter > 0,
+            suicide: selfHpAfter <= 0,
+            selfHpAfter, foeHpAfter,
+        };
+    }
+    // 3. 非 ASCEND 着法
+    const hasAscend = (myResult.events || []).some((e) => e.type === 'ascend');
+    if (!hasAscend) {
+        return { kills: false, suicide: false, selfHpAfter: ctx.Y, foeHpAfter: ctx.X };
+    }
+    // 4. START：枚举对手全部应手（含拒绝抵消），取对我方最悲观
+    const foeLegal = this.RulesRuntime.legalMoves(forked);
+    if (foeLegal.length === 0) {
+        return { kills: true, suicide: false, selfHpAfter: ctx.Y, foeHpAfter: 0 };
+    }
+    let worst = null;
+    foeLegal.forEach((foeAction) => {
+        const ff = this.RulesRuntime.fork(forked);
+        const fr = this.RulesRuntime.applyMove(ff, foeAction, { collectEvents: true });
+        if (!fr.legal) return;
+        let selfHpAfter, foeHpAfter;
+        if (fr.winner) {
+            const iWin = (ctx.selfIndex === 0 && fr.winner === PLAYER_ENUM.BLACK)
+                      || (ctx.selfIndex === 1 && fr.winner === PLAYER_ENUM.WHITE);
+            selfHpAfter = iWin ? ctx.Y : 0;
+            foeHpAfter = iWin ? 0 : ctx.X;
+        } else {
+            const fc = (fr.events || []).find((e) => e.type === 'combat');
+            if (fc) {
+                selfHpAfter = fc.hpAfter[ctx.selfIndex];
+                foeHpAfter = fc.hpAfter[ctx.foeIndex];
+            } else {
+                selfHpAfter = ctx.Y;
+                foeHpAfter = ctx.X;
+            }
+        }
+        if (!worst ||
+            selfHpAfter < worst.selfHpAfter ||
+            (selfHpAfter === worst.selfHpAfter && foeHpAfter > worst.foeHpAfter)) {
+            worst = { selfHpAfter, foeHpAfter };
+        }
+    });
+    if (!worst) {
+        return { kills: true, suicide: false, selfHpAfter: ctx.Y, foeHpAfter: 0 };
+    }
+    return {
+        kills: worst.foeHpAfter <= 0 && worst.selfHpAfter > 0,
+        suicide: worst.selfHpAfter <= 0,
+        selfHpAfter: worst.selfHpAfter,
+        foeHpAfter: worst.foeHpAfter,
+    };
+}
+
+// ---------- 3) L3 核应急（插入 pickByLogic 斩杀之后） ----------
+const foeKilling = (analysis.nukes && analysis.nukes.foe || []).filter((nuke) => {
+    const foeGame = this.RulesRuntime.fork(game);
+    foeGame.state.turn_player = analysis.foePlayer;
+    const impact = this.evaluateNukeImpact(foeGame, nuke.action, {
+        selfIndex: analysis.foeIndex,
+        foeIndex: analysis.selfIndex,
+        X: analysis.Y,
+        Y: analysis.X,
+    });
+    return impact && impact.kills;
+});
+if (foeKilling.length > 0) {
+    if (foeKilling.length >= 2) {
+        // 双威胁：找同点双核对爆
+        const counter = ws.filter((m) =>
+            m.formsAscend &&
+            analysis.nukes.self.some((n) => n.x === m.x && n.y === m.y) &&
+            foeKilling.some((f) => f.x === m.x && f.y === m.y)
+        );
+        if (counter.length) {
+            return this.toResult(prefer(counter, byMNDesc), 'nuke-counter-detonate', analysis);
+        }
+        // 否则最强核对攻赛跑
+        const myNukes = ws.filter((m) => m.formsAscend && m.isNuke);
+        if (myNukes.length) {
+            return this.toResult(prefer(myNukes, byMNDesc), 'nuke-race', analysis);
+        }
+        return this.pickBestInDespair(ws, analysis);
+    }
+    // 单威胁
+    const threat = foeKilling[0];
+    if (threat.isProactive) {
+        // 主动核不可堵，同点对爆
+        const counter = ws.find((m) => m.x === threat.x && m.y === threat.y && m.formsAscend);
+        if (counter) return this.toResult(counter, 'nuke-counter-detonate', analysis);
+    } else {
+        // 活核：先试安静堵，堵子成打则升级为主动核化对爆
+        const block = ws.find((m) => m.x === threat.x && m.y === threat.y && !m.formsAscend);
+        if (block) return this.toResult(block, 'nuke-block', analysis);
+        const counter = ws.find((m) => m.x === threat.x && m.y === threat.y && m.formsAscend);
+        if (counter) return this.toResult(counter, 'nuke-counter-detonate', analysis);
+    }
+}
+
+// ---------- 4) L4 活核扩建（插入 L3 之后、堵点之前） ----------
+const myNukes = analysis.nukes ? analysis.nukes.self : [];
+if (myNukes.length > 0) {
+    const expansion = ws.filter((m) => {
+        if (m.formsAscend) return false; // 必须安静子
+        return myNukes.some((nuke) => this.isOnNukeAxis(m, nuke, game.board, analysis.selfStone));
+    });
+    if (expansion.length) {
+        const scored = expansion.map((m) => ({
+            move: m,
+            value: this.estimateExpansionValue(m, myNukes, game.board, analysis.selfStone),
+        }));
+        scored.sort((a, b) => b.value - a.value);
+        return this.toResult(scored[0].move, 'nuke-expand', analysis);
+    }
+}
+
+// ---------- 5) isOnNukeAxis ----------
+isOnNukeAxis(move, nuke, board, stone) {
+    const dx = move.x - nuke.x;
+    const dy = move.y - nuke.y;
+    if (dx === 0 && dy === 0) return false;
+    const dirs = [[1, 0], [0, 1], [1, 1], [1, -1]];
+    for (const [ddx, ddy] of dirs) {
+        if (dx === 0 && ddx !== 0) continue;
+        if (dy === 0 && ddy !== 0) continue;
+        if (dx !== 0 && dy !== 0 && Math.abs(dx) !== Math.abs(dy)) continue;
+        const stepX = dx === 0 ? 0 : (dx > 0 ? 1 : -1);
+        const stepY = dy === 0 ? 0 : (dy > 0 ? 1 : -1);
+        if (stepX !== ddx && stepX !== -ddx) continue;
+        if (stepY !== ddy && stepY !== -ddy) continue;
+        let sx = nuke.x + stepX;
+        let sy = nuke.y + stepY;
+        while (sx !== move.x || sy !== move.y) {
+            const s = board.get_stone(sx, sy);
+            if (s !== stone && s !== STONE_ENUM.NONE) return false;
+            sx += stepX;
+            sy += stepY;
+        }
+        return true;
+    }
+    return false;
+}
+
+// ---------- 6) estimateExpansionValue ----------
+estimateExpansionValue(move, nukes, board, stone) {
+    let best = 0;
+    for (const nuke of nukes) {
+        if (!this.isOnNukeAxis(move, nuke, board, stone)) continue;
+        const dist = Math.max(Math.abs(move.x - nuke.x), Math.abs(move.y - nuke.y));
+        best = Math.max(best, nuke.M * 10 - dist);
+    }
+    return best;
+}
+
+// ---------- 7) pickBestInDespair ----------
+pickBestInDespair(moves, analysis) {
+    const scored = moves.map((m) => ({
+        move: m,
+        score: m.foeDamage * 100 - m.selfDamage * 10 + (m.isNuke ? 50 : 0),
+    }));
+    scored.sort((a, b) => b.score - a.score);
+    return this.toResult(scored[0].move, 'desperation-best', analysis);
+}
+
+============================================================================ */

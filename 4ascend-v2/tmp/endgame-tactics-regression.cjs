@@ -76,17 +76,16 @@ function putLine(game, color, cells) {
     console.log('PASS: anti-suicide must answer with ASCEND');
 }
 
-// 3) 堵住玩家单独打点：黑可在 (4,4) 成打，白自己不成打
+// 3) 堵点已停用（2026-09-29）：黑可在 (4,4) 成打，白自己不成打。
+//    现在 AI 不再主动堵，返回 null 交由上层（MCTS）接管。
 {
     const game = makeGame({ hp: [6, 6], turn: R.WHITE });
     putLine(game, S.BLACK, [[0, 4], [1, 4], [2, 4], [3, 4]]);
     // 黑方线 0-3，唯一成打空点是 (4,4)；白子放角落避免自己成打。
     putLine(game, S.WHITE, [[0, 0], [8, 8]]);
     const move = tactics.chooseMove(game);
-    assert.ok(move);
-    assert.equal(move.reason, 'block-player-ascend');
-    assert.equal(move.action, xy(4, 4));
-    console.log('PASS: block player solo ASCEND point');
+    assert.equal(move, null, '堵点已停用，应返回 null 交由上层接管');
+    console.log('PASS: block disabled, returns null for MCTS fallback');
 }
 
 // 4) 构建自己的 ASCEND

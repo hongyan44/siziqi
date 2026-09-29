@@ -43,8 +43,9 @@ function makeGame({ hp = [6, 6], turn = R.WHITE } = {}) {
     return game;
 }
 
-// 1) 双方 1 血，白方可成 4 连打，但黑方可用“草反”（带草的 4 连）抵消反杀白方
-//    → 白方绝不能打出这个自杀式打，应改为堵住黑方的草反打点 (3,5)
+// 1) 双方 1 血，白方可成 4 连打，但黑方可用“草反”（带草的 4 连）抵消反杀白方。
+//    堵点已停用（2026-09-29）：白方不可走自杀式打，但也不再主动堵草反点，
+//    返回 null 交由上层（MCTS）处理。
 {
     const game = makeGame({ hp: [1, 1], turn: R.WHITE });
     // 白方打点：(3,0) 成 4 连（M=4, 全 1 力）
@@ -54,10 +55,8 @@ function makeGame({ hp = [6, 6], turn = R.WHITE } = {}) {
     game.board.set_plant(1, 5, P.ONE);
 
     const move = tactics.chooseMove(game);
-    assert.ok(move, '应返回一个落点');
-    assert.equal(move.reason, 'block-player-ascend', '自杀式打不能被选中，应转而堵住草反打点');
-    assert.equal(move.action, 5 * 9 + 3, '应堵住黑方草反打点 (3,5)');
-    console.log('PASS: 双方1血，草反可反杀 → 白方弃自杀打、改堵草反点 (3,5)');
+    assert.equal(move, null, '堵点已停用，应返回 null 交由上层接管');
+    console.log('PASS: 双方1血，草反可反杀 + 堵点停用 → 返回 null 交上层');
 }
 
 // 2) 控制：白方打确实能斩杀黑方（黑方无 ASCEND 可应，只能卖血）→ 仍优先斩杀 (kill)
