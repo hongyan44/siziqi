@@ -88,16 +88,14 @@ function putLine(game, color, cells) {
     console.log('PASS: block disabled, returns null for MCTS fallback');
 }
 
-// 4) 构建自己的 ASCEND
+// 4) 构建打已停用（2026-09-29）：AI 不再主动构建 ASCEND，返回 null 交上层。
 {
     const game = makeGame({ hp: [6, 6], turn: R.WHITE });
     putLine(game, S.BLACK, [[0, 2]]);
     putLine(game, S.WHITE, [[1, 2], [2, 2], [3, 2]]);
     const move = tactics.chooseMove(game);
-    assert.ok(move);
-    assert.equal(move.reason, 'build-ascend');
-    assert.equal(move.action, xy(4, 2));
-    console.log('PASS: build own ASCEND');
+    assert.equal(move, null, '构建打已停用，应返回 null 交由上层接管');
+    console.log('PASS: build disabled, returns null for MCTS fallback');
 }
 
 // 5) 人机 ??? 的战术兜底只在斩杀线开启；HP=4 不应触发

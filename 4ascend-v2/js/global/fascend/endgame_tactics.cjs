@@ -441,12 +441,13 @@ class EndgameTactics {
         //     return this.toResult(chosen, 'block-player-ascend', analysis);
         // }
 
-        // 构建自己的 ASCEND（取最大 M+N）；排除会被反杀的自杀式打，宁空不让 MCTS 接管再决
-        const builds = moves.filter((move) => move.formsAscend && !move.suicidalAscend);
-        if (builds.length) {
-            const chosen = prefer(builds, byMNDesc);
-            return this.toResult(chosen, 'build-ascend', analysis);
-        }
+        // —— 构建打逻辑已停用（2026-09-29）——
+        // 用户决定改用残局专用模型，纯逻辑的"构建自己 ASCEND"判断被注释，交由 MCTS/上层接管。
+        // const builds = moves.filter((move) => move.formsAscend && !move.suicidalAscend);
+        // if (builds.length) {
+        //     const chosen = prefer(builds, byMNDesc);
+        //     return this.toResult(chosen, 'build-ascend', analysis);
+        // }
 
         return null;
     }
