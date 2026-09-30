@@ -294,11 +294,11 @@ window.http_time_s = async () => {
 };
 
 
-// 刷新凭证：主页/本地页不自动弹窗或跳转，避免访问主页时反复提示登录
+// 刷新凭证：主页/本地页/赛事页不自动弹窗或跳转，避免访问时反复提示登录
 (async () => {
     const toast = new window.UiExports.ShToast();
     const path = location.pathname;
-    const skip_auth_prompt = path === '/' || path.endsWith('/index.html') || path.includes('/pages/local/');
+    const skip_auth_prompt = path === '/' || path.endsWith('/index.html') || path.includes('/pages/local/') || path.includes('/pages/mod/');
 
     const pid = setInterval(async () => {
         if (!window.loaded) return;
