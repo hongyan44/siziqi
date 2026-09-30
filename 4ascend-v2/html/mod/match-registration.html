@@ -147,6 +147,32 @@
             z-index: 5;
         }
 
+        /* 连接模式：源方块高亮 */
+        .bracket-node.linking {
+            border-color: var(--sl-color-warning-500);
+            box-shadow: 0 0 0 3px rgba(255, 193, 7, 0.25), 0 0.4rem 1.2rem rgba(255, 193, 7, 0.2);
+        }
+
+        .link-hint {
+            position: absolute;
+            top: 0.5rem;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            padding: 0.3rem 0.9rem;
+            border-radius: 999px;
+            background: var(--sl-color-warning-100);
+            border: 1px solid var(--sl-color-warning-400);
+            color: var(--sl-color-warning-800);
+            font-size: 0.8rem;
+            white-space: nowrap;
+        }
+
+        .bracket-edges path.edge-hit {
+            pointer-events: stroke;
+            cursor: pointer;
+        }
+
         .bracket-node-head {
             display: flex;
             align-items: center;
@@ -376,6 +402,7 @@
                                 <svg id='bracket_edges' class='bracket-edges'></svg>
                             </div>
                         </div>
+                        <div id='link_hint' class='link-hint d-none'>连接模式：点击目标方块完成连接，Esc 或点击空白处取消</div>
                         <div class='zoom-controls'>
                             <sl-icon-button id='button_zoom_out' name='dash-lg' label='缩小'></sl-icon-button>
                             <sl-icon-button id='button_zoom_reset' name='aspect-ratio' label='重置缩放'></sl-icon-button>
@@ -470,37 +497,71 @@
         });
 
         let state;
-        try {
-            const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-            if (saved && Array.isArray(saved.nodes) && saved.nodes.length) {
-                state = saved;
-            } else {
-                state = defaultState();
-            }
-        } catch (_) {
-            state = defaultState();
-        }
 
-        // 数据迁移与校验
-        state.nodes.forEach((node) => {
-            node.maxPlayers = Number.isFinite(node.maxPlayers) ? node.maxPlayers : 16;
-            node.groupCount = Number.isFinite(node.groupCount) ? node.groupCount : 8;
-            node.players = Array.isArray(node.players) ? node.players : [];
-            node.x = typeof node.x === 'number' ? node.x : 96;
-            node.y = typeof node.y === 'number' ? node.y : 400;
-            if (!Array.isArray(node.groups) || node.groups.length !== node.groupCount) {
-                // 重建 groups
-                node.groups = Array.from({ length: node.groupCount }, () => []);
-                // 尝试把旧 players 回填到 groups
-                for (let i = 0; i < node.players.length; i++) {
-                    const gi = i % node.groupCount;
-                    node.groups[gi].push(node.players[i]);
+        const migrateState = () => {
+            state.nodes.forEach((node) => {
+                node.maxPlayers = Number.isFinite(node.maxPlayers) ? node.maxPlayers : 16;
+                node.groupCount = Number.isFinite(node.groupCount) ? node.groupCount : 8;
+                node.players = Array.isArray(node.players) ? node.players : [];
+                node.x = typeof node.x === 'number' ? node.x : 96;
+                node.y = typeof node.y === 'number' ? node.y : 400;
+                if (!Array.isArray(node.groups) || node.groups.length !== node.groupCount) {
+                    node.groups = Array.from({ length: node.groupCount }, () => []);
+                    for (let i = 0; i < node.players.length; i++) {
+                        const gi = i % node.groupCount;
+                        node.groups[gi].push(node.players[i]);
+                    }
                 }
-            }
-        });
-        if (!state.nodes.some((node) => node.main)) state.nodes[0].main = true;
+            });
+            if (!state.nodes.some((node) => node.main)) state.nodes[0].main = true;
+        };
 
-        const saveState = () => localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        const loadFromLocal = () => {
+            try {
+                const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+                if (saved && Array.isArray(saved.nodes) && saved.nodes.length) {
+                    state = saved;
+                    return true;
+                }
+            } catch (_) {}
+            return false;
+        };
+
+        const initState = () => {
+            if (!loadFromLocal()) state = defaultState();
+            migrateState();
+        };
+
+        initState();
+
+        // 从服务端同步签表（覆盖本地）
+        const syncFromRemote = async () => {
+            try {
+                const remote = await window.http_contest_bracket_query();
+                if (remote && remote.data) {
+                    const parsed = JSON.parse(remote.data);
+                    if (parsed && Array.isArray(parsed.nodes) && parsed.nodes.length) {
+                        const localTs = Number(localStorage.getItem(STORAGE_KEY + '_ts') || 0);
+                        if (remote.updated_at > localTs) {
+                            state = parsed;
+                            localStorage.setItem(STORAGE_KEY, remote.data);
+                            localStorage.setItem(STORAGE_KEY + '_ts', String(remote.updated_at));
+                            migrateState();
+                            render();
+                        }
+                    }
+                }
+            } catch (_) {}
+        };
+
+        const saveState = async () => {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+            localStorage.setItem(STORAGE_KEY + '_ts', String(Date.now()));
+            if (!isAdmin) return;
+            const token = window.get_token();
+            if (!token) return;
+            try { await window.http_contest_bracket_update(token, JSON.stringify(state)); } catch (_) {}
+        };
 
         const canvas = document.getElementById('bracket_canvas');
         const world = document.getElementById('bracket_world');
@@ -525,6 +586,23 @@
 
         let activeNodeId = null;
         let zoom = 1;
+        let linkingSourceId = null;
+
+        const linkHint = document.getElementById('link_hint');
+
+        const clearLinking = () => {
+            linkingSourceId = null;
+            linkHint.classList.add('d-none');
+            document.querySelectorAll('.bracket-node.linking').forEach((el) => el.classList.remove('linking'));
+        };
+
+        const startLinking = (sourceId) => {
+            linkingSourceId = sourceId;
+            linkHint.classList.remove('d-none');
+            document.querySelectorAll('.bracket-node').forEach((el) => {
+                if (el.dataset.nodeId === sourceId) el.classList.add('linking');
+            });
+        };
 
         const findNode = (id) => state.nodes.find((node) => node.id === id);
 
@@ -532,8 +610,7 @@
         const mainNode = () => state.nodes.find((node) => node.main) || state.nodes[0];
 
         const nodeStatus = (node) => {
-            const total = node.players.length;
-            if (total >= node.maxPlayers) return { text: '已满员', variant: 'danger' };
+            if (isNodeDrawn(node)) return { text: '已满员', variant: 'danger' };
             return { text: '报名中', variant: 'success' };
         };
 
@@ -574,6 +651,16 @@
             event.preventDefault();
             setZoom(zoom * (event.deltaY < 0 ? 1.1 : 0.9));
         }, { passive: false });
+
+        // 连接模式：点击空白处或按 Esc 取消
+        canvas.addEventListener('pointerdown', (event) => {
+            if (!linkingSourceId) return;
+            if (event.target.closest('.bracket-node')) return;
+            clearLinking();
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && linkingSourceId) clearLinking();
+        });
 
         // 仅显示主方块统计
         const renderSummary = () => {
@@ -707,6 +794,7 @@
                         <sl-badge variant='${status.variant}' pill>${status.text}</sl-badge>
                         <span class='node-actions d-none'>
                             ${node.main ? '' : `<sl-icon-button class='node-delete' name='x-lg' label='删除方块'></sl-icon-button>`}
+                            <sl-icon-button class='node-link' name='link-45deg' label='连接方块'></sl-icon-button>
                             <sl-icon-button class='node-add' name='plus-lg' label='添加分支方块'></sl-icon-button>
                         </span>
                     </div>
@@ -715,16 +803,53 @@
                         <div class='bracket-node-players'>${chips}${more}${empty}</div>
                     </div>
                 `;
+                if (linkingSourceId === node.id) el.classList.add('linking');
 
                 const actions = el.querySelector('.node-actions');
                 const addBtn = el.querySelector('.node-add');
                 const delBtn = el.querySelector('.node-delete');
+                const linkBtn = el.querySelector('.node-link');
                 addBtn.addEventListener('click', (event) => { event.stopPropagation(); if (isAdmin) addBranch(node.id); });
                 if (delBtn) delBtn.addEventListener('click', (event) => { event.stopPropagation(); if (isAdmin) deleteNode(node.id); });
+                linkBtn.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    if (!isAdmin) return;
+                    if (linkingSourceId === node.id) { clearLinking(); return; }
+                    clearLinking();
+                    startLinking(node.id);
+                });
 
                 if (isAdmin) {
                     actions.classList.remove('d-none');
                     bindDrag(el, node);
+                    el.addEventListener('click', () => {
+                        if (linkingSourceId) {
+                            if (linkingSourceId === node.id) return; // 不能连到自己
+                            // 环路检测：目标节点若能到达源节点，则禁止
+                            const reachable = (fromId, toId) => {
+                                const visited = new Set();
+                                const queue = [fromId];
+                                while (queue.length) {
+                                    const cur = queue.shift();
+                                    if (cur === toId) return true;
+                                    if (visited.has(cur)) continue;
+                                    visited.add(cur);
+                                    state.edges.filter((e) => e.from === cur).forEach((e) => queue.push(e.to));
+                                }
+                                return false;
+                            };
+                            if (reachable(node.id, linkingSourceId)) { clearLinking(); return; }
+                            // 避免重复连线
+                            if (!state.edges.some((edge) => edge.from === linkingSourceId && edge.to === node.id)) {
+                                state.edges.push({ from: linkingSourceId, to: node.id });
+                                saveState();
+                            }
+                            clearLinking();
+                            render();
+                        } else {
+                            openNode(node.id);
+                        }
+                    });
                 } else {
                     el.addEventListener('click', () => openNode(node.id));
                 }
@@ -779,11 +904,17 @@
             });
         };
 
-        // 查询账号是否已在任一方块报名，返回所在节点或 null
-        const findRegistration = (name) => state.nodes.find((node) => node.players.includes(name)) || null;
+        // 查询某方块的全部前置方块（通过连线推导）
+        const parentNodes = (node) => state.edges
+            .filter((edge) => edge.to === node.id)
+            .map((edge) => findNode(edge.from))
+            .filter(Boolean);
+
+        // 方块是否已完成抽签：报名满员即视为该方块抽签分组完成
+        const isNodeDrawn = (node) => node.players.length >= node.maxPlayers;
 
         const renderRegisterRow = (node) => {
-            const full = node.players.length >= node.maxPlayers;
+            const full = isNodeDrawn(node);
             if (full) {
                 dialogRegisterRow.classList.add('d-none');
                 return;
@@ -799,17 +930,30 @@
                 return;
             }
 
-            const registeredNode = findRegistration(accountName);
-            if (registeredNode) {
+            if (node.players.includes(accountName)) {
                 joinButton.disabled = true;
-                registerHint.textContent = registeredNode.id === node.id
-                    ? '您已报名该方块，每个账号仅可报名一次。'
-                    : `您已报名「${registeredNode.name}」，每个账号在整个赛事中仅可报名一次。`;
+                registerHint.textContent = '您已报名该方块，每个账号仅可报名一次。';
                 return;
             }
 
+            // 前置检验：有前置方块时，必须已报名且前置方块已完成抽签
+            const parents = parentNodes(node);
+            if (parents.length) {
+                const entered = parents.filter((p) => p.players.includes(accountName));
+                if (!entered.length) {
+                    joinButton.disabled = true;
+                    registerHint.textContent = `只有报名了前一个方块「${parents.map((p) => p.name).join('、')}」的选手才能报名该方块。`;
+                    return;
+                }
+                if (!entered.some((p) => isNodeDrawn(p))) {
+                    joinButton.disabled = true;
+                    registerHint.textContent = `前一个方块「${entered.map((p) => p.name).join('、')}」尚未满员抽签，暂不能报名该方块。`;
+                    return;
+                }
+            }
+
             joinButton.disabled = false;
-            registerHint.textContent = '每个账号在整个赛事中仅可报名一次，报名后随机分配到未满的组。每组最多 2 人；若组数大于人数一半，则允许出现 1 人组。';
+            registerHint.textContent = '每个账号在每个方块仅可报名一次，报名后随机分配到未满的组。每组最多 2 人；若组数大于人数一半，则允许出现 1 人组。';
         };
 
         const renderDialog = () => {
@@ -897,16 +1041,30 @@
             dialog.show();
         };
 
-        joinButton.addEventListener('click', () => {
+        joinButton.addEventListener('click', async () => {
             const node = findNode(activeNodeId);
             if (!node) return;
             const name = userInfo && userInfo.name ? userInfo.name : null;
-            if (!name || findRegistration(name)) return;
-            if (assignRandomGroup(node, name)) {
-                saveState();
-                render();
-                renderDialog();
+            if (!name) return;
+            if (node.players.includes(name)) return;
+            // 前置检验：有前置方块时，必须已报名且前置方块已完成抽签
+            const parents = parentNodes(node);
+            if (parents.length) {
+                const entered = parents.filter((p) => p.players.includes(name));
+                if (!entered.length || !entered.some((p) => isNodeDrawn(p))) return;
             }
+            const token = window.get_token();
+            if (!token) return;
+            joinButton.disabled = true;
+            registerHint.textContent = '报名中…';
+            const ok = await window.http_contest_bracket_register(token, node.id, name);
+            if (!ok) {
+                registerHint.textContent = '报名失败，可能已报过名或该方块已满员，请刷新重试。';
+                joinButton.disabled = false;
+                return;
+            }
+            await syncFromRemote();
+            renderDialog();
         });
 
         saveNodeButton.addEventListener('click', () => {
@@ -961,8 +1119,12 @@
         window.addEventListener('load', async () => {
             render();
             applyZoom();
+            await syncFromRemote();
             await verify_admin();
             apply_admin_ui();
+
+            // 轮询服务器，普通用户也能看到管理员的改动
+            setInterval(() => { if (!document.hidden) syncFromRemote(); }, 5000);
         });
     </script>
 </body>

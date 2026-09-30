@@ -553,68 +553,44 @@
             if (challengeOver || generation !== challengeGeneration) return;
             try {
                 const isBookMove = Boolean(branchResult && branchResult.matched);
-                setStatus(isBookMove ? '白方正在校验正着与防自杀/斩杀逻辑...' : '白方 AI（战术矫正 + 4zero）正在计算...', 'info');
-                // 即使命中残局预案，第一步也必须先经过战术底层逻辑。
-                // 预案只作为普通应手候选；斩杀 / 防自杀 / 要素保命(扩己方核弹)
-                // 矫正拥有更高优先级。
-                // ENDGAME_THINK 是纯搜索，不会偷偷推进 Worker 棋局；所有来源的
-                // 白方落子都在 ed_tr_1 成功后通过 ENDGAME_APPLY 显式提交一次。
-                // 正着命中时也要先跑战术底层；斩杀 / 防自杀 / 保命扩核弹可覆盖正着，
-                // 普通构建与堵点不打断作者写好的白方预案。
+                // 作者写好的白方正着拥有最高优先级：黑方一旦命中正着，白方必须严格
+                // 按预案应手，不再调用战术 AI。否则斩杀 / 防自杀 / 应打(扩核弹) 等
+                // 战术分支会改写预案落点，打断残局正解线，玩家全程走对也无法破解。
+                // ENDGAME_THINK 是纯搜索，不会偷偷推进 Worker 棋局；所有来源的白方
+                // 落子都在 ed_tr_1 成功后通过 ENDGAME_APPLY 显式提交一次，因此这里
+                // 跳过战术搜索不会让 Worker 棋局失同步。
                 let move = null;
                 let tacticalMove = false;
-                const criticalReasons = new Set([
-                    'kill',
-                    'anti-suicide-must-ascend',
-                    'anti-suicide-stronger-ascend',
-                    'anti-suicide-fallback',
-                    'answer-ascend',
-                    'answer-stronger-ascend',
-                    'nuke-expand', // 保命优先级最高：黑方核弹将斩杀己方时，优先扩己方核弹
-                ]);
-                const decision = await aiThink();
-                const isCriticalTactical = Boolean(
-                    lastAiDecision
-                    && lastAiDecision.tactical
-                    && criticalReasons.has(lastAiDecision.reason)
-                );
-                if (isCriticalTactical) {
-                    move = decision;
-                    tacticalMove = true;
-                } else if (isBookMove) {
+                if (isBookMove) {
                     move = branchResult.white_move;
+                    setStatus('白方按残局正着应手。', 'info');
                 } else {
-                    move = decision;
+                    setStatus('白方 AI（战术矫正 + 4zero）正在计算...', 'info');
+                    move = await aiThink();
                     tacticalMove = Boolean(lastAiDecision && lastAiDecision.tactical);
                 }
                 if (!move || !legal(move[0], move[1])) {
                     setStatus('白方 AI 未找到合法落点，请重置后重试。', 'danger');
                     return;
                 }
-                const usedBookMove = isBookMove && !tacticalMove;
-                const bookWasOverridden = isBookMove && tacticalMove
-                    && (!branchResult.white_move || branchResult.white_move[0] !== move[0] || branchResult.white_move[1] !== move[1]);
-                if (bookWasOverridden) {
-                    deviated = true;
-                    setStatus('正着被防自杀/斩杀逻辑覆盖，执行战术落点。', 'warning');
-                }
                 if (ui.ascend_is_lifted(move[0], move[1])) ui.ascend_counter(move[0], move[1]);
                 recordModelHistory();
                 if (!game.ed_tr_1(move[0], move[1])) { game.history_boards.pop(); setStatus('白方 AI 返回了非法落点，请重置后重试。', 'danger'); return; }
                 await syncAiStone(move[0], move[1], generation);
-                moves.push({ move, side: '白方', source: usedBookMove ? '正着应手' : (tacticalMove ? `战术AI · ${lastAiDecision.reason || '矫正'}` : '战术AI') });
+                moves.push({ move, side: '白方', source: isBookMove ? '正着应手' : (tacticalMove ? `战术AI · ${lastAiDecision.reason || '矫正'}` : '战术AI') });
                 await renderMove(move[0], move[1], 'AI', generation);
                 const ended = await settleRound(generation);
-                const solved = !deviated && Boolean(branchResult && branchResult.matched && branch.snapshot().index >= (challengeData.black_book || []).length);
-                if (solved && !ended) {
-                    challengeOver = true;
-                    markLevelCompleted();
-                    stopTimer();
-                    clearChallengeAnimations();
-                    setStatus('正着全部完成，恭喜破解残局！', 'success');
-                    showAlert('残局破解成功！');
-                    showResult(PLAYER_ENUM.BLACK, challengeElapsed, '正着全部完成');
-                }
+                // 暂缓：不再因“走完全部正着”直接结束残局，改为继续对局（正着走完后白方转入普通 AI）。
+                // const solved = !deviated && Boolean(branchResult && branchResult.matched && branch.snapshot().index >= (challengeData.black_book || []).length);
+                // if (solved && !ended) {
+                //     challengeOver = true;
+                //     markLevelCompleted();
+                //     stopTimer();
+                //     clearChallengeAnimations();
+                //     setStatus('正着全部完成，恭喜破解残局！', 'success');
+                //     showAlert('残局破解成功！');
+                //     showResult(PLAYER_ENUM.BLACK, challengeElapsed, '正着全部完成');
+                // }
                 if (!ended && !challengeOver) setStatus(!deviated && branchResult && branchResult.matched ? '正着命中，继续挑战。' : '已脱离正着，后续由 4zero MCTS 接管。', !deviated && branchResult && branchResult.matched ? 'success' : 'warning');
             } catch (error) {
                 console.error('残局挑战白方回合失败。', error);

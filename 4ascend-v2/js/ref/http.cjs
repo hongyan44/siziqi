@@ -293,6 +293,39 @@ window.http_time_s = async () => {
     return rjson.result;
 };
 
+/**
+ * @description: 查询赛事签表
+ * @return {Promise<{data: string, creator: string, updated_at: number} | undefined>}
+ */
+window.http_contest_bracket_query = async () => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/contest/bracket_query`, {});
+    if (!rjson.status) return;
+    return rjson.result;
+};
+
+/**
+ * @description: 更新赛事签表（仅管理员）
+ * @param {string} token
+ * @param {string} data
+ * @return {Promise<boolean>}
+ */
+window.http_contest_bracket_update = async (token, data) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/contest/bracket_update`, { token, data });
+    return Boolean(rjson.status);
+};
+
+/**
+ * @description: 赛事报名（加入未满组，服务端校验）
+ * @param {string} token
+ * @param {string} node_id
+ * @param {string} name
+ * @return {Promise<boolean>}
+ */
+window.http_contest_bracket_register = async (token, node_id, name) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/contest/bracket_register`, { token, node_id, name });
+    return Boolean(rjson.status);
+};
+
 
 // 刷新凭证：主页/本地页/赛事页不自动弹窗或跳转，避免访问时反复提示登录
 (async () => {
