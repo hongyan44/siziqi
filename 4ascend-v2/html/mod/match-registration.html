@@ -108,13 +108,11 @@
             pointer-events: none;
         }
 
-        /* 缩放控件 */
+        /* 缩放控件：固定在外层右下角，不随画布滚动 */
         .zoom-controls {
-            position: sticky;
-            float: right;
-            bottom: 0.75rem;
-            right: 0.75rem;
-            margin-right: 0.75rem;
+            position: absolute;
+            right: 1.25rem;
+            bottom: 1.25rem;
             z-index: 10;
             display: flex;
             gap: 0.3rem;
@@ -244,11 +242,6 @@
             transition: border-color 0.2s ease, box-shadow 0.2s ease;
         }
 
-        .group-card.drag-over {
-            border-color: rgba(13, 110, 253, 0.8);
-            box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.12);
-        }
-
         .group-card-head {
             padding: 0.35rem 0.7rem;
             border-bottom: 1px solid rgba(13, 110, 253, 0.12);
@@ -305,6 +298,46 @@
             opacity: 1;
         }
 
+        /* 分组小分（BO 系列赛结果） */
+        .group-score {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.25rem 0.4rem;
+            border: 1px dashed rgba(13, 110, 253, 0.3);
+            border-radius: 0.4rem;
+            background: rgba(13, 110, 253, 0.04);
+            font-size: 0.78rem;
+        }
+
+        .group-score-name {
+            flex: 1 1 0;
+            min-width: 0;
+        }
+
+        .group-score-name.group-score-win {
+            font-weight: 700;
+            color: var(--sl-color-success-600);
+        }
+
+        .group-score-value {
+            flex: 0 0 auto;
+            font-weight: 700;
+            color: var(--sl-color-primary-700);
+            min-width: 1.1rem;
+            text-align: center;
+        }
+
+        .group-score-sep {
+            flex: 0 0 auto;
+            color: var(--sl-color-neutral-400);
+        }
+
+        .group-score sl-input {
+            flex: 0 0 auto;
+            width: 3.6rem;
+        }
+
         .admin-panel {
             border: 1px solid rgba(255, 193, 7, 0.35);
             background: rgba(255, 193, 7, 0.08);
@@ -328,6 +361,8 @@
                 customElements.whenDefined('sl-input'),
                 customElements.whenDefined('sl-badge'),
                 customElements.whenDefined('sl-dialog'),
+                customElements.whenDefined('sl-select'),
+                customElements.whenDefined('sl-option'),
             ]);
             if (document.readyState === 'loading') await new Promise((resolve) => document.addEventListener('DOMContentLoaded', resolve, { 'once': true }));
             await Promise.allSettled(icons.map((icon) => new Promise((resolve) => {
@@ -396,13 +431,15 @@
                         </div>
                         <sl-badge id='admin_badge' class='d-none' variant='warning' pill>管理员模式</sl-badge>
                     </div>
-                    <div id='bracket_canvas' class='bracket-canvas shadow-sm mt-2'>
-                        <div class='bracket-spacer'>
-                            <div id='bracket_world' class='bracket-world'>
-                                <svg id='bracket_edges' class='bracket-edges'></svg>
+                    <div class='bracket-wrap mt-2'>
+                        <div id='bracket_canvas' class='bracket-canvas shadow-sm'>
+                            <div class='bracket-spacer'>
+                                <div id='bracket_world' class='bracket-world'>
+                                    <svg id='bracket_edges' class='bracket-edges'></svg>
+                                </div>
                             </div>
+                            <div id='link_hint' class='link-hint d-none'>连接模式：点击目标方块完成连接，Esc 或点击空白处取消</div>
                         </div>
-                        <div id='link_hint' class='link-hint d-none'>连接模式：点击目标方块完成连接，Esc 或点击空白处取消</div>
                         <div class='zoom-controls'>
                             <sl-icon-button id='button_zoom_out' name='dash-lg' label='缩小'></sl-icon-button>
                             <sl-icon-button id='button_zoom_reset' name='aspect-ratio' label='重置缩放'></sl-icon-button>
@@ -449,6 +486,18 @@
                         <div class='col-6'><sl-input id='input_node_max_players' type='number' label='总人数上限' min='1' max='64' step='1'></sl-input></div>
                         <div class='col-6'><sl-input id='input_node_group_count' type='number' label='分为几组' min='1' max='32' step='1'></sl-input></div>
                     </div>
+                    <div class='row g-2'>
+                        <div class='col-6'>
+                            <sl-input id='input_node_bo' type='number' label='系列赛制（BO几）' min='1' max='15' step='2'
+                                help-text='默认 BO3；偶数自动进位为奇数'></sl-input>
+                        </div>
+                        <div class='col-6'>
+                            <sl-select id='select_node_rotate' label='先手轮换'>
+                                <sl-option value='off'>不轮换（随机）</sl-option>
+                                <sl-option value='first'>强制轮换</sl-option>
+                            </sl-select>
+                        </div>
+                    </div>
                     <sl-button id='button_save_node' class='w-100' variant='warning' outline>保存设置</sl-button>
                     <sl-button id='button_delete_node' class='d-none w-100' variant='danger' outline>
                         <sl-icon slot='prefix' name='trash'></sl-icon>删除方块
@@ -486,12 +535,23 @@
         // 世界边界可随方块拖动动态扩展
         let worldBounds = { w: WORLD_MIN.w, h: WORLD_MIN.h };
 
+        // 归一化 BO 局数（必须为奇数，默认 3）
+        const normalize_bo = (bo) => {
+            const value = Number(bo);
+            if (!Number.isFinite(value) || value < 1) return 3;
+            const count = Math.floor(value);
+            return count % 2 === 0 ? count + 1 : count;
+        };
+
         // 节点数据模型
-        // node = { id, name, maxPlayers, groupCount, players, groups, x, y, main }
+        // node = { id, name, maxPlayers, groupCount, players, groups, x, y, main, bo, rotate, results, player_uuids }
         // groups: 二维数组，每项是该组的玩家名列表
+        // bo: 系列赛局数（默认 3）；rotate: 'first' 强制先手轮换，否则 'off'
+        // results: { [组序号]: { bo, wins: {uuid: n}, games: [...], completed, winner_uuid, updated_at } }
+        // player_uuids: { 昵称: uuid }，报名时由服务端写入
         const defaultState = () => ({
             nodes: [
-                { id: 'node_main', name: '主赛事（第1次抽签）', maxPlayers: 16, groupCount: 8, players: [], groups: Array.from({ length: 8 }, () => []), x: 96, y: 400, main: true }
+                { id: 'node_main', name: '主赛事（第1次抽签）', maxPlayers: 16, groupCount: 8, players: [], groups: Array.from({ length: 8 }, () => []), x: 96, y: 400, main: true, bo: 3, rotate: 'off', results: {}, player_uuids: {} }
             ],
             edges: []
         });
@@ -505,6 +565,10 @@
                 node.players = Array.isArray(node.players) ? node.players : [];
                 node.x = typeof node.x === 'number' ? node.x : 96;
                 node.y = typeof node.y === 'number' ? node.y : 400;
+                node.bo = normalize_bo(node.bo);
+                node.rotate = node.rotate === 'first' ? 'first' : 'off';
+                node.results = node.results && typeof node.results === 'object' ? node.results : {};
+                node.player_uuids = node.player_uuids && typeof node.player_uuids === 'object' ? node.player_uuids : {};
                 if (!Array.isArray(node.groups) || node.groups.length !== node.groupCount) {
                     node.groups = Array.from({ length: node.groupCount }, () => []);
                     for (let i = 0; i < node.players.length; i++) {
@@ -560,7 +624,36 @@
             if (!isAdmin) return;
             const token = window.get_token();
             if (!token) return;
-            try { await window.http_contest_bracket_update(token, JSON.stringify(state)); } catch (_) {}
+            try {
+                // 写入前先合并服务端较新的小分与报名标识码，避免管理端整份覆盖对战写入
+                const remote = await window.http_contest_bracket_query();
+                if (remote && remote.data) {
+                    try { merge_remote_state(JSON.parse(remote.data)); } catch (_) {}
+                }
+                await window.http_contest_bracket_update(token, JSON.stringify(state));
+            } catch (_) {}
+        };
+
+        // 合并服务端签表：报名标识码以服务端为准；小分保留 updated_at 更新的一份
+        const merge_remote_state = (remote) => {
+            if (!remote || !Array.isArray(remote.nodes) || !Array.isArray(state.nodes)) return;
+            remote.nodes.forEach((rnode) => {
+                const lnode = state.nodes.find((item) => item.id === rnode.id);
+                if (!lnode) return;
+                if (rnode.player_uuids && typeof rnode.player_uuids === 'object') {
+                    lnode.player_uuids = Object.assign({}, lnode.player_uuids || {}, rnode.player_uuids);
+                }
+                const rres = rnode.results && typeof rnode.results === 'object' ? rnode.results : {};
+                const lres = lnode.results && typeof lnode.results === 'object' ? lnode.results : {};
+                Object.keys(rres).forEach((key) => {
+                    const remote_entry = rres[key];
+                    const local_entry = lres[key];
+                    const remote_ts = Number(remote_entry && remote_entry.updated_at) || 0;
+                    const local_ts = Number(local_entry && local_entry.updated_at) || 0;
+                    if (!local_entry || remote_ts > local_ts) lres[key] = remote_entry;
+                });
+                lnode.results = lres;
+            });
         };
 
         const canvas = document.getElementById('bracket_canvas');
@@ -578,6 +671,8 @@
         const nodeNameInput = document.getElementById('input_node_name');
         const nodeMaxInput = document.getElementById('input_node_max_players');
         const nodeGroupInput = document.getElementById('input_node_group_count');
+        const nodeBoInput = document.getElementById('input_node_bo');
+        const nodeRotateSelect = document.getElementById('select_node_rotate');
         const saveNodeButton = document.getElementById('button_save_node');
         const deleteNodeButton = document.getElementById('button_delete_node');
         const summaryPlayers = document.getElementById('summary_players');
@@ -705,6 +800,10 @@
                 players: [],
                 groups: Array.from({ length: 4 }, () => []),
                 drawn: false,
+                bo: 3,
+                rotate: 'off',
+                results: {},
+                player_uuids: {},
                 x: parent.x + 340,
                 y: Math.max(24, parent.y + fan * 170)
             });
@@ -791,6 +890,7 @@
                 el.innerHTML = `
                     <div class='bracket-node-head'>
                         <span class='bracket-node-name'>${node.name}</span>
+                        <sl-badge variant='neutral' pill>BO${normalize_bo(node.bo)}</sl-badge>
                         <sl-badge variant='${status.variant}' pill>${status.text}</sl-badge>
                         <span class='node-actions d-none'>
                             ${node.main ? '' : `<sl-icon-button class='node-delete' name='x-lg' label='删除方块'></sl-icon-button>`}
@@ -799,7 +899,7 @@
                         </span>
                     </div>
                     <div class='bracket-node-body'>
-                        <div class='bracket-node-count'>${node.groupCount} 组 · 已报名 ${node.players.length} / ${node.maxPlayers} 人</div>
+                        <div class='bracket-node-count'>${normalize_bo(node.bo)} 局制 · ${node.groupCount} 组 · 已报名 ${node.players.length} / ${node.maxPlayers} 人</div>
                         <div class='bracket-node-players'>${chips}${more}${empty}</div>
                     </div>
                 `;
@@ -882,19 +982,6 @@
             return true;
         };
 
-        // 移动玩家到指定组
-        const movePlayerToGroup = (node, name, toGroupIndex) => {
-            const fromGroup = node.groups.find((g) => g.includes(name));
-            if (!fromGroup) return false;
-            if (toGroupIndex < 0 || toGroupIndex >= node.groupCount) return false;
-            const toGroup = node.groups[toGroupIndex];
-            if (toGroup.includes(name)) return true; // 已在该组
-            if (toGroup.length >= 2) return false; // 目标组已满
-            fromGroup.splice(fromGroup.indexOf(name), 1);
-            toGroup.push(name);
-            return true;
-        };
-
         // 从方块中移除玩家
         const removePlayerFromNode = (node, name) => {
             node.players = node.players.filter((n) => n !== name);
@@ -912,6 +999,117 @@
 
         // 方块是否已完成抽签：报名满员即视为该方块抽签分组完成
         const isNodeDrawn = (node) => node.players.length >= node.maxPlayers;
+
+        // 取某组的小分数据（wins 按标识码累计，为权威分数）
+        const group_entry = (node, index) => {
+            const results = node.results && typeof node.results === 'object' ? node.results : {};
+            const entry = results[String(index)];
+            return entry && typeof entry === 'object' ? entry : {};
+        };
+
+        // 管理员改分：写回 wins 并重算完成态与胜者
+        const set_group_wins = (node, index, uuids, values) => {
+            if (!node.results || typeof node.results !== 'object') node.results = {};
+            const key = String(index);
+            const entry = group_entry(node, index);
+            const bo = normalize_bo(node.bo);
+            const target = Math.floor(bo / 2) + 1;
+
+            const wins = entry.wins && typeof entry.wins === 'object' ? Object.assign({}, entry.wins) : {};
+            uuids.forEach((uuid, i) => { wins[uuid] = Math.max(0, Math.floor(Number(values[i]) || 0)); });
+
+            const scores = uuids.map((uuid) => Number(wins[uuid]) || 0);
+            const max = scores.length ? Math.max(...scores) : 0;
+            const completed = max >= target;
+            let winner_uuid = '';
+            if (completed) {
+                let best = -1;
+                uuids.forEach((uuid, i) => { if (scores[i] > best) { best = scores[i]; winner_uuid = uuid; } });
+            }
+
+            node.results[key] = {
+                ...entry,
+                bo,
+                wins,
+                completed,
+                winner_uuid,
+                updated_at: Date.now()
+            };
+        };
+
+        // BO 变化后按新目标重算全部组的完成态
+        const recompute_results = (node) => {
+            const bo = normalize_bo(node.bo);
+            const target = Math.floor(bo / 2) + 1;
+            if (!node.results || typeof node.results !== 'object') return;
+            Object.keys(node.results).forEach((key) => {
+                const entry = node.results[key];
+                if (!entry || typeof entry !== 'object') return;
+                const wins = entry.wins && typeof entry.wins === 'object' ? entry.wins : {};
+                const uuids = Object.keys(wins);
+                const scores = uuids.map((uuid) => Number(wins[uuid]) || 0);
+                const max = scores.length ? Math.max(...scores) : 0;
+                const completed = max >= target;
+                let winner_uuid = '';
+                if (completed) {
+                    let best = -1;
+                    uuids.forEach((uuid, i) => { if (scores[i] > best) { best = scores[i]; winner_uuid = uuid; } });
+                }
+                entry.bo = bo;
+                entry.completed = completed;
+                entry.winner_uuid = winner_uuid;
+            });
+        };
+
+        // 渲染某组的小分（管理员可编辑）；非双人组或缺少标识码时返回 null
+        const group_score_row = (node, group, index) => {
+            if (group.length !== 2) return null;
+            const player_uuids = node.player_uuids && typeof node.player_uuids === 'object' ? node.player_uuids : {};
+            const name_a = group[0];
+            const name_b = group[1];
+            const uuid_a = player_uuids[name_a];
+            const uuid_b = player_uuids[name_b];
+            if (!uuid_a || !uuid_b) return null;
+
+            const bo = normalize_bo(node.bo);
+            const target = Math.floor(bo / 2) + 1;
+            const entry = group_entry(node, index);
+            const wins = entry.wins && typeof entry.wins === 'object' ? entry.wins : {};
+            const score_a = Number(wins[uuid_a]) || 0;
+            const score_b = Number(wins[uuid_b]) || 0;
+            const completed = score_a >= target || score_b >= target;
+            const winner_uuid = completed ? (score_a > score_b ? uuid_a : uuid_b) : '';
+
+            const row = document.createElement('div');
+            row.className = 'group-score';
+
+            if (isAdmin) {
+                row.innerHTML = `
+                    <span class='group-score-name text-truncate'>${name_a}</span>
+                    <sl-input class='group-score-input' type='number' min='0' max='${bo}' step='1' size='small' value='${score_a}'></sl-input>
+                    <span class='group-score-sep'>:</span>
+                    <sl-input class='group-score-input' type='number' min='0' max='${bo}' step='1' size='small' value='${score_b}'></sl-input>
+                    <span class='group-score-name text-truncate text-end'>${name_b}</span>
+                `;
+                const inputs = row.querySelectorAll('sl-input');
+                const apply = () => {
+                    set_group_wins(node, index, [uuid_a, uuid_b], [inputs[0].value, inputs[1].value]);
+                    saveState();
+                    renderDialog();
+                };
+                inputs.forEach((input) => input.addEventListener('sl-change', apply));
+            } else {
+                row.innerHTML = `
+                    <span class='group-score-name text-truncate ${winner_uuid === uuid_a ? 'group-score-win' : ''}'>${name_a}</span>
+                    <span class='group-score-value'>${score_a}</span>
+                    <span class='group-score-sep'>:</span>
+                    <span class='group-score-value'>${score_b}</span>
+                    <span class='group-score-name text-truncate text-end ${winner_uuid === uuid_b ? 'group-score-win' : ''}'>${name_b}</span>
+                `;
+            }
+
+            return row;
+        };
 
         const renderRegisterRow = (node) => {
             const full = isNodeDrawn(node);
@@ -964,22 +1162,31 @@
             dialog.label = node.name;
             dialogStatus.textContent = status.text;
             dialogStatus.variant = status.variant;
-            dialogListTitle.textContent = `分组名单（${node.groupCount} 组）`;
+            dialogListTitle.textContent = `分组名单（${node.groupCount} 组 · BO${normalize_bo(node.bo)}）`;
 
             dialogGroups.innerHTML = '';
             node.groups.forEach((group, index) => {
                 const card = document.createElement('div');
                 card.className = 'group-card';
                 card.dataset.groupIndex = index;
+
+                const entry = group_entry(node, index);
+                const bo = normalize_bo(node.bo);
+                const target = Math.floor(bo / 2) + 1;
+                const wins = entry.wins && typeof entry.wins === 'object' ? entry.wins : {};
+                const player_uuids = node.player_uuids && typeof node.player_uuids === 'object' ? node.player_uuids : {};
+                const scores = group.map((name) => Number(wins[player_uuids[name]]) || 0);
+                const completed = scores.some((score) => score >= target);
+                const result_text = completed ? '已完赛' : '进行中';
+
                 const head = document.createElement('div');
                 head.className = 'group-card-head';
-                head.innerHTML = `<span>第 ${index + 1} 组</span><span class='text-secondary small'>${group.length} 人</span>`;
+                head.innerHTML = `<span>第 ${index + 1} 组</span><span class='text-secondary small'>BO${bo} · ${group.length} 人${group.length === 2 ? ` · ${result_text}` : ''}</span>`;
                 const body = document.createElement('div');
                 body.className = 'group-card-body' + (group.length ? '' : ' empty');
                 group.forEach((name) => {
                     const row = document.createElement('div');
                     row.className = 'group-player';
-                    row.draggable = isAdmin;
                     row.dataset.playerName = name;
                     row.innerHTML = `<sl-icon name='person-fill' style='font-size:0.85rem;'></sl-icon><span class='text-truncate flex-grow-1'>${name}</span>`;
                     if (isAdmin) {
@@ -997,30 +1204,12 @@
                     }
                     body.appendChild(row);
                 });
+
+                // 小分展示（管理员可编辑）
+                const score_row = group_score_row(node, group, index);
+                if (score_row) body.appendChild(score_row);
+
                 card.append(head, body);
-
-                // 管理员拖放支持
-                if (isAdmin) {
-                    card.addEventListener('dragover', (e) => { e.preventDefault(); card.classList.add('drag-over'); });
-                    card.addEventListener('dragleave', () => card.classList.remove('drag-over'));
-                    card.addEventListener('drop', (e) => {
-                        e.preventDefault();
-                        card.classList.remove('drag-over');
-                        const name = e.dataTransfer.getData('text/plain');
-                        if (name && movePlayerToGroup(node, name, index)) {
-                            saveState();
-                            render();
-                            renderDialog();
-                        }
-                    });
-                    body.querySelectorAll('.group-player').forEach((row) => {
-                        row.addEventListener('dragstart', (e) => {
-                            e.dataTransfer.setData('text/plain', row.dataset.playerName);
-                            e.dataTransfer.effectAllowed = 'move';
-                        });
-                    });
-                }
-
                 dialogGroups.appendChild(card);
             });
 
@@ -1031,6 +1220,8 @@
                 nodeNameInput.value = node.name;
                 nodeMaxInput.value = node.maxPlayers;
                 nodeGroupInput.value = node.groupCount;
+                nodeBoInput.value = normalize_bo(node.bo);
+                nodeRotateSelect.value = node.rotate === 'first' ? 'first' : 'off';
                 deleteNodeButton.classList.toggle('d-none', Boolean(node.main));
             }
         };
@@ -1074,6 +1265,13 @@
             if (name) node.name = name;
             const newMax = Math.max(1, Math.min(64, Number(nodeMaxInput.value) || node.maxPlayers));
             const newCount = Math.max(1, Math.min(32, Number(nodeGroupInput.value) || node.groupCount));
+
+            // 系列赛制与先手轮换
+            const newBo = normalize_bo(Number(nodeBoInput.value) || node.bo);
+            const boChanged = newBo !== normalize_bo(node.bo);
+            node.bo = newBo;
+            node.rotate = nodeRotateSelect.value === 'first' ? 'first' : 'off';
+            if (boChanged) recompute_results(node);
 
             // 如果组数变了，重建 groups
             if (newCount !== node.groupCount) {

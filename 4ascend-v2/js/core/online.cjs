@@ -104,6 +104,8 @@ let gl_click_time, gl_click_level;
 let gl_game, gl_rand_aic, gl_rand_unity, gl_rand_other, gl_board, gl_state, gl_timer;
 let gl_cf_room, gl_cf_archive, gl_cf_health, gl_cf_initb, gl_cf_balance, gl_cf_mode, gl_cf_first, gl_cf_color, gl_cf_token, gl_cf_client;
 let gl_replay_uploaded = false;
+let gl_foe_uuid = '';
+let gl_end_hook = null;
 
 
 
@@ -956,6 +958,7 @@ const setup = (client, token, room, archive, health, initb, balance, mode, first
 const run = async () => {
     gl_replay_uploaded = false;
     gl_opponent_left = false;
+    gl_foe_uuid = '';
 
     // 清理
     game_clear();
@@ -1085,6 +1088,7 @@ const run = async () => {
     const foe_seed_other = result.seed_other;
 
     const foe_uuid = result.uuid;
+    gl_foe_uuid = foe_uuid;
     const foe_time = result.time;
     const foe_name = result.name;
     const foe_score = result.score;
@@ -1575,27 +1579,46 @@ const run = async () => {
     dialog_end.classList.remove('d-none');
     dialog_end.show();
 
-    // 仅在本地确认胜负后上传完整回放；双方都会上传，服务端负责幂等去重。
+    // 仅在本地确认胜负后上传完整回放；双方都会上传，服务端按 hash 幂等去重（返回同一回放 ID）。
+    let replay_id = 0;
     if (!gl_replay_uploaded && (gl_wins || gl_opponent_left) && gl_state.turn_count > 0 && typeof window.http_replay_update === 'function') {
         gl_replay_uploaded = true;
         const archive_data = BaseZalgo.decode(exportf());
-        window.http_replay_update(gl_cf_token, foe_uuid, archive_data, {
-            black_uuid: my_color === PLAYER_ENUM.BLACK ? my_uuid : foe_uuid,
-            white_uuid: my_color === PLAYER_ENUM.WHITE ? my_uuid : foe_uuid,
-            time: Math.floor(time / 1000),
-            duration: Math.max(0, Math.floor((await window.http_time_ms() - time) / 1000)),
-            mode: gl_cf_mode === 'blight' ? 1 : 0,
-            category: 'online',
-            first: first_index,
-            black_hp: state.hp[0],
-            white_hp: state.hp[1],
-            result: winner
-        }).then((replay_id) => {
-            if (replay_id) console.info('回放已保存:', replay_id);
-            else console.warn('回放保存失败：服务端未返回回放 ID');
-        }).catch((error) => {
+        try {
+            replay_id = Number(await window.http_replay_update(gl_cf_token, foe_uuid, archive_data, {
+                black_uuid: my_color === PLAYER_ENUM.BLACK ? my_uuid : foe_uuid,
+                white_uuid: my_color === PLAYER_ENUM.WHITE ? my_uuid : foe_uuid,
+                time: Math.floor(time / 1000),
+                duration: Math.max(0, Math.floor((await window.http_time_ms() - time) / 1000)),
+                mode: gl_cf_mode === 'blight' ? 1 : 0,
+                category: 'online',
+                first: first_index,
+                black_hp: state.hp[0],
+                white_hp: state.hp[1],
+                result: winner
+            })) || 0;
+        } catch (error) {
             console.error('回放上传失败:', error);
-        });
+        }
+        if (replay_id) console.info('回放已保存:', replay_id);
+        else console.warn('回放保存失败：服务端未返回回放 ID');
+    }
+
+    // 每局结局回调：供赛事 BO 小分上报使用（未正常分出胜负时 replay_id 为 0，调用方据此判定“未完成不记录”）
+    if (typeof gl_end_hook === 'function') {
+        try {
+            await gl_end_hook({
+                win: Boolean(gl_wins),
+                opponent_left: Boolean(gl_opponent_left),
+                winner,
+                replay_id,
+                my_uuid,
+                foe_uuid,
+                my_color,
+            });
+        } catch (error) {
+            console.error('赛事上报回调失败:', error);
+        }
     }
 };
 
@@ -1626,4 +1649,4 @@ const exportf = () => {
 
 
 if (!window.MainExports) window.MainExports = {};
-window.MainExports.Online = { setup, run, exportf };
+window.MainExports.Online = { setup, run, exportf, foe_uuid: () => gl_foe_uuid, on_end: (fn) => { gl_end_hook = typeof fn === 'function' ? fn : null; } };

@@ -326,6 +326,20 @@ window.http_contest_bracket_register = async (token, node_id, name) => {
     return Boolean(rjson.status);
 };
 
+/**
+ * @description: 上报一局赛事结果（服务端回放交叉校验后增量写回签表小分；未完成不记录）
+ * @param {string} token
+ * @param {string} node_id
+ * @param {number} group_index
+ * @param {number} replay_id
+ * @return {Promise<{games: object[], wins: object, completed: boolean, winner_uuid: string} | void>}
+ */
+window.http_contest_match_report = async (token, node_id, group_index, replay_id) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/contest/match_report`, { token, node_id, group_index, replay_id });
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
 
 // 刷新凭证：主页/本地页/赛事页不自动弹窗或跳转，避免访问时反复提示登录
 (async () => {
