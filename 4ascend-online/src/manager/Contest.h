@@ -24,6 +24,12 @@ struct RulesRecord {
     uint64_t updated_at;
 };
 
+struct SignupRecord {
+    std::string data;
+    std::string creator;
+    uint64_t updated_at;
+};
+
 void init() noexcept;
 void close() noexcept;
 
@@ -32,5 +38,8 @@ bool update_bracket(std::string_view data, std::string_view creator, uint64_t up
 
 bool query_rules(RulesRecord& result) noexcept;
 bool update_rules(std::string_view data, std::string_view creator, uint64_t updated_at) noexcept;
+
+bool query_signup(SignupRecord& result) noexcept;
+bool update_signup(std::string_view data, std::string_view creator, uint64_t updated_at) noexcept;
 } // namespace Contest
 } // namespace Manager

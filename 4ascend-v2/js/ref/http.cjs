@@ -361,6 +361,27 @@ window.http_contest_rules_update = async (token, data) => {
     return Boolean(rjson.status);
 };
 
+/**
+ * @description: 查询报名页文案
+ * @return {Promise<{data: string, creator: string, updated_at: number} | undefined>}
+ */
+window.http_contest_signup_query = async () => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/contest/signup_query`, {});
+    if (!rjson.status) return;
+    return rjson.result;
+};
+
+/**
+ * @description: 更新报名页文案（仅管理员，保存后全服可见）
+ * @param {string} token
+ * @param {string} data
+ * @return {Promise<boolean>}
+ */
+window.http_contest_signup_update = async (token, data) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/contest/signup_update`, { token, data });
+    return Boolean(rjson.status);
+};
+
 
 // 刷新凭证：主页/本地页/赛事页不自动弹窗或跳转，避免访问时反复提示登录
 (async () => {

@@ -173,9 +173,8 @@
 
         .bracket-node-head {
             display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 0.4rem;
+            flex-direction: column;
+            gap: 0.35rem;
             padding: 0.55rem 0.75rem;
             border-bottom: 1px solid rgba(13, 110, 253, 0.16);
         }
@@ -186,14 +185,21 @@
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            flex: 1 1 auto;
             min-width: 0;
+        }
+
+        .bracket-node-meta {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.35rem;
         }
 
         .node-actions {
             display: flex;
             gap: 0.15rem;
             flex: 0 0 auto;
+            margin-left: auto;
         }
 
         .node-actions sl-icon-button {
@@ -352,28 +358,9 @@
 
     <script>
         (async () => {
-            const icons = Array.from(document.querySelectorAll('sl-icon'));
-            const st = Date.now();
-            await Promise.allSettled([
-                customElements.whenDefined('sl-button'),
-                customElements.whenDefined('sl-icon'),
-                customElements.whenDefined('sl-icon-button'),
-                customElements.whenDefined('sl-input'),
-                customElements.whenDefined('sl-badge'),
-                customElements.whenDefined('sl-dialog'),
-                customElements.whenDefined('sl-select'),
-                customElements.whenDefined('sl-option'),
-            ]);
-            if (document.readyState === 'loading') await new Promise((resolve) => document.addEventListener('DOMContentLoaded', resolve, { 'once': true }));
-            await Promise.allSettled(icons.map((icon) => new Promise((resolve) => {
-                if (icon.hasAttribute('library')) resolve();
-                icon.addEventListener('sl-load', () => requestAnimationFrame(() => requestAnimationFrame(resolve)), { 'once': true });
-            })));
-            await new Promise((resolve) => {
-                if (document.readyState === 'complete') resolve();
-                else window.addEventListener('load', resolve, { 'once': true });
-            });
-            setTimeout(() => {
+            // 遮罩移除幂等，任何路径重复调用都安全
+            const hide_loading = () => {
+                if (window.loaded) return;
                 window.loaded = true;
                 const loader = document.getElementById('loading');
                 if (loader) {
@@ -381,7 +368,53 @@
                     loader.style.visibility = 'hidden';
                     setTimeout(() => loader.remove(), 400);
                 }
-            }, Math.max(0, 300 - (Date.now() - st)));
+            };
+
+            // 兜底：组件或资源加载异常时也必须移除遮罩，页面绝不能卡在初始化
+            setTimeout(hide_loading, 5000);
+
+            try {
+                const icons = Array.from(document.querySelectorAll('sl-icon'));
+                const st = Date.now();
+
+                // 只等待首屏静态存在的组件；动态创建的组件由自动加载器按需注册
+                await Promise.race([
+                    Promise.allSettled([
+                        customElements.whenDefined('sl-button'),
+                        customElements.whenDefined('sl-icon'),
+                        customElements.whenDefined('sl-icon-button'),
+                        customElements.whenDefined('sl-input'),
+                        customElements.whenDefined('sl-badge'),
+                        customElements.whenDefined('sl-dialog'),
+                        customElements.whenDefined('sl-select'),
+                        customElements.whenDefined('sl-option'),
+                    ]),
+                    new Promise((resolve) => setTimeout(resolve, 3000)),
+                ]);
+
+                if (document.readyState === 'loading') await new Promise((resolve) => document.addEventListener('DOMContentLoaded', resolve, { 'once': true }));
+
+                await Promise.race([
+                    Promise.allSettled(icons.map((icon) => new Promise((resolve) => {
+                        if (icon.hasAttribute('library')) resolve();
+                        icon.addEventListener('sl-load', () => requestAnimationFrame(() => requestAnimationFrame(resolve)), { 'once': true });
+                    }))),
+                    new Promise((resolve) => setTimeout(resolve, 3000)),
+                ]);
+
+                await Promise.race([
+                    new Promise((resolve) => {
+                        if (document.readyState === 'complete') resolve();
+                        else window.addEventListener('load', resolve, { 'once': true });
+                    }),
+                    new Promise((resolve) => setTimeout(resolve, 3000)),
+                ]);
+
+                const elapsed = Date.now() - st;
+                setTimeout(hide_loading, Math.max(0, 300 - elapsed));
+            } catch (_) {
+                hide_loading();
+            }
         })();
     </script>
 </head>
@@ -399,19 +432,19 @@
         <main class='container py-4 flex-grow-1 overflow-auto' style='max-width: 960px;'>
             <header class='text-center'>
                 <sl-icon name='diagram-3' style='font-size: 3.5rem; color: var(--sl-color-primary-600);'></sl-icon>
-                <h1 class='display-5 fw-bold mt-2 mb-1' style='letter-spacing: -1px;'>赛事报名和抽签</h1>
-                <p class='text-secondary'>点击方块报名 · 报名即自动随机入组 · 管理员可调整分组</p>
+                <h1 id='text_page_title' class='display-5 fw-bold mt-2 mb-1' style='letter-spacing: -1px;'>赛事报名和抽签</h1>
+                <p id='text_page_subtitle' class='text-secondary'>点击方块报名 · 报名即自动随机入组 · 管理员可调整分组</p>
             </header>
 
             <div class='d-flex flex-column gap-4 px-2'>
                 <section>
-                    <div class='category-title fw-bold'>赛事信息</div>
+                    <div id='text_event_section_title' class='category-title fw-bold'>赛事信息</div>
                     <div class='card shadow-sm'>
                         <div class='card-body p-3'>
                             <div class='d-flex align-items-start justify-content-between gap-3'>
                                 <div>
-                                    <div class='fw-bold'>红颜杯——国庆赛</div>
-                                    <div class='text-secondary small mt-1'>主赛事名额统计。分支方块的数据不计入此处。</div>
+                                    <div id='text_event_title' class='fw-bold'>红颜杯——国庆赛</div>
+                                    <div id='text_event_desc' class='text-secondary small mt-1'>主赛事名额统计。分支方块的数据不计入此处。</div>
                                 </div>
                                 <sl-badge id='summary_status' variant='success' pill>报名中</sl-badge>
                             </div>
@@ -426,10 +459,15 @@
                 <section>
                     <div class='d-flex align-items-center justify-content-between gap-2'>
                         <div>
-                            <div class='category-title fw-bold mb-0'>分组流程图</div>
-                            <div class='text-secondary small mt-1'>点击方块查看分组并报名；管理员可拖动方块、Ctrl+滚轮缩放</div>
+                            <div id='text_bracket_section_title' class='category-title fw-bold mb-0'>分组流程图</div>
+                            <div id='text_bracket_desc' class='text-secondary small mt-1'>点击方块查看分组并报名；管理员可拖动方块、Ctrl+滚轮缩放</div>
                         </div>
-                        <sl-badge id='admin_badge' class='d-none' variant='warning' pill>管理员模式</sl-badge>
+                        <div class='d-flex align-items-center gap-2'>
+                            <sl-button id='button_edit_texts' class='d-none' variant='warning' outline size='small'>
+                                <sl-icon slot='prefix' name='pencil-square'></sl-icon>编辑文字
+                            </sl-button>
+                            <sl-badge id='admin_badge' class='d-none' variant='warning' pill>管理员模式</sl-badge>
+                        </div>
                     </div>
                     <div class='bracket-wrap mt-2'>
                         <div id='bracket_canvas' class='bracket-canvas shadow-sm'>
@@ -451,7 +489,7 @@
         </main>
 
         <footer class='text-center text-muted py-2' style='font-size: 0.74rem;'>
-            <a href='/pages/mod/match.html' class='text-decoration-none text-secondary'>返回赛事大厅</a>
+            <a id='text_footer_back' href='/pages/mod/match.html' class='text-decoration-none text-secondary'>返回赛事大厅</a>
         </footer>
     </div>
 
@@ -467,7 +505,7 @@
             <div id='dialog_register_row' class='d-flex flex-column gap-2'>
                 <div class='d-flex flex-row align-items-end gap-2'>
                     <div class='flex-grow-1' style='min-width: 0;'>
-                        <div class='text-secondary small mb-1'>参赛账号（与登录账号绑定）</div>
+                        <div id='text_account_label' class='text-secondary small mb-1'>参赛账号（与登录账号绑定）</div>
                         <div id='register_account' class='border rounded px-3 py-2 bg-white text-truncate'>未登录</div>
                     </div>
                     <sl-button id='button_join' variant='primary'>报名入组</sl-button>
@@ -509,6 +547,90 @@
 
         <div slot='footer' class='gap-2'>
             <sl-button onclick='this.closest("sl-dialog").hide();' variant='neutral'>关闭</sl-button>
+        </div>
+    </sl-dialog>
+
+    <!-- 预热仅在编辑器中动态创建的组件，让自动加载器在首屏就完成注册 -->
+    <div class='d-none' aria-hidden='true'>
+        <sl-textarea></sl-textarea>
+    </div>
+
+    <sl-dialog id='dialog_edit_texts' label='编辑报名页文字' style='--width: 46rem;'>
+        <div class='d-flex flex-column gap-3'>
+            <div class='admin-panel p-3'>
+                <div class='d-flex align-items-center gap-2 mb-2'>
+                    <sl-icon name='window' class='text-warning'></sl-icon>
+                    <div class='fw-bold'>页面标题</div>
+                </div>
+                <div class='d-flex flex-column gap-2'>
+                    <sl-input id='edit_texts_header_title' label='主标题'></sl-input>
+                    <sl-input id='edit_texts_header_subtitle' label='副标题'></sl-input>
+                </div>
+            </div>
+
+            <div class='admin-panel p-3'>
+                <div class='d-flex align-items-center gap-2 mb-2'>
+                    <sl-icon name='info-circle' class='text-warning'></sl-icon>
+                    <div class='fw-bold'>赛事信息</div>
+                </div>
+                <div class='d-flex flex-column gap-2'>
+                    <sl-input id='edit_texts_event_section_title' label='板块标题'></sl-input>
+                    <sl-input id='edit_texts_event_title' label='赛事名称'></sl-input>
+                    <sl-textarea id='edit_texts_event_desc' rows='2' resize='auto' label='板块说明'></sl-textarea>
+                    <div class='row g-2'>
+                        <div class='col-6'><sl-input id='edit_texts_event_status_open' label='状态标签（报名中）'></sl-input></div>
+                        <div class='col-6'><sl-input id='edit_texts_event_status_full' label='状态标签（已满员）'></sl-input></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class='admin-panel p-3'>
+                <div class='d-flex align-items-center gap-2 mb-2'>
+                    <sl-icon name='diagram-3' class='text-warning'></sl-icon>
+                    <div class='fw-bold'>分组流程图</div>
+                </div>
+                <div class='d-flex flex-column gap-2'>
+                    <sl-input id='edit_texts_bracket_section_title' label='板块标题'></sl-input>
+                    <sl-textarea id='edit_texts_bracket_desc' rows='2' resize='auto' label='板块说明'></sl-textarea>
+                    <sl-input id='edit_texts_bracket_empty_hint' label='空位提示' help-text='方块内暂无选手时显示'></sl-input>
+                </div>
+            </div>
+
+            <div class='admin-panel p-3'>
+                <div class='d-flex align-items-center gap-2 mb-2'>
+                    <sl-icon name='person-plus' class='text-warning'></sl-icon>
+                    <div class='fw-bold'>报名弹窗</div>
+                </div>
+                <div class='d-flex flex-column gap-2'>
+                    <sl-input id='edit_texts_dialog_title' label='弹窗标题（默认）'></sl-input>
+                    <sl-input id='edit_texts_dialog_list_title' label='名单标题前缀' help-text='后方会自动拼接组数与 BO'></sl-input>
+                    <sl-input id='edit_texts_dialog_account_label' label='账号标签'></sl-input>
+                    <sl-input id='edit_texts_dialog_account_empty' label='未登录提示'></sl-input>
+                    <sl-input id='edit_texts_dialog_join_text' label='报名按钮文字'></sl-input>
+                    <sl-textarea id='edit_texts_dialog_hint' rows='2' resize='auto' label='默认报名说明'></sl-textarea>
+                    <sl-input id='edit_texts_dialog_hint_login' label='未登录说明'></sl-input>
+                    <sl-input id='edit_texts_dialog_hint_registered' label='已报名说明'></sl-input>
+                    <sl-input id='edit_texts_dialog_hint_parent' label='前置未报名说明' help-text='用 {name} 表示前置方块名'></sl-input>
+                    <sl-input id='edit_texts_dialog_hint_parent_wait' label='前置未满员说明' help-text='用 {name} 表示前置方块名'></sl-input>
+                    <sl-input id='edit_texts_dialog_hint_joining' label='报名中提示'></sl-input>
+                    <sl-input id='edit_texts_dialog_hint_failed' label='报名失败提示'></sl-input>
+                </div>
+            </div>
+
+            <div class='admin-panel p-3'>
+                <div class='d-flex align-items-center gap-2 mb-2'>
+                    <sl-icon name='link-45deg' class='text-warning'></sl-icon>
+                    <div class='fw-bold'>页脚</div>
+                </div>
+                <sl-input id='edit_texts_footer_back' label='返回链接文字'></sl-input>
+            </div>
+
+            <div class='text-secondary small'>提示：所有文字留空会回退为默认内容；保存后全服可见。</div>
+        </div>
+
+        <div slot='footer' class='gap-2'>
+            <sl-button id='button_edit_texts_cancel' variant='neutral'>取消</sl-button>
+            <sl-button id='button_edit_texts_save' variant='warning'>保存并发布</sl-button>
         </div>
     </sl-dialog>
 
@@ -679,6 +801,207 @@
         const summaryGroups = document.getElementById('summary_groups');
         const summaryStatus = document.getElementById('summary_status');
 
+        // ==================== 报名页文案（管理员可编辑，保存后全服可见） ====================
+        const TEXTS_KEY = 'match_signup_texts_v1';
+        const toast = new window.UiExports.ShToast();
+
+        const default_texts = () => ({
+            header: {
+                title: '赛事报名和抽签',
+                subtitle: '点击方块报名 · 报名即自动随机入组 · 管理员可调整分组'
+            },
+            event: {
+                section_title: '赛事信息',
+                title: '红颜杯——国庆赛',
+                desc: '主赛事名额统计。分支方块的数据不计入此处。',
+                status_open: '报名中',
+                status_full: '已满员'
+            },
+            bracket: {
+                section_title: '分组流程图',
+                desc: '点击方块查看分组并报名；管理员可拖动方块、Ctrl+滚轮缩放',
+                empty_hint: '虚位以待'
+            },
+            dialog: {
+                title: '方块详情',
+                list_title: '分组名单',
+                account_label: '参赛账号（与登录账号绑定）',
+                account_empty: '未登录',
+                join_text: '报名入组',
+                hint: '每个账号在整个赛事中仅可报名一次，报名后随机分配到未满的组。每组最多 2 人；若组数大于人数一半，则允许出现 1 人组。',
+                hint_login: '请先在主页登录账号，报名将与账号绑定。',
+                hint_registered: '您已报名该方块，每个账号仅可报名一次。',
+                hint_parent: '只有报名了前一个方块「{name}」的选手才能报名该方块。',
+                hint_parent_wait: '前一个方块「{name}」尚未满员抽签，暂不能报名该方块。',
+                hint_joining: '报名中…',
+                hint_failed: '报名失败，可能已报过名或该方块已满员，请刷新重试。'
+            },
+            footer: {
+                back_text: '返回赛事大厅'
+            }
+        });
+
+        // 规整文案：裁剪空白，留空字段回退默认值，避免脏数据渲染出空标题
+        const sanitize_texts = (input) => {
+            const src = input && typeof input === 'object' ? input : {};
+            const def = default_texts();
+            const pick = (group, key) => {
+                const raw = src[group] && typeof src[group] === 'object' ? src[group][key] : undefined;
+                const value = String(raw == null ? '' : raw).trim();
+                return value || def[group][key];
+            };
+            return {
+                header: { title: pick('header', 'title'), subtitle: pick('header', 'subtitle') },
+                event: {
+                    section_title: pick('event', 'section_title'),
+                    title: pick('event', 'title'),
+                    desc: pick('event', 'desc'),
+                    status_open: pick('event', 'status_open'),
+                    status_full: pick('event', 'status_full')
+                },
+                bracket: {
+                    section_title: pick('bracket', 'section_title'),
+                    desc: pick('bracket', 'desc'),
+                    empty_hint: pick('bracket', 'empty_hint')
+                },
+                dialog: {
+                    title: pick('dialog', 'title'),
+                    list_title: pick('dialog', 'list_title'),
+                    account_label: pick('dialog', 'account_label'),
+                    account_empty: pick('dialog', 'account_empty'),
+                    join_text: pick('dialog', 'join_text'),
+                    hint: pick('dialog', 'hint'),
+                    hint_login: pick('dialog', 'hint_login'),
+                    hint_registered: pick('dialog', 'hint_registered'),
+                    hint_parent: pick('dialog', 'hint_parent'),
+                    hint_parent_wait: pick('dialog', 'hint_parent_wait'),
+                    hint_joining: pick('dialog', 'hint_joining'),
+                    hint_failed: pick('dialog', 'hint_failed')
+                },
+                footer: { back_text: pick('footer', 'back_text') }
+            };
+        };
+
+        const escape_text = (value) => String(value == null ? '' : value).replace(/[&<>"']/g, (c) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        })[c]);
+
+        // {name} 占位替换，兼容旧浏览器不用 replaceAll
+        const fill_name = (template, name) => String(template).split('{name}').join(name);
+
+        let texts = default_texts();
+
+        const apply_texts = () => {
+            document.getElementById('text_page_title').textContent = texts.header.title;
+            document.getElementById('text_page_subtitle').textContent = texts.header.subtitle;
+            document.getElementById('text_event_section_title').textContent = texts.event.section_title;
+            document.getElementById('text_event_title').textContent = texts.event.title;
+            document.getElementById('text_event_desc').textContent = texts.event.desc;
+            document.getElementById('text_bracket_section_title').textContent = texts.bracket.section_title;
+            document.getElementById('text_bracket_desc').textContent = texts.bracket.desc;
+            document.getElementById('text_account_label').textContent = texts.dialog.account_label;
+            document.getElementById('text_footer_back').textContent = texts.footer.back_text;
+            joinButton.textContent = texts.dialog.join_text;
+            dialog.label = texts.dialog.title;
+        };
+
+        const load_texts_cache = () => {
+            try {
+                const saved = localStorage.getItem(TEXTS_KEY);
+                if (!saved) return;
+                texts = sanitize_texts(JSON.parse(saved));
+            } catch (_) {}
+        };
+
+        const sync_texts_from_remote = async () => {
+            try {
+                const remote = await window.http_contest_signup_query();
+                if (!remote || !remote.data) return;
+                const remoteTs = Number(remote.updated_at) || 0;
+                const localTs = Number(localStorage.getItem(TEXTS_KEY + '_ts') || 0);
+                if (remoteTs <= localTs && localStorage.getItem(TEXTS_KEY)) return;
+                texts = sanitize_texts(JSON.parse(remote.data));
+                localStorage.setItem(TEXTS_KEY, JSON.stringify(texts));
+                localStorage.setItem(TEXTS_KEY + '_ts', String(remoteTs));
+                apply_texts();
+                render();
+            } catch (_) {}
+        };
+
+        // 编辑器字段映射：DOM id -> 文案路径
+        const TEXT_FIELDS = [
+            ['edit_texts_header_title', 'header', 'title'],
+            ['edit_texts_header_subtitle', 'header', 'subtitle'],
+            ['edit_texts_event_section_title', 'event', 'section_title'],
+            ['edit_texts_event_title', 'event', 'title'],
+            ['edit_texts_event_desc', 'event', 'desc'],
+            ['edit_texts_event_status_open', 'event', 'status_open'],
+            ['edit_texts_event_status_full', 'event', 'status_full'],
+            ['edit_texts_bracket_section_title', 'bracket', 'section_title'],
+            ['edit_texts_bracket_desc', 'bracket', 'desc'],
+            ['edit_texts_bracket_empty_hint', 'bracket', 'empty_hint'],
+            ['edit_texts_dialog_title', 'dialog', 'title'],
+            ['edit_texts_dialog_list_title', 'dialog', 'list_title'],
+            ['edit_texts_dialog_account_label', 'dialog', 'account_label'],
+            ['edit_texts_dialog_account_empty', 'dialog', 'account_empty'],
+            ['edit_texts_dialog_join_text', 'dialog', 'join_text'],
+            ['edit_texts_dialog_hint', 'dialog', 'hint'],
+            ['edit_texts_dialog_hint_login', 'dialog', 'hint_login'],
+            ['edit_texts_dialog_hint_registered', 'dialog', 'hint_registered'],
+            ['edit_texts_dialog_hint_parent', 'dialog', 'hint_parent'],
+            ['edit_texts_dialog_hint_parent_wait', 'dialog', 'hint_parent_wait'],
+            ['edit_texts_dialog_hint_joining', 'dialog', 'hint_joining'],
+            ['edit_texts_dialog_hint_failed', 'dialog', 'hint_failed'],
+            ['edit_texts_footer_back', 'footer', 'back_text']
+        ];
+
+        const editTextsButton = document.getElementById('button_edit_texts');
+        const editTextsDialog = document.getElementById('dialog_edit_texts');
+        const editTextsSaveButton = document.getElementById('button_edit_texts_save');
+        const editTextsCancelButton = document.getElementById('button_edit_texts_cancel');
+
+        let textsDraft = null;
+
+        // 只绑定一次输入监听，草稿为空时忽略
+        TEXT_FIELDS.forEach(([id, group, key]) => {
+            const input = document.getElementById(id);
+            input.addEventListener('sl-input', () => {
+                if (textsDraft) textsDraft[group][key] = input.value;
+            });
+        });
+
+        const open_texts_editor = () => {
+            if (!isAdmin) return;
+            if (typeof editTextsDialog.show !== 'function') { toast.error('编辑器组件未就绪，请刷新页面后重试。'); return; }
+            textsDraft = JSON.parse(JSON.stringify(texts));
+            TEXT_FIELDS.forEach(([id, group, key]) => { document.getElementById(id).value = textsDraft[group][key]; });
+            editTextsDialog.show();
+        };
+
+        editTextsButton.addEventListener('click', open_texts_editor);
+        editTextsCancelButton.addEventListener('click', () => editTextsDialog.hide());
+
+        editTextsSaveButton.addEventListener('click', async () => {
+            if (!isAdmin) return;
+            const token = window.get_token();
+            if (!token) { toast.error('请先登录管理员账号。'); return; }
+
+            const data = JSON.stringify(sanitize_texts(textsDraft));
+            editTextsSaveButton.disabled = true;
+            const ok = await window.http_contest_signup_update(token, data);
+            editTextsSaveButton.disabled = false;
+            if (!ok) { toast.error('保存失败，请确认管理员权限后重试。'); return; }
+
+            texts = JSON.parse(data);
+            localStorage.setItem(TEXTS_KEY, data);
+            localStorage.setItem(TEXTS_KEY + '_ts', String(Date.now()));
+            apply_texts();
+            render();
+            if (dialog.open) renderDialog();
+            editTextsDialog.hide();
+            toast.success('文字已保存，全服可见');
+        });
+
         let activeNodeId = null;
         let zoom = 1;
         let linkingSourceId = null;
@@ -705,8 +1028,8 @@
         const mainNode = () => state.nodes.find((node) => node.main) || state.nodes[0];
 
         const nodeStatus = (node) => {
-            if (isNodeDrawn(node)) return { text: '已满员', variant: 'danger' };
-            return { text: '报名中', variant: 'success' };
+            if (isNodeDrawn(node)) return { text: texts.event.status_full, variant: 'danger' };
+            return { text: texts.event.status_open, variant: 'success' };
         };
 
         const updateWorldBounds = () => {
@@ -764,7 +1087,7 @@
             const filledGroups = m.groups.filter((g) => g.length > 0).length;
             summaryPlayers.textContent = `${total} / ${m.maxPlayers} 人`;
             summaryGroups.textContent = `${filledGroups} / ${m.groupCount} 组`;
-            summaryStatus.textContent = total >= m.maxPlayers ? '已满员' : '报名中';
+            summaryStatus.textContent = total >= m.maxPlayers ? texts.event.status_full : texts.event.status_open;
             summaryStatus.variant = total >= m.maxPlayers ? 'danger' : 'success';
         };
 
@@ -885,18 +1208,20 @@
                 }).join('');
                 const more = node.players.length > 6
                     ? `<span class='bracket-node-chip more'>+${node.players.length - 6}</span>` : '';
-                const empty = node.players.length ? '' : `<span class='bracket-node-chip more'>虚位以待</span>`;
+                const empty = node.players.length ? '' : `<span class='bracket-node-chip more'>${escape_text(texts.bracket.empty_hint)}</span>`;
 
                 el.innerHTML = `
                     <div class='bracket-node-head'>
                         <span class='bracket-node-name'>${node.name}</span>
-                        <sl-badge variant='neutral' pill>BO${normalize_bo(node.bo)}</sl-badge>
-                        <sl-badge variant='${status.variant}' pill>${status.text}</sl-badge>
-                        <span class='node-actions d-none'>
-                            ${node.main ? '' : `<sl-icon-button class='node-delete' name='x-lg' label='删除方块'></sl-icon-button>`}
-                            <sl-icon-button class='node-link' name='link-45deg' label='连接方块'></sl-icon-button>
-                            <sl-icon-button class='node-add' name='plus-lg' label='添加分支方块'></sl-icon-button>
-                        </span>
+                        <div class='bracket-node-meta'>
+                            <sl-badge variant='neutral' pill>BO${normalize_bo(node.bo)}</sl-badge>
+                            <sl-badge variant='${status.variant}' pill>${status.text}</sl-badge>
+                            <span class='node-actions d-none'>
+                                ${node.main ? '' : `<sl-icon-button class='node-delete' name='x-lg' label='删除方块'></sl-icon-button>`}
+                                <sl-icon-button class='node-link' name='link-45deg' label='连接方块'></sl-icon-button>
+                                <sl-icon-button class='node-add' name='plus-lg' label='添加分支方块'></sl-icon-button>
+                            </span>
+                        </div>
                     </div>
                     <div class='bracket-node-body'>
                         <div class='bracket-node-count'>${normalize_bo(node.bo)} 局制 · ${node.groupCount} 组 · 已报名 ${node.players.length} / ${node.maxPlayers} 人</div>
@@ -1120,17 +1445,17 @@
             dialogRegisterRow.classList.remove('d-none');
 
             const accountName = userInfo && userInfo.name ? userInfo.name : null;
-            registerAccount.textContent = accountName || '未登录';
+            registerAccount.textContent = accountName || texts.dialog.account_empty;
 
             if (!accountName) {
                 joinButton.disabled = true;
-                registerHint.textContent = '请先在主页登录账号，报名将与账号绑定。';
+                registerHint.textContent = texts.dialog.hint_login;
                 return;
             }
 
             if (node.players.includes(accountName)) {
                 joinButton.disabled = true;
-                registerHint.textContent = '您已报名该方块，每个账号仅可报名一次。';
+                registerHint.textContent = texts.dialog.hint_registered;
                 return;
             }
 
@@ -1140,18 +1465,18 @@
                 const entered = parents.filter((p) => p.players.includes(accountName));
                 if (!entered.length) {
                     joinButton.disabled = true;
-                    registerHint.textContent = `只有报名了前一个方块「${parents.map((p) => p.name).join('、')}」的选手才能报名该方块。`;
+                    registerHint.textContent = fill_name(texts.dialog.hint_parent, parents.map((p) => p.name).join('、'));
                     return;
                 }
                 if (!entered.some((p) => isNodeDrawn(p))) {
                     joinButton.disabled = true;
-                    registerHint.textContent = `前一个方块「${entered.map((p) => p.name).join('、')}」尚未满员抽签，暂不能报名该方块。`;
+                    registerHint.textContent = fill_name(texts.dialog.hint_parent_wait, entered.map((p) => p.name).join('、'));
                     return;
                 }
             }
 
             joinButton.disabled = false;
-            registerHint.textContent = '每个账号在每个方块仅可报名一次，报名后随机分配到未满的组。每组最多 2 人；若组数大于人数一半，则允许出现 1 人组。';
+            registerHint.textContent = texts.dialog.hint;
         };
 
         const renderDialog = () => {
@@ -1162,7 +1487,7 @@
             dialog.label = node.name;
             dialogStatus.textContent = status.text;
             dialogStatus.variant = status.variant;
-            dialogListTitle.textContent = `分组名单（${node.groupCount} 组 · BO${normalize_bo(node.bo)}）`;
+            dialogListTitle.textContent = `${texts.dialog.list_title}（${node.groupCount} 组 · BO${normalize_bo(node.bo)}）`;
 
             dialogGroups.innerHTML = '';
             node.groups.forEach((group, index) => {
@@ -1247,10 +1572,10 @@
             const token = window.get_token();
             if (!token) return;
             joinButton.disabled = true;
-            registerHint.textContent = '报名中…';
+            registerHint.textContent = texts.dialog.hint_joining;
             const ok = await window.http_contest_bracket_register(token, node.id, name);
             if (!ok) {
-                registerHint.textContent = '报名失败，可能已报过名或该方块已满员，请刷新重试。';
+                registerHint.textContent = texts.dialog.hint_failed;
                 joinButton.disabled = false;
                 return;
             }
@@ -1310,19 +1635,27 @@
 
         const apply_admin_ui = () => {
             document.getElementById('admin_badge').classList.toggle('d-none', !isAdmin);
+            document.getElementById('button_edit_texts').classList.toggle('d-none', !isAdmin);
             renderNodes();
             if (dialog.open) renderDialog();
         };
 
         window.addEventListener('load', async () => {
+            load_texts_cache();
+            apply_texts();
             render();
             applyZoom();
             await syncFromRemote();
+            sync_texts_from_remote();
             await verify_admin();
             apply_admin_ui();
 
             // 轮询服务器，普通用户也能看到管理员的改动
-            setInterval(() => { if (!document.hidden) syncFromRemote(); }, 5000);
+            setInterval(() => {
+                if (document.hidden) return;
+                syncFromRemote();
+                if (!editTextsDialog.open) sync_texts_from_remote();
+            }, 5000);
         });
     </script>
 </body>
