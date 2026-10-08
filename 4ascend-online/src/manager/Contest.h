@@ -18,10 +18,19 @@ struct BracketRecord {
     uint64_t updated_at;
 };
 
+struct RulesRecord {
+    std::string data;
+    std::string creator;
+    uint64_t updated_at;
+};
+
 void init() noexcept;
 void close() noexcept;
 
 bool query_bracket(BracketRecord& result) noexcept;
 bool update_bracket(std::string_view data, std::string_view creator, uint64_t updated_at) noexcept;
+
+bool query_rules(RulesRecord& result) noexcept;
+bool update_rules(std::string_view data, std::string_view creator, uint64_t updated_at) noexcept;
 } // namespace Contest
 } // namespace Manager
