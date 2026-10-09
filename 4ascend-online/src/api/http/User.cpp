@@ -28,42 +28,95 @@
 namespace Api {
 namespace Http {
 namespace User {
-// 用户注册
+namespace {
+// 手机号：11 位、以 1 开头、第二位 3-9
+bool is_phone(std::string_view value) noexcept {
+    if (value.size() != 11 || value[0] != '1' || value[1] < '3' || value[1] > '9') return false;
+    for (const char c : value) {
+        if (c < '0' || c > '9') return false;
+    }
+    return true;
+}
+
+// 邮箱：本地部分与域名部分非空，域名含点且顶级域非空
+bool is_mail(std::string_view value) noexcept {
+    const auto at = value.find('@');
+    if (at == std::string_view::npos || at == 0 || at + 1 >= value.size()) return false;
+    const auto dot = value.rfind('.');
+    if (dot == std::string_view::npos || dot <= at + 1 || dot + 1 >= value.size()) return false;
+    return true;
+}
+
+// 账号：字母开头，4-16 位字母/数字/下划线
+bool is_account(std::string_view value) noexcept {
+    if (value.size() < 4 || value.size() > 16) return false;
+    const char first = value[0];
+    if (!((first >= 'A' && first <= 'Z') || (first >= 'a' && first <= 'z'))) return false;
+    for (const char c : value) {
+        const bool allowed = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_';
+        if (!allowed) return false;
+    }
+    return true;
+}
+
+// 密码：6-64 位
+bool is_pass(std::string_view value) noexcept {
+    return value.size() >= 6 && value.size() <= 64;
+}
+} // namespace
+
+// 用户注册（邮箱或手机号 + 验证码 + 账号 + 密码，注册后不自动登录）
 void user_register(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
     auto body = api_body(request.get_body());
     if (!body) return;
     auto rjson = body.value();
 
-    auto mail = rjson["mail"].as<std::string>();
-    auto code = rjson["code"].as<std::string>();
+    auto ident   = rjson["ident"].as<std::string>();
+    auto code    = rjson["code"].as<std::string>();
+    auto account = rjson["account"].as<std::string>();
+    auto pass    = rjson["pass"].as<std::string>();
 
-    if (Manager::User::exist_mail(mail) || !Manager::Sms::verify_sms(mail, code)) return api_http_error("user_register", response); // cp
+    // 标识必须是邮箱或手机号，账号与密码需符合规则，且验证码有效（验证码校验放最后，避免无谓消耗）
+    if ((!is_mail(ident) && !is_phone(ident)) || !is_account(account) || !is_pass(pass) || Manager::User::exist_ident(ident)
+        || Manager::User::exist_account(account) || !Manager::Sms::verify_sms(ident, code))
+        return api_http_error("user_register", response); // cp
 
     auto uuid = Libs::Only::Random::uuid_v7();
 
-    std::string token;
-    Manager::Token::uuid2token(uuid, token);
-    Manager::User::create_user(mail, uuid, Libs::Only::Time::timestamp_ms(), "无名氏", "");
+    std::string mail  = is_mail(ident) ? ident : std::string();
+    std::string phone = is_phone(ident) ? ident : std::string();
+    if (!Manager::User::create_user(mail, phone, account, pass, uuid, Libs::Only::Time::timestamp_ms(), "无名氏", ""))
+        return api_http_error("user_register", response); // cp
     Manager::Ranked::insert_score(uuid, 0);
 
     std::string buffer;
-    api_end("user_register", true, jsoncons::byte_string(reinterpret_cast<unsigned char*>(token.data()), token.size()), buffer);
+    api_end("user_register", true, jsoncons::json::null(), buffer);
     response.set_status_and_content(cinatra::status_type::ok, buffer);
 };
 
-// 用户登录
+// 用户登录（标识为 账号/手机号/邮箱；密码与验证码二选一）
 void user_login(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
     auto body = api_body(request.get_body());
     if (!body) return;
     auto rjson = body.value();
 
-    auto mail = rjson["mail"].as<std::string>();
-    auto code = rjson["code"].as<std::string>();
+    auto ident = rjson["ident"].as<std::string>();
+    auto pass  = rjson["pass"].as<std::string>();
+    auto code  = rjson["code"].as<std::string>();
 
-    if (!Manager::User::exist_mail(mail) || !Manager::Sms::verify_sms(mail, code)) return api_http_error("user_login", response); // cp
+    std::string uuid;
+    if (!Manager::User::ident2uuid(ident, uuid)) return api_http_error("user_login", response); // cp
 
-    std::string token, uuid;
-    Manager::User::mail2uuid(mail, uuid);
+    bool passed = false;
+    if (!pass.empty()) {
+        passed = Manager::User::check_pass(uuid, pass);
+    } else if (!code.empty() && (is_mail(ident) || is_phone(ident))) {
+        // 验证码只能发往邮箱或手机号，账号名不支持验证码登录
+        passed = Manager::Sms::verify_sms(ident, code);
+    }
+    if (!passed) return api_http_error("user_login", response); // cp
+
+    std::string token;
     Manager::Token::uuid2token(uuid, token);
 
     std::string buffer;
@@ -72,32 +125,39 @@ void user_login(cinatra::coro_http_request& request, cinatra::coro_http_response
     response.set_status_and_content(cinatra::status_type::ok, buffer);
 };
 
-// 发送验证码
+// 发送验证码（邮箱真实发送；手机号为占位，使用固定验证码且不实际发送）
 async_simple::coro::Lazy<void> user_sms(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
     auto body = api_body(request.get_body());
     if (!body) co_return;
     auto rjson = body.value();
 
-    auto mail = rjson["mail"].as<std::string>();
-    auto time = Libs::Only::Time::timestamp_ms();
+    auto ident = rjson["ident"].as<std::string>();
+    auto time  = Libs::Only::Time::timestamp_ms();
 
     std::string code;
-    if (!Manager::Sms::create_sms(mail, time, code) || !(co_await Manager::Sms::send_sms(mail, code, request.get_conn()->get_executor())))
+    if (is_phone(ident)) {
+        if (!Manager::Sms::create_sms(ident, time, code, PHONE_SMS_DEV_CODE)) co_return api_http_error("user_sms", response); // cp
+    } else if (is_mail(ident)) {
+        if (!Manager::Sms::create_sms(ident, time, code)
+            || !(co_await Manager::Sms::send_sms(ident, code, request.get_conn()->get_executor())))
+            co_return api_http_error("user_sms", response); // cp
+    } else {
         co_return api_http_error("user_sms", response); // cp
+    }
 
     std::string buffer;
     api_end("user_sms", true, jsoncons::json::null(), buffer);
     response.set_status_and_content(cinatra::status_type::ok, buffer);
 };
 
-// 邮箱是否注册
+// 标识（邮箱或手机号）是否已注册
 void user_exist(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
     auto body = api_body(request.get_body());
     if (!body) return;
     auto rjson = body.value();
 
-    auto mail   = rjson["mail"].as<std::string>();
-    auto status = Manager::User::exist_mail(mail);
+    auto ident  = rjson["ident"].as<std::string>();
+    auto status = Manager::User::exist_ident(ident);
 
     std::string buffer;
     api_end("user_exist", status, jsoncons::json::null(), buffer);
@@ -134,9 +194,9 @@ void user_info(cinatra::coro_http_request& request, cinatra::coro_http_response&
 
     int64_t time;
     int64_t score;
-    std::string uuid, name, avatar, mail;
+    std::string uuid, name, avatar, mail, account, phone;
     if (!Manager::Token::token2uuid(token, uuid) || !Manager::User::info_user(uuid, name, avatar, mail, time)
-        || !Manager::Ranked::get_score(uuid, score))
+        || !Manager::User::account_user(uuid, account, phone) || !Manager::Ranked::get_score(uuid, score))
         return api_http_error("user_info", response); // cp
 
     std::string buffer;
@@ -145,6 +205,8 @@ void user_info(cinatra::coro_http_request& request, cinatra::coro_http_response&
     info["avatar"]      = avatar;
     info["time"]        = time;
     info["mail"]        = mail;
+    info["account"]     = account;
+    info["phone"]       = phone;
     info["uuid"]        = uuid;
     int level = 1;
     if (!Manager::User::get_level(uuid, level)) return api_http_error("user_info", response);
@@ -216,6 +278,37 @@ void user_update(cinatra::coro_http_request& request, cinatra::coro_http_respons
     response.set_status_and_content(cinatra::status_type::ok, buffer);
 };
 
+// 设置/修改登录密码（需验证码校验，验证码发往已绑定的邮箱或手机号；设置后即可账密登录）
+void user_set_pass(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
+    auto body = api_body(request.get_body());
+    if (!body) return;
+    auto rjson = body.value();
+
+    auto bin = rjson["token"].as<jsoncons::byte_string_view>();
+    std::string token(bin.begin(), bin.end());
+    auto code = rjson["code"].as<std::string>();
+    auto pass = rjson["pass"].as<std::string>();
+
+    std::string uuid;
+    if (!Manager::Token::token2uuid(token, uuid) || !Manager::User::exist_user(uuid) || !is_pass(pass))
+        return api_http_error("user_set_pass", response); // cp
+
+    std::string name, avatar, mail, account, phone;
+    int64_t time = 0;
+    if (!Manager::User::info_user(uuid, name, avatar, mail, time) || !Manager::User::account_user(uuid, account, phone))
+        return api_http_error("user_set_pass", response); // cp
+
+    // 验证码只能发往已绑定的邮箱或手机号，优先使用邮箱；账号名不支持接收验证码
+    const std::string ident = !mail.empty() ? mail : phone;
+    if (ident.empty() || !Manager::Sms::verify_sms(ident, code)) return api_http_error("user_set_pass", response); // cp
+
+    if (!Manager::User::update_pass(uuid, pass)) return api_http_error("user_set_pass", response); // cp
+
+    std::string buffer;
+    api_end("user_set_pass", true, jsoncons::json::null(), buffer);
+    response.set_status_and_content(cinatra::status_type::ok, buffer);
+};
+
 
 // 生成一次性权限秘钥
 void generate_level_key(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
@@ -271,6 +364,7 @@ void load(cinatra::coro_http_server& server) noexcept {
     server.set_http_handler<cinatra::POST>("/user/rtoken", user_rtoken);
     server.set_http_handler<cinatra::POST>("/user/info", user_info);
     server.set_http_handler<cinatra::POST>("/user/update", user_update);
+    server.set_http_handler<cinatra::POST>("/user/set_pass", user_set_pass);
     server.set_http_handler<cinatra::POST>("/user/unlock_level", user_unlock_level);
     server.set_http_handler<cinatra::GET>("/admin/generate_level_key", generate_level_key);
 };

@@ -20,14 +20,19 @@ void close() noexcept;
 
 // 所有用户
 bool all_user(std::vector<std::string>& uuids) noexcept;
-// 创建用户
-bool create_user(std::string_view mail, std::string_view uuid, int64_t time, std::string_view name, std::string_view avatar) noexcept;
+// 创建用户（mail 与 phone 至少一个非空；account/pass 用于账密登录）
+bool create_user(
+    std::string_view mail, std::string_view phone, std::string_view account, std::string_view pass, std::string_view uuid, int64_t time,
+    std::string_view name, std::string_view avatar
+) noexcept;
 // 删除用户
 bool delete_user(std::string_view uuid) noexcept;
 // 更新用户信息
 bool update_user(std::string_view uuid, std::string_view name, std::string_view avatar) noexcept;
 // 查询用户信息
 bool info_user(std::string_view uuid, std::string& name, std::string& avatar, std::string& mail, int64_t& time) noexcept;
+// 查询账号与手机号
+bool account_user(std::string_view uuid, std::string& account, std::string& phone) noexcept;
 // 查询用户权限等级
 bool get_level(std::string_view uuid, int& level) noexcept;
 // 使用秘钥解锁权限等级（只允许升级）
@@ -39,10 +44,16 @@ bool name_user(std::string_view uuid, std::string& name) noexcept;
 
 // 是否存在标识
 bool exist_user(std::string_view uuid) noexcept;
-// 是否存在邮箱
-bool exist_mail(std::string_view mail) noexcept;
+// 是否存在邮箱或手机号（注册标识）
+bool exist_ident(std::string_view ident) noexcept;
+// 是否存在账号
+bool exist_account(std::string_view account) noexcept;
 
-// 邮箱得到标识
-bool mail2uuid(std::string_view mail, std::string& uuid) noexcept;
+// 标识（邮箱/手机号/账号）得到标识
+bool ident2uuid(std::string_view ident, std::string& uuid) noexcept;
+// 校验密码
+bool check_pass(std::string_view uuid, std::string_view password) noexcept;
+// 更新登录密码
+bool update_pass(std::string_view uuid, std::string_view pass) noexcept;
 } // namespace User
 } // namespace Manager

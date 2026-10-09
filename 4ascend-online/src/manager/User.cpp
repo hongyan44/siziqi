@@ -10,6 +10,7 @@
 #include "../libs/digest/Hmac.h"
 #include "../libs/only/Flie.h"
 #include "../libs/only/Random.h"
+#include "../libs/security/Bytes.h"
 
 #include <sqlite/sqlite3.h>
 
@@ -29,9 +30,13 @@ sqlite3_stmt* p_update_user = nullptr;
 sqlite3_stmt* p_delete_user = nullptr;
 sqlite3_stmt* p_exist_user  = nullptr;
 
-sqlite3_stmt* p_exist_mail = nullptr;
-sqlite3_stmt* p_info_user  = nullptr;
-sqlite3_stmt* p_mail_uuid  = nullptr;
+sqlite3_stmt* p_exist_ident   = nullptr;
+sqlite3_stmt* p_exist_account = nullptr;
+sqlite3_stmt* p_ident_uuid    = nullptr;
+sqlite3_stmt* p_info_user     = nullptr;
+sqlite3_stmt* p_account_user  = nullptr;
+sqlite3_stmt* p_pass_user     = nullptr;
+sqlite3_stmt* p_update_pass   = nullptr;
 sqlite3_stmt* p_get_level         = nullptr;
 sqlite3_stmt* p_consume_level_key = nullptr;
 
@@ -45,10 +50,7 @@ void reset(sqlite3_stmt* statement) noexcept {
     sqlite3_clear_bindings(statement);
 }
 
-std::string secret_digest(std::string_view secret) noexcept {
-    std::string raw;
-    Libs::Digest::Hmac::sha256(secret, LEVEL_SALT, raw);
-
+std::string to_hex(std::string_view raw) noexcept {
     static constexpr char HEX[] = "0123456789abcdef";
     std::string digest;
     digest.reserve(raw.size() * 2);
@@ -58,6 +60,19 @@ std::string secret_digest(std::string_view secret) noexcept {
         digest.push_back(HEX[value & 0x0F]);
     }
     return digest;
+}
+
+std::string secret_digest(std::string_view secret) noexcept {
+    std::string raw;
+    Libs::Digest::Hmac::sha256(secret, LEVEL_SALT, raw);
+    return to_hex(raw);
+}
+
+// 密码摘要：与权限秘钥做域分离，避免两类摘要可互相复用。
+std::string password_digest(std::string_view password) noexcept {
+    std::string raw;
+    Libs::Digest::Hmac::sha256(std::string("4ascend-pass:").append(password), LEVEL_SALT, raw);
+    return to_hex(raw);
 }
 
 std::string generate_secret(int target_level) noexcept {
@@ -151,17 +166,23 @@ void init() noexcept {
     // 没有表则创建
     sqlite3_exec(
         db,
-        "CREATE TABLE IF NOT EXISTS users (mail TEXT NOT NULL, uuid TEXT NOT NULL, time INTEGER NOT NULL, name TEXT NOT NULL, avatar TEXT "
-        "NOT NULL, level INTEGER NOT NULL DEFAULT 1) STRICT",
+        "CREATE TABLE IF NOT EXISTS users (mail TEXT NOT NULL, phone TEXT NOT NULL DEFAULT '', account TEXT NOT NULL DEFAULT '', pass TEXT "
+        "NOT NULL DEFAULT '', uuid TEXT NOT NULL, time INTEGER NOT NULL, name TEXT NOT NULL, avatar TEXT NOT NULL, level INTEGER NOT NULL "
+        "DEFAULT 1) STRICT",
         nullptr,
         nullptr,
         nullptr
     );
     // 兼容已经存在的旧用户表：SQLite 会在列已存在时返回错误，此处无需中断启动。
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN level INTEGER NOT NULL DEFAULT 1;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "ALTER TABLE users ADD COLUMN phone TEXT NOT NULL DEFAULT '';", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "ALTER TABLE users ADD COLUMN account TEXT NOT NULL DEFAULT '';", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "ALTER TABLE users ADD COLUMN pass TEXT NOT NULL DEFAULT '';", nullptr, nullptr, nullptr);
 
     // 没有索引则创建
     sqlite3_exec(db, "CREATE INDEX IF NOT EXISTS idx_users_mail ON users (mail)", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "CREATE INDEX IF NOT EXISTS idx_users_phone ON users (phone)", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "CREATE INDEX IF NOT EXISTS idx_users_account ON users (account)", nullptr, nullptr, nullptr);
     sqlite3_exec(db, "CREATE INDEX IF NOT EXISTS idx_users_uuid ON users (uuid)", nullptr, nullptr, nullptr);
 
     // 一次性权限秘钥只保存 HMAC-SHA256 摘要；部署时需提供对应 level_salt.bin。
@@ -189,15 +210,37 @@ void init() noexcept {
     }
 
     // 预编译
-    sqlite3_prepare_v2(db, "INSERT INTO users (mail, uuid, time, name, avatar) VALUES (?, ?, ?, ?, ?);", -1, &p_create_user, nullptr);
+    sqlite3_prepare_v2(
+        db,
+        "INSERT INTO users (mail, phone, account, pass, uuid, time, name, avatar) VALUES (?, ?, ?, ?, ?, ?, ?, ?);",
+        -1,
+        &p_create_user,
+        nullptr
+    );
     sqlite3_prepare_v2(db, "UPDATE users SET name = ?, avatar = ? WHERE uuid = ?;", -1, &p_update_user, nullptr);
     sqlite3_prepare_v2(db, "DELETE FROM users WHERE uuid = ?;", -1, &p_delete_user, nullptr);
 
     sqlite3_prepare_v2(db, "SELECT 1 FROM users WHERE uuid = ? LIMIT 1;", -1, &p_exist_user, nullptr);
-    sqlite3_prepare_v2(db, "SELECT 1 FROM users WHERE mail = ? LIMIT 1;", -1, &p_exist_mail, nullptr);
+    sqlite3_prepare_v2(
+        db,
+        "SELECT 1 FROM users WHERE (mail = ? AND mail <> '') OR (phone = ? AND phone <> '') LIMIT 1;",
+        -1,
+        &p_exist_ident,
+        nullptr
+    );
+    sqlite3_prepare_v2(db, "SELECT 1 FROM users WHERE account = ? AND account <> '' LIMIT 1;", -1, &p_exist_account, nullptr);
 
     sqlite3_prepare_v2(db, "SELECT name, avatar, time, mail FROM users WHERE uuid = ?;", -1, &p_info_user, nullptr);
-    sqlite3_prepare_v2(db, "SELECT uuid FROM users WHERE mail = ?;", -1, &p_mail_uuid, nullptr);
+    sqlite3_prepare_v2(db, "SELECT account, phone FROM users WHERE uuid = ?;", -1, &p_account_user, nullptr);
+    sqlite3_prepare_v2(db, "SELECT pass FROM users WHERE uuid = ?;", -1, &p_pass_user, nullptr);
+    sqlite3_prepare_v2(db, "UPDATE users SET pass = ? WHERE uuid = ?;", -1, &p_update_pass, nullptr);
+    sqlite3_prepare_v2(
+        db,
+        "SELECT uuid FROM users WHERE (mail = ? AND mail <> '') OR (phone = ? AND phone <> '') OR (account = ? AND account <> '') LIMIT 1;",
+        -1,
+        &p_ident_uuid,
+        nullptr
+    );
     sqlite3_prepare_v2(db, "SELECT level FROM users WHERE uuid = ?;", -1, &p_get_level, nullptr);
     sqlite3_prepare_v2(
         db,
@@ -216,9 +259,13 @@ void close() noexcept {
     sqlite3_finalize(p_update_user);
     sqlite3_finalize(p_delete_user);
     sqlite3_finalize(p_exist_user);
-    sqlite3_finalize(p_exist_mail);
+    sqlite3_finalize(p_exist_ident);
+    sqlite3_finalize(p_exist_account);
     sqlite3_finalize(p_info_user);
-    sqlite3_finalize(p_mail_uuid);
+    sqlite3_finalize(p_account_user);
+    sqlite3_finalize(p_pass_user);
+    sqlite3_finalize(p_update_pass);
+    sqlite3_finalize(p_ident_uuid);
     sqlite3_finalize(p_get_level);
     sqlite3_finalize(p_consume_level_key);
     sqlite3_finalize(p_all_user);
@@ -244,12 +291,20 @@ bool all_user(std::vector<std::string>& uuids) noexcept {
 };
 
 // 创建用户
-bool create_user(std::string_view mail, std::string_view uuid, int64_t time, std::string_view name, std::string_view avatar) noexcept {
+bool create_user(
+    std::string_view mail, std::string_view phone, std::string_view account, std::string_view pass, std::string_view uuid, int64_t time,
+    std::string_view name, std::string_view avatar
+) noexcept {
+    const auto digest = pass.empty() ? std::string() : password_digest(pass);
+
     sqlite3_bind_text(p_create_user, 1, mail.data(), mail.size(), nullptr);
-    sqlite3_bind_text(p_create_user, 2, uuid.data(), uuid.size(), nullptr);
-    sqlite3_bind_int64(p_create_user, 3, time);
-    sqlite3_bind_text(p_create_user, 4, name.data(), name.size(), nullptr);
-    sqlite3_bind_text(p_create_user, 5, avatar.data(), avatar.size(), nullptr);
+    sqlite3_bind_text(p_create_user, 2, phone.data(), phone.size(), nullptr);
+    sqlite3_bind_text(p_create_user, 3, account.data(), account.size(), nullptr);
+    sqlite3_bind_text(p_create_user, 4, digest.data(), digest.size(), nullptr);
+    sqlite3_bind_text(p_create_user, 5, uuid.data(), uuid.size(), nullptr);
+    sqlite3_bind_int64(p_create_user, 6, time);
+    sqlite3_bind_text(p_create_user, 7, name.data(), name.size(), nullptr);
+    sqlite3_bind_text(p_create_user, 8, avatar.data(), avatar.size(), nullptr);
 
     int rc = sqlite3_step(p_create_user);
     sqlite3_reset(p_create_user);
@@ -298,6 +353,23 @@ bool info_user(std::string_view uuid, std::string& name, std::string& avatar, st
     mail   = reinterpret_cast<const char*>(sqlite3_column_text(p_info_user, 3));
 
     sqlite3_reset(p_info_user);
+    return true;
+};
+
+// 查询账号与手机号
+bool account_user(std::string_view uuid, std::string& account, std::string& phone) noexcept {
+    sqlite3_bind_text(p_account_user, 1, uuid.data(), uuid.size(), nullptr);
+
+    int rc = sqlite3_step(p_account_user);
+    if (rc != SQLITE_ROW) {
+        sqlite3_reset(p_account_user);
+        return false;
+    }
+
+    account = reinterpret_cast<const char*>(sqlite3_column_text(p_account_user, 0));
+    phone   = reinterpret_cast<const char*>(sqlite3_column_text(p_account_user, 1));
+
+    sqlite3_reset(p_account_user);
     return true;
 };
 
@@ -410,30 +482,83 @@ bool exist_user(std::string_view uuid) noexcept {
     return rc == SQLITE_ROW;
 };
 
-// 是否存在邮箱
-bool exist_mail(std::string_view mail) noexcept {
-    sqlite3_bind_text(p_exist_mail, 1, mail.data(), mail.size(), nullptr);
+// 是否存在邮箱或手机号（注册标识）
+bool exist_ident(std::string_view ident) noexcept {
+    if (ident.empty()) return false;
 
-    int rc = sqlite3_step(p_exist_mail);
-    sqlite3_reset(p_exist_mail);
+    sqlite3_bind_text(p_exist_ident, 1, ident.data(), ident.size(), nullptr);
+    sqlite3_bind_text(p_exist_ident, 2, ident.data(), ident.size(), nullptr);
+
+    int rc = sqlite3_step(p_exist_ident);
+    sqlite3_reset(p_exist_ident);
+    return rc == SQLITE_ROW;
+};
+
+// 是否存在账号
+bool exist_account(std::string_view account) noexcept {
+    if (account.empty()) return false;
+
+    sqlite3_bind_text(p_exist_account, 1, account.data(), account.size(), nullptr);
+
+    int rc = sqlite3_step(p_exist_account);
+    sqlite3_reset(p_exist_account);
     return rc == SQLITE_ROW;
 };
 
 
-// 邮箱得到标识
-bool mail2uuid(std::string_view mail, std::string& uuid) noexcept {
-    sqlite3_bind_text(p_mail_uuid, 1, mail.data(), mail.size(), nullptr);
+// 标识（邮箱/手机号/账号）得到标识
+bool ident2uuid(std::string_view ident, std::string& uuid) noexcept {
+    if (ident.empty()) return false;
 
-    int rc = sqlite3_step(p_mail_uuid);
+    sqlite3_bind_text(p_ident_uuid, 1, ident.data(), ident.size(), nullptr);
+    sqlite3_bind_text(p_ident_uuid, 2, ident.data(), ident.size(), nullptr);
+    sqlite3_bind_text(p_ident_uuid, 3, ident.data(), ident.size(), nullptr);
+
+    int rc = sqlite3_step(p_ident_uuid);
     if (rc != SQLITE_ROW) {
-        sqlite3_reset(p_mail_uuid);
+        sqlite3_reset(p_ident_uuid);
         return false;
     }
 
-    uuid = reinterpret_cast<const char*>(sqlite3_column_text(p_mail_uuid, 0));
+    uuid = reinterpret_cast<const char*>(sqlite3_column_text(p_ident_uuid, 0));
 
-    sqlite3_reset(p_mail_uuid);
+    sqlite3_reset(p_ident_uuid);
     return true;
+};
+
+// 校验密码
+bool check_pass(std::string_view uuid, std::string_view password) noexcept {
+    if (uuid.empty() || password.empty()) return false;
+
+    sqlite3_bind_text(p_pass_user, 1, uuid.data(), uuid.size(), nullptr);
+
+    int rc = sqlite3_step(p_pass_user);
+    if (rc != SQLITE_ROW) {
+        sqlite3_reset(p_pass_user);
+        return false;
+    }
+
+    const auto* text = reinterpret_cast<const char*>(sqlite3_column_text(p_pass_user, 0));
+    const std::string stored = text ? text : std::string();
+    sqlite3_reset(p_pass_user);
+    if (stored.empty()) return false;
+
+    return Libs::Security::Bytes::safe_equal(stored, password_digest(password));
+};
+
+// 更新登录密码
+bool update_pass(std::string_view uuid, std::string_view pass) noexcept {
+    if (uuid.empty() || pass.empty()) return false;
+
+    const auto digest = password_digest(pass);
+
+    bind_text(p_update_pass, 1, digest);
+    bind_text(p_update_pass, 2, uuid);
+
+    const int rc      = sqlite3_step(p_update_pass);
+    const int changed = sqlite3_changes(db);
+    reset(p_update_pass);
+    return rc == SQLITE_DONE && changed == 1;
 };
 } // namespace User
 } // namespace Manager

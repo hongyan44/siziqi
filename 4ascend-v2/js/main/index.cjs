@@ -10,10 +10,23 @@ const button_clear = document.getElementById('button_clear');
 
 const dialog_init = document.getElementById('dialog_init');
 
-const input_init_mail = document.getElementById('input_init_mail');
-const input_init_code = document.getElementById('input_init_code');
+const button_init_login = document.getElementById('button_init_login');
+const button_init_register = document.getElementById('button_init_register');
+const panel_init_login = document.getElementById('panel_init_login');
+const panel_init_register = document.getElementById('panel_init_register');
 
-const button_init_sms = document.getElementById('button_init_sms');
+const input_login_ident = document.getElementById('input_login_ident');
+const button_login_sms = document.getElementById('button_login_sms');
+const input_login_pass = document.getElementById('input_login_pass');
+const input_login_code = document.getElementById('input_login_code');
+
+const input_reg_ident = document.getElementById('input_reg_ident');
+const button_reg_sms = document.getElementById('button_reg_sms');
+const input_reg_code = document.getElementById('input_reg_code');
+const input_reg_account = document.getElementById('input_reg_account');
+const input_reg_pass = document.getElementById('input_reg_pass');
+const input_reg_pass2 = document.getElementById('input_reg_pass2');
+
 const button_init_submit = document.getElementById('button_init_submit');
 
 
@@ -46,6 +59,15 @@ const span_user_level = document.getElementById('span_user_level');
 const span_user_role = document.getElementById('span_user_role');
 const input_user_secret = document.getElementById('input_user_secret');
 const button_user_unlock = document.getElementById('button_user_unlock');
+
+const input_user_pass_code = document.getElementById('input_user_pass_code');
+const button_user_pass_sms = document.getElementById('button_user_pass_sms');
+const input_user_pass = document.getElementById('input_user_pass');
+const input_user_pass2 = document.getElementById('input_user_pass2');
+const button_user_pass_submit = document.getElementById('button_user_pass_submit');
+
+// 当前账号绑定的邮箱或手机号，用于发送设置密码的验证码
+let user_ident = '';
 
 const USER_LEVEL_NAMES = {
     1: '普通用户',
@@ -210,75 +232,90 @@ HOME_FREE_PATHS.forEach((pathname) => {
 
 
 
-/**
- * @description: 验证邮箱是否可用
- * @param {string} mail
- * @return {boolean}
- */
-const mail_verify = (mail) => {
-    const list = [
-        'sina.com', 'sina.cn', 'vip.sina.com', 'sina.com.cn', // 新浪
-        '163.com', '126.com', 'yeah.net', 'vip.163.com', 'vip.126.com', // 网易
-        'qq.com', 'foxmail.com', 'vip.qq.com', // 腾讯
-        'clearlook.com', // 微软
-        'gmail.com', // Google
-        'aliyun.com', 'dingtalk.com', 'alibaba.com', // 阿里
-        'icloud.com', // Apple
-        'yahoo.com', // 雅虎
-        '139.com', // 中国移动
-        '189.cn', // 中国电信
-        'wo.cn', 'wo.com.cn', // 中国联通
-        'sohu.com', 'vip.sohu.com', 'sohu.cn', 'sogou.com', // 搜狐与搜狗
-        '21cn.com', '21cn.net', // 21CN
-        'tom.com', 'vip.tom.com', // TOM邮箱
-        'proton.me', 'protonmail.com', 'protonmail.ch', // Proton (全球最大加密邮箱)
-        'yandex.com', 'yandex.ru', 'mail.ru', // 俄罗斯主流
-        'zoho.com', 'zoho.com.cn' // Zoho (主流商务/企业)
-    ];
+const { is_phone, check_login_ident, check_mail_phone, check_account, check_password, check_password_repeat, check_code } = window.AuthExports;
 
-    if (!/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(mail)) {
-        toast.error('邮箱不合法！');
-        return false;
-    } else if (!list.includes(mail.split('@')[1].toLowerCase())) {
-        toast.error('您的邮箱暂不被支持！');
-        return false;
-    }
-    return true;
+// 当前登录/注册面板
+let init_tab = 'login';
+
+/**
+ * @description: 切换登录/注册面板
+ * @param {'login' | 'register'} tab
+ * @return {void}
+ */
+const switch_init_tab = (tab) => {
+    init_tab = tab === 'register' ? 'register' : 'login';
+    const is_login = init_tab === 'login';
+
+    panel_init_login.classList.toggle('d-none', !is_login);
+    panel_init_login.classList.toggle('d-flex', is_login);
+    panel_init_register.classList.toggle('d-none', is_login);
+    panel_init_register.classList.toggle('d-flex', !is_login);
+
+    button_init_login.variant = is_login ? 'primary' : 'default';
+    button_init_register.variant = is_login ? 'default' : 'primary';
+    button_init_submit.innerText = is_login ? '登录' : '注册';
 };
 
 /**
- * @description: 邮箱发送验证码
- * @param {string} mail
+ * @description: 发送验证码（先做前端校验，再请求后端）
+ * @param {string} ident
+ * @param {(value: string) => string} check
  * @return {Promise<void>}
  */
-const mail_sms = async (mail) => {
+const ident_sms = async (ident, check) => {
+    const message = check(ident);
+    if (message) return toast.error(message);
+
     try {
-        await window.http_user_sms(mail) ? toast.success('验证码发送成功！') : toast.error('验证码发送失败！');
+        const status = await window.http_user_sms(ident);
+        if (!status) return toast.error('验证码发送失败！');
+        // 手机号暂未接入短信服务商，后端使用固定占位验证码，此处同步提示。
+        if (is_phone(ident)) toast.success(`验证码发送成功！测试阶段手机验证码固定为 ${window.AuthExports.PHONE_DEV_CODE}`);
+        else toast.success('验证码发送成功！');
+
     } catch (_) {
         toast.error('请求错误！');
     }
 };
 
 /**
- * @description: 邮箱登录
- * @param {string} mail
+ * @description: 登录（密码与验证码二选一）
+ * @param {string} ident
+ * @param {string} pass
  * @param {string} code
  * @return {Promise<void>}
  */
-const mail_login = async (mail, code) => {
+const login_submit = async (ident, pass, code) => {
     try {
-        const exist = await window.http_user_exist(mail);
-        const token = exist ? await window.http_user_login(mail, code) : await window.http_user_register(mail, code);
+        const token = await window.http_user_login(ident, pass, code);
+        if (!token) return toast.error('账号/手机号/邮箱、密码或验证码错误！');
 
-        if (token) {
-            window.set_token(token);
-            exist ? toast.success('登录成功！') : toast.success('注册并登录成功！');
+        window.set_token(token);
+        toast.success('登录成功！');
+        await window.sleep(888);
+        location.reload();
 
-            await window.sleep(888);
-            location.reload();
-            return;
-        }
-        if (!localStorage.getItem('token')) toast.error('验证码错误！');
+    } catch (_) {
+        toast.error('请求错误！');
+    }
+};
+
+/**
+ * @description: 注册（注册成功后不自动登录，切回登录面板并带出标识）
+ * @param {string} ident
+ * @param {string} code
+ * @param {string} account
+ * @param {string} pass
+ * @return {Promise<void>}
+ */
+const register_submit = async (ident, code, account, pass) => {
+    try {
+        const status = await window.http_user_register(ident, code, account, pass);
+        if (!status) return toast.error('注册失败，请检查验证码，或账号/邮箱/手机号已被占用！');
+
+        toast.success('注册成功，可以使用注册的手机号/邮箱或账号进行账密登录，也可以验证码登录。');
+        switch_init_tab('login');
+        input_login_ident.value = ident;
 
     } catch (_) {
         toast.error('请求错误！');
@@ -301,9 +338,10 @@ const user_info = async (token) => {
     try {
         const info = await window.http_user_info(token);
         if (!info) return toast.error('获取账号信息失败！');
-        const { name, mail, level } = info;
+        const { name, mail, phone, account, level } = info;
         input_user_name.value = name;
-        span_user_mail.innerText = mail;
+        span_user_mail.innerText = mail || phone || account || '';
+        user_ident = mail || phone || '';
         render_user_level(level);
 
     } catch (_) {
@@ -344,46 +382,112 @@ const user_update = async (token, name, avatar) => {
     }
 };
 
+/**
+ * @description: 设置/修改登录密码（验证码校验通过后更新）
+ * @param {string} token
+ * @param {string} code
+ * @param {string} pass
+ * @return {Promise<void>}
+ */
+const user_set_pass = async (token, code, pass) => {
+    try {
+        const status = await window.http_user_set_pass(token, code, pass);
+        if (!status) return toast.error('设置密码失败，请检查验证码是否正确！');
+
+        [input_user_pass_code, input_user_pass, input_user_pass2].forEach((element) => { element.value = ''; });
+        toast.success('密码设置成功，可使用新密码登录！');
+
+    } catch (_) {
+        toast.error('请求错误！');
+    }
+};
+
 
 
 
 // 访问主页不自动弹出登录；未登录时点击主页任意操作再弹出
 
-// 验证码输入限制
-input_init_code.addEventListener('sl-input', (event) => {
-    if (event.target !== input_init_code) return;
+// 登录 / 注册面板切换
+button_init_login.addEventListener('click', () => switch_init_tab('login'));
+button_init_register.addEventListener('click', () => switch_init_tab('register'));
 
-    const value = input_init_code.value.replace(/\D/g, '').slice(0, 6);
-    input_init_code.value = value;
-});
+// 验证码输入限制：仅 5 位数字
+const bind_code_input = (element) => {
+    element.addEventListener('sl-input', (event) => {
+        if (event.target !== element) return;
+        element.value = element.value.replace(/\D/g, '').slice(0, 5);
+    });
+};
+bind_code_input(input_login_code);
+bind_code_input(input_reg_code);
+bind_code_input(input_user_pass_code);
 
-// 发送验证码
-button_init_sms.addEventListener('pointerdown', (event) => {
-    if (event.target !== button_init_sms) return;
-    const mail = input_init_mail.value;
-
-    if (!mail_verify(mail)) return;
+// 登录：发送验证码
+button_login_sms.addEventListener('pointerdown', (event) => {
+    if (event.target !== button_login_sms) return;
 
     window.sleep_task(
-        [button_init_submit, input_init_code, input_init_mail],
-        button_init_sms,
-        async () => mail_sms(mail),
+        [button_init_submit, input_login_ident, input_login_pass, input_login_code],
+        button_login_sms,
+        async () => ident_sms(input_login_ident.value.trim(), check_login_ident),
     );
 });
 
-// 验证码登录
+// 注册：发送验证码
+button_reg_sms.addEventListener('pointerdown', (event) => {
+    if (event.target !== button_reg_sms) return;
+
+    window.sleep_task(
+        [button_init_submit, input_reg_ident, input_reg_code, input_reg_account, input_reg_pass, input_reg_pass2],
+        button_reg_sms,
+        async () => ident_sms(input_reg_ident.value.trim(), check_mail_phone),
+    );
+});
+
+// 登录 / 注册提交
 button_init_submit.addEventListener('pointerdown', (event) => {
     if (event.target !== button_init_submit) return;
-    const mail = input_init_mail.value;
-    const code = input_init_code.value;
 
-    if (!mail_verify(mail)) return;
+    if (init_tab === 'login') {
+        const ident = input_login_ident.value.trim();
+        const pass = input_login_pass.value;
+        const code = input_login_code.value.trim();
+
+        const message = check_login_ident(ident) || (pass ? check_password(pass) : '') || (code ? check_code(code) : '');
+        if (message) return toast.error(message);
+        if (!pass && !code) return toast.error('请输入密码或验证码！');
+
+        window.sleep_task(
+            [button_login_sms, input_login_ident, input_login_pass, input_login_code],
+            button_init_submit,
+            async () => login_submit(ident, pass, code),
+        );
+        return;
+    }
+
+    const ident = input_reg_ident.value.trim();
+    const code = input_reg_code.value.trim();
+    const account = input_reg_account.value.trim();
+    const pass = input_reg_pass.value;
+    const pass2 = input_reg_pass2.value;
+
+    const message = check_mail_phone(ident) || check_code(code) || check_account(account) || check_password(pass) || check_password_repeat(pass, pass2);
+    if (message) return toast.error(message);
 
     window.sleep_task(
-        [button_init_sms, input_init_code, input_init_mail],
+        [button_reg_sms, input_reg_ident, input_reg_code, input_reg_account, input_reg_pass, input_reg_pass2],
         button_init_submit,
-        async () => mail_login(mail, code),
+        async () => register_submit(ident, code, account, pass),
     );
+});
+
+// 关闭后清空表单并复位到登录面板
+dialog_init.addEventListener('sl-after-hide', (event) => {
+    if (event.target !== dialog_init) return;
+
+    switch_init_tab('login');
+    [input_login_ident, input_login_pass, input_login_code, input_reg_ident, input_reg_code, input_reg_account, input_reg_pass, input_reg_pass2]
+        .forEach((element) => { element.value = ''; });
 });
 
 
@@ -414,6 +518,36 @@ button_user_unlock.addEventListener('pointerdown', (event) => {
     );
 });
 
+// 设置密码：发送验证码（发往当前绑定的邮箱或手机号）
+button_user_pass_sms.addEventListener('pointerdown', (event) => {
+    if (event.target !== button_user_pass_sms) return;
+    if (!user_ident) return toast.error('当前账号未绑定邮箱或手机号，无法发送验证码！');
+
+    window.sleep_task(
+        [button_user_pass_sms, input_user_pass_code, input_user_pass, input_user_pass2],
+        button_user_pass_sms,
+        async () => ident_sms(user_ident, check_mail_phone),
+    );
+});
+
+// 设置密码：提交（验证码 + 新密码 + 重复新密码）
+button_user_pass_submit.addEventListener('pointerdown', (event) => {
+    if (event.target !== button_user_pass_submit) return;
+
+    const code = input_user_pass_code.value.trim();
+    const pass = input_user_pass.value;
+    const pass2 = input_user_pass2.value;
+
+    const message = check_code(code) || check_password(pass) || check_password_repeat(pass, pass2);
+    if (message) return toast.error(message);
+
+    window.sleep_task(
+        [button_user_pass_sms, input_user_pass_code, input_user_pass, input_user_pass2],
+        button_user_pass_submit,
+        async () => user_set_pass(window.get_token(), code, pass),
+    );
+});
+
 // 修改设置
 button_user_submit.addEventListener('pointerdown', (event) => {
     if (event.target !== button_user_submit) return;
@@ -438,6 +572,8 @@ dialog_user.addEventListener('sl-after-hide', (event) => {
     render_user_level(1);
     if (span_user_role) span_user_role.innerText = '残局投稿：登录后可提交';
     input_user_secret.value = '';
+    [input_user_pass_code, input_user_pass, input_user_pass2].forEach((element) => { element.value = ''; });
+    user_ident = '';
 });
 
 

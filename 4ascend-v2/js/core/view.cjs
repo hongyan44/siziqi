@@ -89,6 +89,7 @@ const toast = new ShToast();
 
 
 let gl_time = 0;
+let gl_run = 0;
 let gl_turns, gl_turnc, gl_gameing, gl_win;
 let gl_sound, gl_ui, gl_archive;
 let gl_my_clock, gl_foe_clock;
@@ -618,14 +619,22 @@ const view_pice = (my_stone, foe_stone) => {
  * @description: 观战接收数据
  * @return {Promise<void>}
  */
-const view_accept = async () => {
+const view_accept = async (run_id) => {
     let result;
-    for await (const event of gl_cf_client) if (event.type === 'message' && event.data.op === 'sync_player2observers') {
-        result = event.data.result;
+    for await (const event of gl_cf_client) {
+        // 本局已被新的 run() 顶替：立即退场，绝不再改动全局状态
+        if (run_id !== gl_run) return;
 
-        if (result.type === 'view_sync' && result.time > gl_time) break;
-        if (result.turns && result.turns.length > gl_turns.length) gl_turns = result.turns;
+        if (event.type === 'message' && event.data.op === 'sync_player2observers') {
+            result = event.data.result;
+
+            if (result.type === 'view_sync' && result.time > gl_time) break;
+            if (result.turns && result.turns.length > gl_turns.length) gl_turns = result.turns;
+        }
     }
+
+    // 退出循环后再校验一次，只有仍是当前局才允许宣告对局结束并提示
+    if (run_id !== gl_run) return;
 
     gl_gameing = false;
 
@@ -783,6 +792,10 @@ const setup = (client, token, room) => {
  * @return {Promise<void>}
  */
 const run = async () => {
+    // 本局世代号：递增后，上一局残留的 view_accept 立即失效，
+    // 避免其在新局开局时抢先消费 view_sync 并把 gl_gameing 置为 false
+    const run_id = ++gl_run;
+
     // 清理
     game_clear();
     game_redraw();
@@ -996,7 +1009,7 @@ const run = async () => {
     game_p2_clock.innerText = `CLK: ${gl_foe_clock}`;
 
     game_redraw();
-    view_accept();
+    view_accept(run_id);
     view_instruct();
 
 

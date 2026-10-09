@@ -982,15 +982,20 @@
         editTextsCancelButton.addEventListener('click', () => editTextsDialog.hide());
 
         editTextsSaveButton.addEventListener('click', async () => {
-            if (!isAdmin) return;
+            // 编辑入口本就仅对管理员可见，此处不再重复校验权限
             const token = window.get_token();
-            if (!token) { toast.error('请先登录管理员账号。'); return; }
+            if (!token) { toast.error('登录状态已失效，请重新登录后重试。'); return; }
 
             const data = JSON.stringify(sanitize_texts(textsDraft));
             editTextsSaveButton.disabled = true;
-            const ok = await window.http_contest_signup_update(token, data);
-            editTextsSaveButton.disabled = false;
-            if (!ok) { toast.error('保存失败，请确认管理员权限后重试。'); return; }
+            let ok = false;
+            try {
+                ok = await window.http_contest_signup_update(token, data);
+            } finally {
+                // 无论请求成功、失败还是抛错，都必须恢复按钮，避免界面卡死
+                editTextsSaveButton.disabled = false;
+            }
+            if (!ok) { toast.error('保存失败，服务暂不可用，请稍后重试。'); return; }
 
             texts = JSON.parse(data);
             localStorage.setItem(TEXTS_KEY, data);
@@ -1292,19 +1297,19 @@
             renderNodes();
         };
 
-        // 报名：随机分配到未满的组中
-        const assignRandomGroup = (node, name) => {
-            if (node.players.includes(name)) return false;
-            if (node.players.length >= node.maxPlayers) return false;
-            const unfilled = node.groups
-                .map((g, i) => ({ i, len: g.length }))
-                .filter((item) => item.len < 2);
-            if (!unfilled.length) return false;
-            // 随机选一个未满组
-            const target = unfilled[Math.floor(Math.random() * unfilled.length)];
-            node.groups[target.i].push(name);
-            node.players.push(name);
-            return true;
+        // 方块已登记的唯一身份标识码集合（报名身份以 uuid 为准）
+        const registered_uuids = (node) => {
+            const map = node.player_uuids && typeof node.player_uuids === 'object' ? node.player_uuids : {};
+            return Object.keys(map).map((key) => map[key]).filter(Boolean);
+        };
+
+        // 报名条件：当前账号的 uuid 是否已进入该方块分组。
+        // 历史数据可能缺少 uuid 记录，此时回退到昵称比对，避免同一人重复报名。
+        const is_registered = (node, uuid, name) => {
+            if (!node) return false;
+            const map = node.player_uuids && typeof node.player_uuids === 'object' ? node.player_uuids : {};
+            if (uuid && registered_uuids(node).includes(uuid)) return true;
+            return Boolean(name) && node.players.includes(name) && !map[name];
         };
 
         // 从方块中移除玩家
@@ -1314,6 +1319,8 @@
                 const idx = g.indexOf(name);
                 if (idx >= 0) g.splice(idx, 1);
             });
+            // 同步清理身份标识码，否则该账号会被判定为已报名而无法再次报名
+            if (node.player_uuids && typeof node.player_uuids === 'object') delete node.player_uuids[name];
         };
 
         // 查询某方块的全部前置方块（通过连线推导）
@@ -1445,6 +1452,7 @@
             dialogRegisterRow.classList.remove('d-none');
 
             const accountName = userInfo && userInfo.name ? userInfo.name : null;
+            const accountUuid = userInfo && userInfo.uuid ? userInfo.uuid : null;
             registerAccount.textContent = accountName || texts.dialog.account_empty;
 
             if (!accountName) {
@@ -1453,7 +1461,8 @@
                 return;
             }
 
-            if (node.players.includes(accountName)) {
+            // 报名条件：当前账号的 uuid 是否已进入分组，未进入才允许报名
+            if (is_registered(node, accountUuid, accountName)) {
                 joinButton.disabled = true;
                 registerHint.textContent = texts.dialog.hint_registered;
                 return;
@@ -1462,7 +1471,7 @@
             // 前置检验：有前置方块时，必须已报名且前置方块已完成抽签
             const parents = parentNodes(node);
             if (parents.length) {
-                const entered = parents.filter((p) => p.players.includes(accountName));
+                const entered = parents.filter((p) => is_registered(p, accountUuid, accountName));
                 if (!entered.length) {
                     joinButton.disabled = true;
                     registerHint.textContent = fill_name(texts.dialog.hint_parent, parents.map((p) => p.name).join('、'));
@@ -1561,22 +1570,29 @@
             const node = findNode(activeNodeId);
             if (!node) return;
             const name = userInfo && userInfo.name ? userInfo.name : null;
+            const uuid = userInfo && userInfo.uuid ? userInfo.uuid : null;
             if (!name) return;
-            if (node.players.includes(name)) return;
+            // 报名条件：当前账号的 uuid 是否已进入分组，未进入才允许报名
+            if (is_registered(node, uuid, name)) return;
             // 前置检验：有前置方块时，必须已报名且前置方块已完成抽签
             const parents = parentNodes(node);
             if (parents.length) {
-                const entered = parents.filter((p) => p.players.includes(name));
+                const entered = parents.filter((p) => is_registered(p, uuid, name));
                 if (!entered.length || !entered.some((p) => isNodeDrawn(p))) return;
             }
             const token = window.get_token();
             if (!token) return;
             joinButton.disabled = true;
             registerHint.textContent = texts.dialog.hint_joining;
-            const ok = await window.http_contest_bracket_register(token, node.id, name);
+            let ok = false;
+            try {
+                ok = await window.http_contest_bracket_register(token, node.id, name);
+            } finally {
+                // 无论成功、失败还是抛错，都先恢复按钮，避免报名按钮永久点不动
+                joinButton.disabled = false;
+            }
             if (!ok) {
                 registerHint.textContent = texts.dialog.hint_failed;
-                joinButton.disabled = false;
                 return;
             }
             await syncFromRemote();

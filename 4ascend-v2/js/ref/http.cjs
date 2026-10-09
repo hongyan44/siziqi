@@ -20,57 +20,59 @@ window.online_api = local_api_hosts.has(location.hostname) ? `${location.hostnam
 
 
 /**
- * @description: 查询是否注册
- * @param {string} mail
+ * @description: 查询标识（账号/手机号/邮箱）是否已注册
+ * @param {string} ident
  * @return {Promise<boolean>}
  */
-window.http_user_exist = async (mail) => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/exist`, { mail });
-    return rjson.status;
+window.http_user_exist = async (ident) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/exist`, { ident });
+    return Boolean(rjson && rjson.status);
 };
 
 /**
- * @description: 发送邮箱验证码
- * @param {string} mail
+ * @description: 发送验证码（邮箱真实发送；手机号为占位固定码，不实际发送）
+ * @param {string} ident
  * @return {Promise<boolean>}
  */
-window.http_user_sms = async (mail) => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/sms`, { mail });
-    return rjson.status;
+window.http_user_sms = async (ident) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/sms`, { ident });
+    return Boolean(rjson && rjson.status);
 };
 
 /**
- * @description: 邮箱注册
- * @param {string} mail
+ * @description: 注册（邮箱或手机号 + 验证码 + 账号 + 密码，注册后不自动登录）
+ * @param {string} ident
+ * @param {string} code
+ * @param {string} account
+ * @param {string} pass
+ * @return {Promise<boolean>}
+ */
+window.http_user_register = async (ident, code, account, pass) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/register`, { ident, code, account, pass });
+    return Boolean(rjson && rjson.status);
+};
+
+/**
+ * @description: 登录（标识为 账号/手机号/邮箱；密码与验证码二选一）
+ * @param {string} ident
+ * @param {string} pass
  * @param {string} code
  * @return {Promise<string | void>}
  */
-window.http_user_register = async (mail, code) => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/register`, { mail, code });
-    if (!rjson.status) return;
-    return rjson.result;
-};
-
-/**
- * @description: 邮箱登录
- * @param {string} mail
- * @param {string} code
- * @return {Promise<string | void>}
- */
-window.http_user_login = async (mail, code) => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/login`, { mail, code });
-    if (!rjson.status) return;
+window.http_user_login = async (ident, pass, code) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/login`, { ident, pass, code });
+    if (!rjson || !rjson.status) return;
     return rjson.result;
 };
 
 /**
  * @description: 得到用户信息
  * @param {string} token
- * @return {Promise<{'name': string, 'avatar': string, 'time': number, 'mail': string} | void>}
+ * @return {Promise<{'name': string, 'avatar': string, 'time': number, 'mail': string, 'account': string, 'phone': string, 'uuid': string, 'score': number, 'level': number} | void>}
  */
 window.http_user_info = async (token) => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/info`, { token });
-    if (!rjson.status) return;
+    if (!rjson || !rjson.status) return;
     return rjson.result;
 };
 
@@ -151,7 +153,19 @@ window.http_puzzle_delete = async (token, id) => {
  */
 window.http_user_update = async (token, name, avatar) => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/update`, { token, name, avatar });
-    return rjson.status;
+    return Boolean(rjson && rjson.status);
+};
+
+/**
+ * @description: 设置/修改登录密码（需验证码校验，验证码发往已绑定的邮箱或手机号）
+ * @param {string} token
+ * @param {string} code
+ * @param {string} pass
+ * @return {Promise<boolean>}
+ */
+window.http_user_set_pass = async (token, code, pass) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/set_pass`, { token, code, pass });
+    return Boolean(rjson && rjson.status);
 };
 
 /**
@@ -173,7 +187,7 @@ window.http_user_unlock_level = async (token, secret) => {
  */
 window.http_user_rtoken = async (token) => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/rtoken`, { token });
-    if (!rjson.status) return;
+    if (!rjson || !rjson.status) return;
     return rjson.result;
 };
 
@@ -185,7 +199,7 @@ window.http_user_rtoken = async (token) => {
  */
 window.http_room_create = async (id) => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/game/room_create`, { id });
-    return rjson.status;
+    return Boolean(rjson && rjson.status);
 };
 
 /**
@@ -195,7 +209,7 @@ window.http_room_create = async (id) => {
  */
 window.http_room_exist = async (id) => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/game/room_exist`, { id });
-    return rjson.status;
+    return Boolean(rjson && rjson.status);
 };
 
 /**
@@ -204,7 +218,7 @@ window.http_room_exist = async (id) => {
  */
 window.http_room_getall = async () => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/game/room_getall`, {});
-    if (!rjson.status) return [];
+    if (!rjson || !rjson.status) return [];
     return rjson.result;
 };
 
@@ -215,7 +229,7 @@ window.http_room_getall = async () => {
  */
 window.http_room_getsub = async (id) => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/game/room_getsub`, { id });
-    if (!rjson.status) return [];
+    if (!rjson || !rjson.status) return [];
     return rjson.result;
 };
 
@@ -226,6 +240,7 @@ window.http_room_getsub = async (id) => {
  */
 window.http_rand_getall = async () => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/game/rand_getall`, {});
+    if (!rjson) return;
     return rjson.result;
 };
 
@@ -279,7 +294,7 @@ window.http_replay_update = async (token, opponent, data, meta = {}) => {
  */
 window.http_time_ms = async () => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/time/ms`, {});
-    if (!rjson.status) return;
+    if (!rjson || !rjson.status) return;
     return rjson.result;
 };
 
@@ -289,7 +304,7 @@ window.http_time_ms = async () => {
  */
 window.http_time_s = async () => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/time/s`, {});
-    if (!rjson.status) return;
+    if (!rjson || !rjson.status) return;
     return rjson.result;
 };
 
@@ -299,7 +314,7 @@ window.http_time_s = async () => {
  */
 window.http_contest_bracket_query = async () => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/contest/bracket_query`, {});
-    if (!rjson.status) return;
+    if (!rjson || !rjson.status) return;
     return rjson.result;
 };
 
@@ -311,7 +326,7 @@ window.http_contest_bracket_query = async () => {
  */
 window.http_contest_bracket_update = async (token, data) => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/contest/bracket_update`, { token, data });
-    return Boolean(rjson.status);
+    return Boolean(rjson && rjson.status);
 };
 
 /**
@@ -323,7 +338,7 @@ window.http_contest_bracket_update = async (token, data) => {
  */
 window.http_contest_bracket_register = async (token, node_id, name) => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/contest/bracket_register`, { token, node_id, name });
-    return Boolean(rjson.status);
+    return Boolean(rjson && rjson.status);
 };
 
 /**
@@ -346,7 +361,7 @@ window.http_contest_match_report = async (token, node_id, group_index, replay_id
  */
 window.http_contest_rules_query = async () => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/contest/rules_query`, {});
-    if (!rjson.status) return;
+    if (!rjson || !rjson.status) return;
     return rjson.result;
 };
 
@@ -358,7 +373,7 @@ window.http_contest_rules_query = async () => {
  */
 window.http_contest_rules_update = async (token, data) => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/contest/rules_update`, { token, data });
-    return Boolean(rjson.status);
+    return Boolean(rjson && rjson.status);
 };
 
 /**
@@ -367,7 +382,7 @@ window.http_contest_rules_update = async (token, data) => {
  */
 window.http_contest_signup_query = async () => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/contest/signup_query`, {});
-    if (!rjson.status) return;
+    if (!rjson || !rjson.status) return;
     return rjson.result;
 };
 
@@ -379,7 +394,7 @@ window.http_contest_signup_query = async () => {
  */
 window.http_contest_signup_update = async (token, data) => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/contest/signup_update`, { token, data });
-    return Boolean(rjson.status);
+    return Boolean(rjson && rjson.status);
 };
 
 

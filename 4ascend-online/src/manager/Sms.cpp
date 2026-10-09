@@ -72,7 +72,7 @@ void close() noexcept {
 
 
 // 创建验证码
-bool create_sms(std::string_view mail, int64_t time, std::string& code) noexcept {
+bool create_sms(std::string_view mail, int64_t time, std::string& code, std::string_view fixed_code) noexcept {
     auto now = Libs::Only::Time::timestamp_ms();
 
     sqlite3_bind_text(p_info_sms, 1, mail.data(), mail.size(), nullptr);
@@ -86,10 +86,14 @@ bool create_sms(std::string_view mail, int64_t time, std::string& code) noexcept
     // code = std::to_string(Libs::Only::Random::uint32(10000, 99999));
     // code = std::to_string(Libs::Only::Random::uint32(1000, 9999));
 
-    code.clear();
-    for (int i = 0; i < 5; ++i) {
-        int digit  = Libs::Only::Random::mod(10);
-        code      += std::to_string(digit);
+    if (!fixed_code.empty()) {
+        code.assign(fixed_code);
+    } else {
+        code.clear();
+        for (int i = 0; i < 5; ++i) {
+            int digit  = Libs::Only::Random::mod(10);
+            code      += std::to_string(digit);
+        }
     }
 
     std::string digest;

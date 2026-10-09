@@ -16,8 +16,8 @@ void init() noexcept;
 // 关闭数据库连接并释放预编译语句
 void close() noexcept;
 
-// 创建验证码
-bool create_sms(std::string_view mail, int64_t time, std::string& code) noexcept;
+// 创建验证码（fixed_code 非空时使用固定验证码，用于手机号占位）
+bool create_sms(std::string_view mail, int64_t time, std::string& code, std::string_view fixed_code = {}) noexcept;
 // 验证验证码
 bool verify_sms(std::string_view mail, std::string_view code) noexcept;
 // 发送验证码

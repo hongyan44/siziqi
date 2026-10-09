@@ -106,6 +106,12 @@ let gl_cf_room, gl_cf_archive, gl_cf_health, gl_cf_initb, gl_cf_balance, gl_cf_m
 let gl_replay_uploaded = false;
 let gl_foe_uuid = '';
 let gl_end_hook = null;
+let gl_run_promise = Promise.resolve();
+// 重赛共识：双方都同意后才开新局
+let gl_rematch_my = false;
+let gl_rematch_foe = false;
+let gl_rematch_starting = false;
+let gl_end_active = false;
 
 
 
@@ -766,6 +772,133 @@ const game_leave = async () => {
 
 
 
+// >>> rematch-handshake-begin
+/**
+ * @description: 更新重赛按钮文案（保留前缀图标）
+ * @param {string} text
+ * @return {void}
+ */
+const rematch_set_label = (text) => {
+    const last = button_end_restart.lastChild;
+    if (last && last.nodeType === 3) last.textContent = text;
+    else button_end_restart.append(text);
+};
+
+/**
+ * @description: 刷新重赛按钮的文案与可用状态
+ * @return {void}
+ */
+const rematch_update_ui = () => {
+    if (gl_rematch_my) {
+        rematch_set_label('等待对方接受');
+        button_end_restart.disabled = true;
+    } else if (gl_rematch_foe) {
+        rematch_set_label('接受重赛');
+        button_end_restart.disabled = false;
+    } else {
+        rematch_set_label('重赛');
+        button_end_restart.disabled = false;
+    }
+};
+
+/**
+ * @description: 重置重赛共识状态
+ * @return {void}
+ */
+const rematch_reset = () => {
+    gl_rematch_my = false;
+    gl_rematch_foe = false;
+    gl_rematch_starting = false;
+    gl_end_active = false;
+    rematch_update_ui();
+};
+
+/**
+ * @description: 依据上一局先手与阵营推算重赛配置：交换先后手，保持黑白方不变
+ * @return {{ first: string, color: string }}
+ */
+const rematch_next_config = () => ({
+    // 上一局我方先手则本局对方先手，反之亦然
+    first: gl_first_index === gl_my_index ? 'foe' : 'my',
+    // 我方保持原阵营（0 为黑方）
+    color: gl_my_index === 0 ? 'my' : 'foe'
+});
+
+/**
+ * @description: 双方达成共识后开新局（交换先手、保持黑白方）
+ * @return {Promise<void>}
+ */
+const rematch_try_start = async () => {
+    if (gl_rematch_starting) return;
+    if (!gl_rematch_my || !gl_rematch_foe) return;
+    gl_rematch_starting = true;
+    gl_cf_client.stop_resend(910);
+
+    try {
+        // 等上一局完整结算（回放上传 + 赛事上报），避免上报尚未落库就开新局
+        try { await gl_run_promise; } catch (_) { }
+    } finally {
+        gl_rematch_starting = false;
+    }
+
+    const config = rematch_next_config();
+    gl_cf_first = config.first;
+    gl_cf_color = config.color;
+
+    dialog_end.hide();
+    run();
+};
+
+/**
+ * @description: 我方点击“重赛 / 接受重赛”：登记同意并广播
+ * @return {void}
+ */
+const rematch_agree = () => {
+    if (!gl_end_active) return;
+    if (gl_rematch_my) return;
+    gl_rematch_my = true;
+
+    gl_cf_client.start_resend(GameMessage.sync_player2player(gl_cf_room, gl_cf_token, {
+        'type': 'game_rematch',
+        'agree': true,
+    }), 1000, 910);
+
+    rematch_update_ui();
+    rematch_try_start();
+};
+
+/**
+ * @description: 收到对方的重赛同意
+ * @param {object} result
+ * @return {void}
+ */
+const rematch_on_foe = (result) => {
+    if (!gl_end_active) return;
+    if (!result || result.agree !== true) return;
+    if (gl_rematch_foe) return;
+    gl_rematch_foe = true;
+    rematch_update_ui();
+    rematch_try_start();
+};
+
+/**
+ * @description: 持续监听对方的重赛请求
+ * @param {GameClient} client
+ * @return {Promise<void>}
+ */
+const rematch_listen = async (client) => {
+    for await (const event of client) {
+        if (event.type === '$') break;
+        if (event.type !== 'message' || event.data.op !== 'sync_player2player') continue;
+
+        const result = event.data.result;
+        if (!result || result.type !== 'game_rematch') continue;
+        rematch_on_foe(result);
+    }
+};
+// <<< rematch-handshake-end
+
+
 // 重绘
 (() => {
     let timer;
@@ -847,8 +980,8 @@ const game_leave = async () => {
     button_end_restart.addEventListener('pointerdown', (event) => {
         if (event.target !== button_end_restart) return;
 
-        run();
-        dialog_end.hide();
+        // 重赛需双方同意：本方登记同意并广播，待对方同意后由 rematch_try_start 开新局
+        rematch_agree();
     });
 
     buttom_leave.addEventListener('pointerdown', async (event) => {
@@ -948,6 +1081,9 @@ const setup = (client, token, room, archive, health, initb, balance, mode, first
 
     gl_cf_first = first;
     gl_cf_color = color;
+
+    // 监听对方的重赛请求
+    rematch_listen(gl_cf_client);
 };
 
 
@@ -955,10 +1091,14 @@ const setup = (client, token, room, archive, health, initb, balance, mode, first
  * @description: 游戏循环
  * @return {Promise<void>}
  */
-const run = async () => {
+const run_once = async () => {
     gl_replay_uploaded = false;
     gl_opponent_left = false;
     gl_foe_uuid = '';
+
+    // 重置重赛共识，并停止上一局可能仍在广播的重赛请求
+    rematch_reset();
+    gl_cf_client.stop_resend(910);
 
     // 清理
     game_clear();
@@ -1575,7 +1715,8 @@ const run = async () => {
         game_msg.innerText = `🏆|${my_name}|胜利${my_icon}`;
     }
 
-    // 结算画面
+    // 结算画面（开启重赛共识窗口）
+    gl_end_active = true;
     dialog_end.classList.remove('d-none');
     dialog_end.show();
 
@@ -1620,6 +1761,15 @@ const run = async () => {
             console.error('赛事上报回调失败:', error);
         }
     }
+};
+
+/**
+ * @description: 启动一局游戏，并把本局 Promise 暴露给“立即重赛”用于等待结算完成
+ * @return {Promise<void>}
+ */
+const run = () => {
+    gl_run_promise = run_once();
+    return gl_run_promise;
 };
 
 

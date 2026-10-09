@@ -321,22 +321,52 @@
 
     <sl-dialog id='dialog_init' class='d-none' label='账号登录'>
         <div class='d-flex flex-column gap-4'>
-            <sl-input id='input_init_mail' label='你的邮箱' placeholder='请输入 你的邮箱'>
-            </sl-input>
+            <div class='d-flex flex-row gap-2'>
+                <sl-button id='button_init_login' class='flex-grow-1' variant='primary' size='small'>登录</sl-button>
+                <sl-button id='button_init_register' class='flex-grow-1' variant='default' size='small'>注册</sl-button>
+            </div>
 
-            <div class='d-flex flex-row align-items-end gap-2'>
-                <sl-input id='input_init_code' class='flex-grow-1' label='验证码' placeholder='请输入 验证码'>
+            <!-- 登录：账号/手机号/邮箱 + 密码 或 验证码 -->
+            <div id='panel_init_login' class='d-flex flex-column gap-4'>
+                <div class='d-flex flex-row align-items-end gap-2'>
+                    <sl-input id='input_login_ident' class='flex-grow-1' label='账号/手机号/邮箱'
+                        placeholder='请输入 账号/手机号/邮箱'></sl-input>
+
+                    <sl-button id='button_login_sms' variant='primary'>发送验证码</sl-button>
+                </div>
+
+                <sl-input id='input_login_pass' type='password' label='密码' placeholder='请输入 密码' password-toggle>
                 </sl-input>
 
-                <sl-button id='button_init_sms' variant='primary'>
-                    发送
-                </sl-button>
+                <sl-input id='input_login_code' label='验证码' placeholder='请输入 验证码'
+                    help-text='密码与验证码二选一：填写密码走账密登录，填写验证码走验证码登录'></sl-input>
+            </div>
+
+            <!-- 注册：邮箱或手机号 + 验证码 + 账号 + 密码 -->
+            <div id='panel_init_register' class='d-none flex-column gap-4'>
+                <div class='d-flex flex-row align-items-end gap-2'>
+                    <sl-input id='input_reg_ident' class='flex-grow-1' label='邮箱或手机号'
+                        placeholder='请输入 邮箱或手机号'></sl-input>
+
+                    <sl-button id='button_reg_sms' variant='primary'>发送验证码</sl-button>
+                </div>
+
+                <sl-input id='input_reg_code' label='填写验证码' placeholder='请输入 验证码'></sl-input>
+
+                <sl-input id='input_reg_account' label='注册账号' placeholder='请输入 注册账号'
+                    help-text='字母开头，4-16 位字母/数字/下划线'></sl-input>
+
+                <sl-input id='input_reg_pass' type='password' label='密码' placeholder='请输入 密码' password-toggle>
+                </sl-input>
+
+                <sl-input id='input_reg_pass2' type='password' label='重复密码' placeholder='请再次输入 密码'
+                    password-toggle></sl-input>
             </div>
         </div>
 
         <div slot='footer' class='gap-2'>
             <sl-button onclick='this.closest("sl-dialog").hide();' variant='neutral'>关闭</sl-button>
-            <sl-button id='button_init_submit' variant='primary'>确认</sl-button>
+            <sl-button id='button_init_submit' variant='primary'>登录</sl-button>
         </div>
     </sl-dialog>
 
@@ -376,6 +406,22 @@
                 <sl-input id='input_user_name' value='加载中...' label='你的昵称' placeholder='请输入 你的昵称'
                     help-text='例如：我是神秘下棋猫SSR'>
                 </sl-input>
+
+                <div class='border-top pt-3 mt-1 d-flex flex-column gap-3'>
+                    <div class='text-secondary small'>设置登录密码</div>
+                    <div class='d-flex flex-row align-items-end gap-2'>
+                        <sl-input id='input_user_pass_code' class='flex-grow-1' label='验证码' placeholder='请输入 验证码'></sl-input>
+                        <sl-button id='button_user_pass_sms' variant='primary'>发送验证码</sl-button>
+                    </div>
+                    <sl-input id='input_user_pass' type='password' label='新密码' placeholder='请输入 新密码'
+                        help-text='密码长度需为 6-64 位' password-toggle></sl-input>
+                    <sl-input id='input_user_pass2' type='password' label='重复新密码' placeholder='请再次输入 新密码'
+                        password-toggle></sl-input>
+                    <div class='d-flex flex-row align-items-center gap-2'>
+                        <sl-button id='button_user_pass_submit' variant='success'>设置密码</sl-button>
+                        <small class='text-secondary'>验证码将发送至当前绑定的邮箱/手机号，设置后可用该密码登录</small>
+                    </div>
+                </div>
 
                 <div class='border-top pt-3 mt-1'>
                     <div class='text-secondary small mb-2'>使用秘钥解锁更高权限等级</div>
@@ -491,6 +537,7 @@
 </body>
 
 
+<script src='/js/main/auth.min.js?v=replace'></script>
 <script src='/js/main/index.min.js?v=replace'></script>
 
 

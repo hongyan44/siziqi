@@ -77,6 +77,7 @@ const run_esbuild = (input, output) => {
             '--minify',
             '--format=iife',
             '--target=es2015',
+            '--charset=utf8',
             `--outfile=${output}`
         ],
         { 'stdio': 'inherit' }

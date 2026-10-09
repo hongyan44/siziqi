@@ -5,6 +5,13 @@
  */
 #pragma once
 
+#include <string_view>
+
+
+// 手机验证码占位：暂未接入短信服务商，手机号统一使用该固定验证码，且不实际下发短信。
+// 前端会同步提示该固定验证码，接入真实短信通道后应移除。
+inline constexpr std::string_view PHONE_SMS_DEV_CODE = "12345";
+
 
 inline std::string TOKEN_KEY;
 inline std::string TOKEN_SALT;
