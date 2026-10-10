@@ -262,6 +262,10 @@ void user_info(cinatra::coro_http_request& request, cinatra::coro_http_response&
     info["level"] = level;
     // 密码以 HMAC 摘要存储，无法还原明文，这里只暴露“是否已设置”，供前端展示密码状态。
     info["has_pass"] = has_pass;
+    // 好友专属短 ID：缺失时补发，供「账号信息」展示与好友搜索。
+    std::string friend_id;
+    if (!Manager::User::ensure_friend_id(uuid, friend_id)) return api_http_error("user_info", response);
+    info["friend_id"] = friend_id;
     api_end("user_info", true, info, buffer);
     response.set_status_and_content(cinatra::status_type::ok, buffer);
 };

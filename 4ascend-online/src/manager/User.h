@@ -44,6 +44,15 @@ bool generate_level_key(int target_level, std::string& secret) noexcept;
 // 查询用户昵称
 bool name_user(std::string_view uuid, std::string& name) noexcept;
 
+// 查询用户专属短 ID（用于好友搜索）
+bool friend_id_user(std::string_view uuid, std::string& friend_id) noexcept;
+// 专属短 ID 反查用户标识
+bool friend_id_uuid(std::string_view friend_id, std::string& uuid) noexcept;
+// 确保用户拥有专属短 ID：缺失则生成并写入，返回最终短 ID
+bool ensure_friend_id(std::string_view uuid, std::string& friend_id) noexcept;
+// 为所有缺失专属短 ID 的用户回填（启动时调用）
+void ensure_all_friend_id() noexcept;
+
 // 是否存在标识
 bool exist_user(std::string_view uuid) noexcept;
 // 是否存在邮箱或手机号（注册标识）

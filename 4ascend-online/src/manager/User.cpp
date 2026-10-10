@@ -41,6 +41,11 @@ sqlite3_stmt* p_update_account = nullptr;
 sqlite3_stmt* p_get_level         = nullptr;
 sqlite3_stmt* p_consume_level_key = nullptr;
 
+sqlite3_stmt* p_friend_id_user   = nullptr;
+sqlite3_stmt* p_friend_id_uuid   = nullptr;
+sqlite3_stmt* p_friend_id_set    = nullptr;
+sqlite3_stmt* p_friend_id_miss   = nullptr;
+
 namespace {
 void bind_text(sqlite3_stmt* statement, int index, std::string_view value) noexcept {
     sqlite3_bind_text(statement, index, value.data(), static_cast<int>(value.size()), SQLITE_TRANSIENT);
@@ -86,6 +91,17 @@ std::string generate_secret(int target_level) noexcept {
         secret.push_back(ALPHABET[Libs::Only::Random::mod(static_cast<uint32_t>(ALPHABET.size()))]);
     }
     return secret;
+}
+
+// 专属短 ID：8 位，去掉易混淆的 0/O/1/I，便于用户口头或手输分享。
+std::string generate_friend_id() noexcept {
+    static constexpr std::string_view ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+    std::string id;
+    id.reserve(8);
+    for (size_t index = 0; index < 8; ++index) {
+        id.push_back(ALPHABET[Libs::Only::Random::mod(static_cast<uint32_t>(ALPHABET.size()))]);
+    }
+    return id;
 }
 
 struct LevelKeyDigest {
@@ -169,7 +185,7 @@ void init() noexcept {
         db,
         "CREATE TABLE IF NOT EXISTS users (mail TEXT NOT NULL, phone TEXT NOT NULL DEFAULT '', account TEXT NOT NULL DEFAULT '', pass TEXT "
         "NOT NULL DEFAULT '', uuid TEXT NOT NULL, time INTEGER NOT NULL, name TEXT NOT NULL, avatar TEXT NOT NULL, level INTEGER NOT NULL "
-        "DEFAULT 1) STRICT",
+        "DEFAULT 1, friend_id TEXT NOT NULL DEFAULT '') STRICT",
         nullptr,
         nullptr,
         nullptr
@@ -179,12 +195,14 @@ void init() noexcept {
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN phone TEXT NOT NULL DEFAULT '';", nullptr, nullptr, nullptr);
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN account TEXT NOT NULL DEFAULT '';", nullptr, nullptr, nullptr);
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN pass TEXT NOT NULL DEFAULT '';", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "ALTER TABLE users ADD COLUMN friend_id TEXT NOT NULL DEFAULT '';", nullptr, nullptr, nullptr);
 
     // 没有索引则创建
     sqlite3_exec(db, "CREATE INDEX IF NOT EXISTS idx_users_mail ON users (mail)", nullptr, nullptr, nullptr);
     sqlite3_exec(db, "CREATE INDEX IF NOT EXISTS idx_users_phone ON users (phone)", nullptr, nullptr, nullptr);
     sqlite3_exec(db, "CREATE INDEX IF NOT EXISTS idx_users_account ON users (account)", nullptr, nullptr, nullptr);
     sqlite3_exec(db, "CREATE INDEX IF NOT EXISTS idx_users_uuid ON users (uuid)", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "CREATE INDEX IF NOT EXISTS idx_users_friend_id ON users (friend_id)", nullptr, nullptr, nullptr);
 
     // 一次性权限秘钥只保存 HMAC-SHA256 摘要；部署时需提供对应 level_salt.bin。
     // 将旧版仅允许 level=4 的表迁移为支持等级2-4，保留已核销状态。
@@ -254,6 +272,15 @@ void init() noexcept {
     );
 
     sqlite3_prepare_v2(db, "SELECT uuid FROM users;", -1, &p_all_user, nullptr);
+
+    // 好友专属短 ID：查询、反查、写入（仅缺失时可写，保证唯一且不可改）。
+    sqlite3_prepare_v2(db, "SELECT friend_id FROM users WHERE uuid = ?;", -1, &p_friend_id_user, nullptr);
+    sqlite3_prepare_v2(db, "SELECT uuid FROM users WHERE friend_id = ? AND friend_id <> '' LIMIT 1;", -1, &p_friend_id_uuid, nullptr);
+    sqlite3_prepare_v2(db, "UPDATE users SET friend_id = ? WHERE uuid = ? AND friend_id = '';", -1, &p_friend_id_set, nullptr);
+    sqlite3_prepare_v2(db, "SELECT uuid FROM users WHERE friend_id = '';", -1, &p_friend_id_miss, nullptr);
+
+    // 老用户回填专属短 ID，保证每个账号都可被好友搜索。
+    ensure_all_friend_id();
 };
 
 // 关闭
@@ -273,6 +300,10 @@ void close() noexcept {
     sqlite3_finalize(p_get_level);
     sqlite3_finalize(p_consume_level_key);
     sqlite3_finalize(p_all_user);
+    sqlite3_finalize(p_friend_id_user);
+    sqlite3_finalize(p_friend_id_uuid);
+    sqlite3_finalize(p_friend_id_set);
+    sqlite3_finalize(p_friend_id_miss);
 
     sqlite3_close(db);
     db = nullptr;
@@ -313,6 +344,10 @@ bool create_user(
     int rc = sqlite3_step(p_create_user);
     sqlite3_reset(p_create_user);
     if (rc != SQLITE_DONE) return false;
+
+    // 新账号立即分配专属短 ID，供好友搜索使用。
+    std::string friend_id;
+    ensure_friend_id(uuid, friend_id);
 
     return true;
 };
@@ -404,6 +439,81 @@ bool name_user(std::string_view uuid, std::string& name) noexcept {
 
     sqlite3_reset(p_info_user);
     return true;
+};
+
+// 查询用户专属短 ID
+bool friend_id_user(std::string_view uuid, std::string& friend_id) noexcept {
+    friend_id.clear();
+    if (!db || !p_friend_id_user || uuid.empty()) return false;
+
+    sqlite3_bind_text(p_friend_id_user, 1, uuid.data(), uuid.size(), nullptr);
+    const int rc = sqlite3_step(p_friend_id_user);
+    if (rc == SQLITE_ROW) {
+        if (const char* text = reinterpret_cast<const char*>(sqlite3_column_text(p_friend_id_user, 0))) friend_id = text;
+    }
+    sqlite3_reset(p_friend_id_user);
+    return rc == SQLITE_ROW;
+};
+
+// 专属短 ID 反查用户标识
+bool friend_id_uuid(std::string_view friend_id, std::string& uuid) noexcept {
+    uuid.clear();
+    if (!db || !p_friend_id_uuid || friend_id.empty()) return false;
+
+    sqlite3_bind_text(p_friend_id_uuid, 1, friend_id.data(), friend_id.size(), nullptr);
+    const int rc = sqlite3_step(p_friend_id_uuid);
+    if (rc == SQLITE_ROW) {
+        if (const char* text = reinterpret_cast<const char*>(sqlite3_column_text(p_friend_id_uuid, 0))) uuid = text;
+    }
+    sqlite3_reset(p_friend_id_uuid);
+    return rc == SQLITE_ROW;
+};
+
+// 确保用户拥有专属短 ID：缺失则生成唯一值并写入
+bool ensure_friend_id(std::string_view uuid, std::string& friend_id) noexcept {
+    friend_id.clear();
+    if (!db || !p_friend_id_user || !p_friend_id_set || uuid.empty()) return false;
+
+    // 已有则直接返回
+    if (friend_id_user(uuid, friend_id) && !friend_id.empty()) return true;
+
+    for (int attempt = 0; attempt < 12; ++attempt) {
+        auto candidate = generate_friend_id();
+
+        std::string exists;
+        if (friend_id_uuid(candidate, exists)) continue;
+
+        bind_text(p_friend_id_set, 1, candidate);
+        bind_text(p_friend_id_set, 2, uuid);
+        const int rc      = sqlite3_step(p_friend_id_set);
+        const int changed = sqlite3_changes(db);
+        reset(p_friend_id_set);
+
+        if (rc == SQLITE_DONE && changed == 1) {
+            friend_id = std::move(candidate);
+            return true;
+        }
+        // 并发写入时另一请求已赋值：直接读取现有值
+        if (friend_id_user(uuid, friend_id) && !friend_id.empty()) return true;
+    }
+    return false;
+};
+
+// 为所有缺失专属短 ID 的用户回填
+void ensure_all_friend_id() noexcept {
+    if (!db || !p_friend_id_miss) return;
+
+    std::vector<std::string> missing;
+    int rc;
+    while ((rc = sqlite3_step(p_friend_id_miss)) == SQLITE_ROW) {
+        if (const char* text = reinterpret_cast<const char*>(sqlite3_column_text(p_friend_id_miss, 0))) missing.emplace_back(text);
+    }
+    sqlite3_reset(p_friend_id_miss);
+
+    for (const auto& uuid : missing) {
+        std::string friend_id;
+        ensure_friend_id(uuid, friend_id);
+    }
 };
 
 // 查询用户权限等级

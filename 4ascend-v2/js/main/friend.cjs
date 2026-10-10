@@ -77,6 +77,10 @@ const toast = new ShToast();
 
         const data = JSON.parse(localStorage.getItem('data'));
         select_server_region.value = data.server;
+
+        // 好友对战邀请携带房间号：预填输入框，省去手动输入
+        const room = new URLSearchParams(window.location.search).get('room');
+        if (room) input_server_room.value = room.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 6);
     }, 10);
 })();
 

@@ -5,6 +5,7 @@
 #include "api/Utils.h"
 
 #include "api/http/Contest.h"
+#include "api/http/Friend.h"
 #include "api/http/Puzzle.h"
 #include "api/http/Replay.h"
 #include "api/http/Time.h"
@@ -15,6 +16,7 @@
 #include "api/ws/Ranked.h"
 
 #include "manager/Contest.h"
+#include "manager/Friend.h"
 #include "manager/Puzzle.h"
 #include "manager/Replay.h"
 #include "manager/Ranked.h"
@@ -51,6 +53,7 @@ inline void init() {
     Manager::Replay::init();
     Manager::Puzzle::init();
     Manager::Contest::init();
+    Manager::Friend::init();
     // Manager::Token::init();
 
 
@@ -69,6 +72,7 @@ inline void init() {
         Manager::Replay::close();
         Manager::Puzzle::close();
         Manager::Contest::close();
+        Manager::Friend::close();
         // Manager::Token::close();
 
         exit(0);
@@ -136,6 +140,7 @@ inline void api(cinatra::coro_http_server& server) {
 
     // 用户相关
     Api::Http::User::load(server);
+    Api::Http::Friend::load(server);
     Api::Http::Puzzle::load(server);
     Api::Http::Replay::load(server);
     Api::Http::Contest::load(server);

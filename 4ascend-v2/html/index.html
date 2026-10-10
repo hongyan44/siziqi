@@ -34,6 +34,7 @@
     <script src='/js/ref/music.min.js?v=replace'></script>
     <script src='/js/ref/global-music.min.js?v=replace'></script>
     <script src='/js/ref/http.min.js?v=replace'></script>
+    <script src='/js/ref/friends.min.js?v=replace'></script>
 
     <link href='/css/global.min.css?v=replace' rel='stylesheet'>
 
@@ -85,6 +86,67 @@
             border-left: 4px solid var(--sl-color-primary-500);
             padding-left: 8px;
             margin-bottom: 0.5rem;
+        }
+
+        /* 好友抽屉 */
+        .friend-drawer {
+            position: fixed;
+            inset: 0;
+            z-index: 1080;
+            pointer-events: none;
+        }
+
+        .friend-drawer .friend-drawer-backdrop {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.28);
+            opacity: 0;
+            transition: opacity 0.28s ease;
+        }
+
+        .friend-drawer .friend-drawer-panel {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            width: 340px;
+            max-width: 86vw;
+            background: #fff;
+            box-shadow: 0 0 24px rgba(0, 0, 0, 0.2);
+            transform: translateX(-100%);
+            transition: transform 0.28s ease;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .friend-drawer.open {
+            pointer-events: auto;
+        }
+
+        .friend-drawer.open .friend-drawer-backdrop {
+            opacity: 1;
+        }
+
+        .friend-drawer.open .friend-drawer-panel {
+            transform: translateX(0);
+        }
+
+        .friend-drawer .min-w-0 {
+            min-width: 0;
+        }
+
+        .friend-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--sl-color-neutral-400);
+            flex: none;
+        }
+
+        .friend-dot.online {
+            background: var(--sl-color-success-600);
+            box-shadow: 0 0 0 2px var(--sl-color-success-100);
         }
     </style>
 
@@ -559,6 +621,66 @@
             <sl-button id='button_local_submit' variant='primary'>确认</sl-button>
         </div>
     </sl-dialog>
+
+
+    <!-- 好友系统 -->
+    <div id='friend_drawer' class='friend-drawer'>
+        <div id='friend_drawer_backdrop' class='friend-drawer-backdrop'></div>
+        <div class='friend-drawer-panel'>
+            <div class='d-flex align-items-center justify-content-between p-3 border-bottom'>
+                <div class='d-flex align-items-center gap-2'>
+                    <sl-icon name='people-fill' class='text-primary'></sl-icon>
+                    <span class='fw-bold'>好友</span>
+                </div>
+                <sl-button id='button_friend_close' size='small' circle title='关闭'>
+                    <sl-icon name='x-lg'></sl-icon>
+                </sl-button>
+            </div>
+
+            <div class='d-flex flex-column gap-3 p-3 flex-grow-1 overflow-auto'>
+                <div class='p-2 rounded border bg-light d-flex align-items-center justify-content-between gap-2'>
+                    <div class='min-w-0'>
+                        <small class='text-secondary d-block'>我的好友ID</small>
+                        <span id='span_friend_my_id' class='fw-bold'>----</span>
+                    </div>
+                    <sl-button id='button_friend_copy_id' size='small' variant='default' outline>
+                        <sl-icon slot='prefix' name='clipboard'></sl-icon>复制
+                    </sl-button>
+                </div>
+
+                <section>
+                    <div class='category-title fw-bold mb-2'>添加好友</div>
+                    <div class='d-flex flex-row align-items-start gap-2'>
+                        <sl-input id='input_friend_search' class='flex-grow-1' placeholder='输入好友ID' maxlength='8'
+                            help-text='8位字母数字，不区分大小写'></sl-input>
+                        <sl-button id='button_friend_search' variant='primary'>搜索</sl-button>
+                    </div>
+                    <div id='div_friend_search_result' class='mt-2'></div>
+                </section>
+
+                <section id='section_friend_requests' class='d-none'>
+                    <div class='category-title fw-bold mb-2'>待处理申请</div>
+                    <div id='div_friend_requests' class='d-flex flex-column gap-2'></div>
+                </section>
+
+                <section>
+                    <div class='category-title fw-bold mb-2'>好友列表</div>
+                    <div id='div_friend_list' class='d-flex flex-column gap-2'></div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <div id='button_friend_wrap' class='position-fixed bottom-0 start-0 d-flex p-2' style='z-index: 1050;'>
+        <div class='position-relative'>
+            <sl-button id='button_friend_toggle' variant='default' circle title='好友'>
+                <sl-icon name='people'></sl-icon>
+            </sl-button>
+            <span id='badge_friend_dot'
+                class='d-none position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger'
+                style='font-size: 0.6rem;'>0</span>
+        </div>
+    </div>
 
 
     <div class='d-none'>

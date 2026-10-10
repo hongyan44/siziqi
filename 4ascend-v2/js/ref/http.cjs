@@ -412,6 +412,109 @@ window.http_contest_signup_update = async (token, data) => {
 };
 
 
+/**
+ * @description: 好友心跳（更新在线时间，返回待处理申请数与最新对战邀请）
+ * @param {string} token
+ * @return {Promise<{requests: number, invite: object | null} | void>}
+ */
+window.http_friend_heartbeat = async (token) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/heartbeat`, { token });
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+/**
+ * @description: 好友列表（好友 / 收到的申请 / 发出的申请 / 我的好友ID）
+ * @param {string} token
+ * @return {Promise<{friend_id: string, friends: object[], incoming: object[], outgoing: object[]} | void>}
+ */
+window.http_friend_list = async (token) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/list`, { token });
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+/**
+ * @description: 按好友ID搜索用户
+ * @param {string} token
+ * @param {string} friend_id
+ * @return {Promise<{friend_id: string, found: boolean, relation: string, uuid?: string, name?: string, avatar?: string} | void>}
+ */
+window.http_friend_search = async (token, friend_id) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/search`, { token, friend_id });
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+/**
+ * @description: 发送好友申请（对方已申请过我时直接成为好友）
+ * @param {string} token
+ * @param {string} friend_id
+ * @return {Promise<{relation: string} | void>}
+ */
+window.http_friend_request = async (token, friend_id) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/request`, { token, friend_id });
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+/**
+ * @description: 接受好友申请
+ * @param {string} token
+ * @param {string} from
+ * @return {Promise<boolean>}
+ */
+window.http_friend_accept = async (token, from) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/accept`, { token, from });
+    return Boolean(rjson && rjson.status);
+};
+
+/**
+ * @description: 拒绝好友申请
+ * @param {string} token
+ * @param {string} from
+ * @return {Promise<boolean>}
+ */
+window.http_friend_reject = async (token, from) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/reject`, { token, from });
+    return Boolean(rjson && rjson.status);
+};
+
+/**
+ * @description: 删除好友
+ * @param {string} token
+ * @param {string} uuid
+ * @return {Promise<boolean>}
+ */
+window.http_friend_remove = async (token, uuid) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/remove`, { token, uuid });
+    return Boolean(rjson && rjson.status);
+};
+
+/**
+ * @description: 邀请好友对战
+ * @param {string} token
+ * @param {string} uuid
+ * @param {string} room
+ * @return {Promise<boolean>}
+ */
+window.http_friend_challenge = async (token, uuid, room) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/challenge`, { token, uuid, room });
+    return Boolean(rjson && rjson.status);
+};
+
+/**
+ * @description: 清除对战邀请（接受或忽略后调用）
+ * @param {string} token
+ * @param {string} from
+ * @return {Promise<boolean>}
+ */
+window.http_friend_invite_clear = async (token, from) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/invite_clear`, { token, from });
+    return Boolean(rjson && rjson.status);
+};
+
+
 // 刷新凭证：主页/本地页/赛事页不自动弹窗或跳转，避免访问时反复提示登录
 (async () => {
     const toast = new window.UiExports.ShToast();
