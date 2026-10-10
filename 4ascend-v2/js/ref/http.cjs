@@ -424,6 +424,18 @@ window.http_friend_heartbeat = async (token) => {
 };
 
 /**
+ * @description: 好友长轮询（带版本号，服务端有变更立即返回，否则挂起至多约 3 秒）
+ * @param {string} token
+ * @param {number} version 客户端已知的变更版本号
+ * @return {Promise<{version: number, requests: number, invite: object | null} | void>}
+ */
+window.http_friend_wait = async (token, version) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/wait`, { token, version: String(version || 0) });
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+/**
  * @description: 好友列表（好友 / 收到的申请 / 发出的申请 / 我的好友ID）
  * @param {string} token
  * @return {Promise<{friend_id: string, friends: object[], incoming: object[], outgoing: object[]} | void>}
