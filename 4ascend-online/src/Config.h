@@ -8,9 +8,15 @@
 #include <string_view>
 
 
-// 手机验证码占位：暂未接入短信服务商，手机号统一使用该固定验证码，且不实际下发短信。
-// 前端会同步提示该固定验证码，接入真实短信通道后应移除。
+// 手机验证码：接入云片短信后，手机号验证码将真实下发（仅 11 位手机号）。
+// 未配置 SMS_YUNPIAN_APIKEY / SMS_YUNPIAN_TPL_ID 时回退为占位：使用该固定验证码且不实际下发，仅供开发/测试。
 inline constexpr std::string_view PHONE_SMS_DEV_CODE = "12345";
+
+// 云片短信配置：在 bin/sms_yunpian_apikey.bin、bin/sms_yunpian_tpl_id.bin 中读取，缺失则回退占位。
+inline std::string SMS_YUNPIAN_APIKEY;
+inline std::string SMS_YUNPIAN_TPL_ID;
+// 云片「指定模板单发」接口（走 https，scheme 由 coro_http_client 依据 use_ssl 补全）
+inline constexpr std::string_view SMS_YUNPIAN_HOST = "sms.yunpian.com/v2/sms/tpl_single_send.json";
 
 
 inline std::string TOKEN_KEY;

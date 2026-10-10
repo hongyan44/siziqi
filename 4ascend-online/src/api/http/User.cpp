@@ -63,6 +63,30 @@ bool is_account(std::string_view value) noexcept {
 bool is_pass(std::string_view value) noexcept {
     return value.size() >= 6 && value.size() <= 64;
 }
+
+// 昵称显示长度：非 ASCII（中文等）记 2 单位，ASCII 记 1 单位，与前端 name_length 保持一致
+size_t name_length(std::string_view value) noexcept {
+    size_t length = 0;
+    for (size_t index = 0; index < value.size();) {
+        const unsigned char c = static_cast<unsigned char>(value[index]);
+        if (c < 0x80) {
+            length += 1;
+            index += 1;
+            continue;
+        }
+        length += 2;
+        if ((c & 0xE0) == 0xC0) index += 2;
+        else if ((c & 0xF0) == 0xE0) index += 3;
+        else if ((c & 0xF8) == 0xF0) index += 4;
+        else index += 1;
+    }
+    return length;
+}
+
+// 昵称：非空且不超过 16 显示单位
+bool is_name(std::string_view value) noexcept {
+    return !value.empty() && name_length(value) <= 16;
+}
 } // namespace
 
 // 用户注册（邮箱或手机号 + 验证码 + 账号 + 密码，注册后不自动登录）
@@ -75,17 +99,20 @@ void user_register(cinatra::coro_http_request& request, cinatra::coro_http_respo
     auto code    = rjson["code"].as<std::string>();
     auto account = rjson["account"].as<std::string>();
     auto pass    = rjson["pass"].as<std::string>();
+    // 昵称选填，未填写时使用默认昵称
+    std::string name = rjson.contains("name") && rjson["name"].is_string() ? rjson["name"].as<std::string>() : std::string();
+    if (name.empty()) name = "无名氏";
 
-    // 标识必须是邮箱或手机号，账号与密码需符合规则，且验证码有效（验证码校验放最后，避免无谓消耗）
-    if ((!is_mail(ident) && !is_phone(ident)) || !is_account(account) || !is_pass(pass) || Manager::User::exist_ident(ident)
-        || Manager::User::exist_account(account) || !Manager::Sms::verify_sms(ident, code))
+    // 标识必须是邮箱或手机号，账号与密码需符合规则，昵称长度需合法，且验证码有效（验证码校验放最后，避免无谓消耗）
+    if ((!is_mail(ident) && !is_phone(ident)) || !is_account(account) || !is_pass(pass) || !is_name(name)
+        || Manager::User::exist_ident(ident) || Manager::User::exist_account(account) || !Manager::Sms::verify_sms(ident, code))
         return api_http_error("user_register", response); // cp
 
     auto uuid = Libs::Only::Random::uuid_v7();
 
     std::string mail  = is_mail(ident) ? ident : std::string();
     std::string phone = is_phone(ident) ? ident : std::string();
-    if (!Manager::User::create_user(mail, phone, account, pass, uuid, Libs::Only::Time::timestamp_ms(), "无名氏", ""))
+    if (!Manager::User::create_user(mail, phone, account, pass, uuid, Libs::Only::Time::timestamp_ms(), name, ""))
         return api_http_error("user_register", response); // cp
     Manager::Ranked::insert_score(uuid, 0);
 
@@ -125,7 +152,7 @@ void user_login(cinatra::coro_http_request& request, cinatra::coro_http_response
     response.set_status_and_content(cinatra::status_type::ok, buffer);
 };
 
-// 发送验证码（邮箱真实发送；手机号为占位，使用固定验证码且不实际发送）
+// 发送验证码（邮箱真实发送；手机号在配置云片后真实下发，未配置时回退占位固定码）
 async_simple::coro::Lazy<void> user_sms(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
     auto body = api_body(request.get_body());
     if (!body) co_return;
@@ -135,18 +162,36 @@ async_simple::coro::Lazy<void> user_sms(cinatra::coro_http_request& request, cin
     auto time  = Libs::Only::Time::timestamp_ms();
 
     std::string code;
+    bool dev = false;
+
     if (is_phone(ident)) {
-        if (!Manager::Sms::create_sms(ident, time, code, PHONE_SMS_DEV_CODE)) co_return api_http_error("user_sms", response); // cp
+        if (!Manager::Sms::phone_sms_ready()) {
+            // 未接入短信服务商：回退占位，使用固定验证码且不实际下发
+            dev = true;
+            if (!Manager::Sms::create_sms(ident, time, code, PHONE_SMS_DEV_CODE)) co_return api_http_error("user_sms", response); // cp
+        } else {
+            if (!Manager::Sms::create_sms(ident, time, code)) co_return api_http_error("user_sms", response); // cp
+            if (!(co_await Manager::Sms::send_phone_sms(ident, code, request.get_conn()->get_executor()))) {
+                Manager::Sms::delete_sms(ident);
+                co_return api_http_error("user_sms", response); // cp
+            }
+        }
     } else if (is_mail(ident)) {
-        if (!Manager::Sms::create_sms(ident, time, code)
-            || !(co_await Manager::Sms::send_sms(ident, code, request.get_conn()->get_executor())))
+        if (!Manager::Sms::create_sms(ident, time, code)) co_return api_http_error("user_sms", response); // cp
+        if (!(co_await Manager::Sms::send_sms(ident, code, request.get_conn()->get_executor()))) {
+            Manager::Sms::delete_sms(ident);
             co_return api_http_error("user_sms", response); // cp
+        }
     } else {
         co_return api_http_error("user_sms", response); // cp
     }
 
+    // dev 为 true 表示手机号走占位固定码（前端据此提示固定验证码）
+    jsoncons::json result = jsoncons::json::object();
+    result["dev"] = dev;
+
     std::string buffer;
-    api_end("user_sms", true, jsoncons::json::null(), buffer);
+    api_end("user_sms", true, result, buffer);
     response.set_status_and_content(cinatra::status_type::ok, buffer);
 };
 
@@ -210,9 +255,13 @@ void user_info(cinatra::coro_http_request& request, cinatra::coro_http_response&
     info["uuid"]        = uuid;
     int level = 1;
     if (!Manager::User::get_level(uuid, level)) return api_http_error("user_info", response);
+    bool has_pass = false;
+    if (!Manager::User::has_pass(uuid, has_pass)) return api_http_error("user_info", response);
 
     info["score"] = score;
     info["level"] = level;
+    // 密码以 HMAC 摘要存储，无法还原明文，这里只暴露“是否已设置”，供前端展示密码状态。
+    info["has_pass"] = has_pass;
     api_end("user_info", true, info, buffer);
     response.set_status_and_content(cinatra::status_type::ok, buffer);
 };
@@ -309,6 +358,42 @@ void user_set_pass(cinatra::coro_http_request& request, cinatra::coro_http_respo
     response.set_status_and_content(cinatra::status_type::ok, buffer);
 };
 
+// 设置登录账号（仅当前账号为空时可设置，设置后固定；需验证码校验，验证码发往已绑定的邮箱或手机号）
+void user_set_account(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
+    auto body = api_body(request.get_body());
+    if (!body) return;
+    auto rjson = body.value();
+
+    auto bin = rjson["token"].as<jsoncons::byte_string_view>();
+    std::string token(bin.begin(), bin.end());
+    auto code    = rjson["code"].as<std::string>();
+    auto account = rjson["account"].as<std::string>();
+
+    std::string uuid;
+    if (!Manager::Token::token2uuid(token, uuid) || !Manager::User::exist_user(uuid) || !is_account(account))
+        return api_http_error("user_set_account", response); // cp
+
+    // 账号一旦设置便不可再改；账号需全局唯一
+    std::string current, phone;
+    if (!Manager::User::account_user(uuid, current, phone) || !current.empty() || Manager::User::exist_account(account))
+        return api_http_error("user_set_account", response); // cp
+
+    std::string name, avatar, mail;
+    int64_t time = 0;
+    if (!Manager::User::info_user(uuid, name, avatar, mail, time)) return api_http_error("user_set_account", response); // cp
+
+    // 验证码只能发往已绑定的邮箱或手机号，优先使用邮箱
+    const std::string ident = !mail.empty() ? mail : phone;
+    if (ident.empty() || !Manager::Sms::verify_sms(ident, code)) return api_http_error("user_set_account", response); // cp
+
+    // 依赖 SQL 的 account = '' 条件原子兜底，避免并发下重复设置
+    if (!Manager::User::update_account(uuid, account)) return api_http_error("user_set_account", response); // cp
+
+    std::string buffer;
+    api_end("user_set_account", true, jsoncons::json::null(), buffer);
+    response.set_status_and_content(cinatra::status_type::ok, buffer);
+};
+
 
 // 生成一次性权限秘钥
 void generate_level_key(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
@@ -365,6 +450,7 @@ void load(cinatra::coro_http_server& server) noexcept {
     server.set_http_handler<cinatra::POST>("/user/info", user_info);
     server.set_http_handler<cinatra::POST>("/user/update", user_update);
     server.set_http_handler<cinatra::POST>("/user/set_pass", user_set_pass);
+    server.set_http_handler<cinatra::POST>("/user/set_account", user_set_account);
     server.set_http_handler<cinatra::POST>("/user/unlock_level", user_unlock_level);
     server.set_http_handler<cinatra::GET>("/admin/generate_level_key", generate_level_key);
 };

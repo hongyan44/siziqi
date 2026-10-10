@@ -14,17 +14,17 @@
     <link href='https://quantil.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/themes/light.css' rel='stylesheet'>
     <script src='https://quantil.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/shoelace-autoloader.js' type='module'></script>
     <script src='/vendor/comlink/comlink.min.js'></script>
-    <script src='/js/global/ui.min.js?v=1791505753115-X_KH_iQumVI'></script>
-    <script src='/js/global/endgame.min.js?v=1791505753116-k_xgtAI2ypo'></script>
-    <script src='/js/global/fascend.min.js?v=1791505753116-V541HJUnSM0'></script>
-    <script src='/js/risk/api.min.js?v=1791505753116-uCQg-PwnbsS'></script>
-    <script src='/js/ref/must.min.js?v=1791505753116-v3IUxeQf1VU'></script>
-    <script src='/js/ref/http.min.js?v=1791505753116-s9-2MkwPbms'></script>
-    <script src='/js/global/game.min.js?v=1791505753116-UO4H3VHlVla'></script>
-    <script src='/js/global/utils.min.js?v=1791505753116-tjMvWjjJXVk'></script>
-    <link href='/css/main.min.css?v=1791505753116-wgX2wQ2IRCo' rel='stylesheet'>
-    <link href='/css/global.min.css?v=1791505753116-bP6vUFfET2b' rel='stylesheet'>
-    <link href='/css/game.min.css?v=1791505753116-sJnKukGGJbS' rel='stylesheet'>
+    <script src='/js/global/ui.min.js?v=1791564464497-CWkL7HbK-z2'></script>
+    <script src='/js/global/endgame.min.js?v=1791564464498-3RndaCNsWIo'></script>
+    <script src='/js/global/fascend.min.js?v=1791564464498-2sgT_gRIu0-'></script>
+    <script src='/js/risk/api.min.js?v=1791564464498-MT9JQdpwzuA'></script>
+    <script src='/js/ref/must.min.js?v=1791564464498--NgQQnUCt56'></script>
+    <script src='/js/ref/http.min.js?v=1791564464498-H55avi_g73g'></script>
+    <script src='/js/global/game.min.js?v=1791564464498-4-IYuIQMC58'></script>
+    <script src='/js/global/utils.min.js?v=1791564464498-o7aO-NHsyHX'></script>
+    <link href='/css/main.min.css?v=1791564464498-_MJjwwUBPNY' rel='stylesheet'>
+    <link href='/css/global.min.css?v=1791564464498-xO49H0OFiW_' rel='stylesheet'>
+    <link href='/css/game.min.css?v=1791564464498-7nUHkvUxVsU' rel='stylesheet'>
     <style>
         .challenge-main { max-width: 1180px; }
         .challenge-board-wrap { width: min(94vw, 760px); aspect-ratio: 1; background: #fff; border: 1px solid rgba(0, 0, 0, .08); border-radius: .75rem; overflow: hidden; }
@@ -344,7 +344,7 @@
             const list = document.getElementById('challenge_move_list');
             list.innerHTML = '';
             document.getElementById('challenge_empty').classList.toggle('d-none', moves.length > 0);
-            moves.forEach((item, index) => { const row = document.createElement('div'); row.className = 'move-item d-flex align-items-center justify-content-between border rounded px-2 small'; row.innerHTML = `<span><span class='badge text-bg-danger me-1'>${index + 1}</span>${moveLabel(item.move)}</span><span class='text-secondary'>${item.side}${item.source ? ` · ${item.source}` : ''}</span>`; list.appendChild(row); });
+            moves.forEach((item, index) => { const row = document.createElement('div'); row.className = 'move-item d-flex align-items-center justify-content-between border rounded px-2 small'; row.innerHTML = `<span><span class='badge text-bg-danger me-1'>${index + 1}</span>${moveLabel(item.move)}</span><span class='text-secondary'>${item.side === '白方' ? 'AI落子' : '玩家落子'}</span>`; list.appendChild(row); });
         };
 
         const getBoardSize = () => {

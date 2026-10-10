@@ -33,6 +33,8 @@ bool update_user(std::string_view uuid, std::string_view name, std::string_view 
 bool info_user(std::string_view uuid, std::string& name, std::string& avatar, std::string& mail, int64_t& time) noexcept;
 // 查询账号与手机号
 bool account_user(std::string_view uuid, std::string& account, std::string& phone) noexcept;
+// 设置登录账号（仅当前账号为空时可写，设置后不可再改）
+bool update_account(std::string_view uuid, std::string_view account) noexcept;
 // 查询用户权限等级
 bool get_level(std::string_view uuid, int& level) noexcept;
 // 使用秘钥解锁权限等级（只允许升级）
@@ -53,6 +55,8 @@ bool exist_account(std::string_view account) noexcept;
 bool ident2uuid(std::string_view ident, std::string& uuid) noexcept;
 // 校验密码
 bool check_pass(std::string_view uuid, std::string_view password) noexcept;
+// 是否已设置登录密码
+bool has_pass(std::string_view uuid, bool& has) noexcept;
 // 更新登录密码
 bool update_pass(std::string_view uuid, std::string_view pass) noexcept;
 } // namespace User

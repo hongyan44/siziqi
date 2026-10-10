@@ -37,6 +37,7 @@ sqlite3_stmt* p_info_user     = nullptr;
 sqlite3_stmt* p_account_user  = nullptr;
 sqlite3_stmt* p_pass_user     = nullptr;
 sqlite3_stmt* p_update_pass   = nullptr;
+sqlite3_stmt* p_update_account = nullptr;
 sqlite3_stmt* p_get_level         = nullptr;
 sqlite3_stmt* p_consume_level_key = nullptr;
 
@@ -234,6 +235,8 @@ void init() noexcept {
     sqlite3_prepare_v2(db, "SELECT account, phone FROM users WHERE uuid = ?;", -1, &p_account_user, nullptr);
     sqlite3_prepare_v2(db, "SELECT pass FROM users WHERE uuid = ?;", -1, &p_pass_user, nullptr);
     sqlite3_prepare_v2(db, "UPDATE users SET pass = ? WHERE uuid = ?;", -1, &p_update_pass, nullptr);
+    // 仅在账号为空时写入，借助 SQL 条件原子保证“设置后不可再改”。
+    sqlite3_prepare_v2(db, "UPDATE users SET account = ? WHERE uuid = ? AND account = '';", -1, &p_update_account, nullptr);
     sqlite3_prepare_v2(
         db,
         "SELECT uuid FROM users WHERE (mail = ? AND mail <> '') OR (phone = ? AND phone <> '') OR (account = ? AND account <> '') LIMIT 1;",
@@ -265,6 +268,7 @@ void close() noexcept {
     sqlite3_finalize(p_account_user);
     sqlite3_finalize(p_pass_user);
     sqlite3_finalize(p_update_pass);
+    sqlite3_finalize(p_update_account);
     sqlite3_finalize(p_ident_uuid);
     sqlite3_finalize(p_get_level);
     sqlite3_finalize(p_consume_level_key);
@@ -371,6 +375,19 @@ bool account_user(std::string_view uuid, std::string& account, std::string& phon
 
     sqlite3_reset(p_account_user);
     return true;
+};
+
+// 设置登录账号（仅当前账号为空时可写；已设置则 changed 为 0，返回失败）
+bool update_account(std::string_view uuid, std::string_view account) noexcept {
+    if (uuid.empty() || account.empty()) return false;
+
+    bind_text(p_update_account, 1, account);
+    bind_text(p_update_account, 2, uuid);
+
+    const int rc      = sqlite3_step(p_update_account);
+    const int changed = sqlite3_changes(db);
+    reset(p_update_account);
+    return rc == SQLITE_DONE && changed == 1;
 };
 
 // 查询用户昵称
@@ -545,6 +562,24 @@ bool check_pass(std::string_view uuid, std::string_view password) noexcept {
 
     return Libs::Security::Bytes::safe_equal(stored, password_digest(password));
 };
+
+// 是否已设置登录密码
+bool has_pass(std::string_view uuid, bool& has) noexcept {
+    if (uuid.empty()) return false;
+
+    bind_text(p_pass_user, 1, uuid);
+
+    const int rc = sqlite3_step(p_pass_user);
+    if (rc != SQLITE_ROW) {
+        reset(p_pass_user);
+        return false;
+    }
+
+    const auto* text = reinterpret_cast<const char*>(sqlite3_column_text(p_pass_user, 0));
+    has = text && text[0] != '\0';
+    reset(p_pass_user);
+    return true;
+}
 
 // 更新登录密码
 bool update_pass(std::string_view uuid, std::string_view pass) noexcept {

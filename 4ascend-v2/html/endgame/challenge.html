@@ -344,7 +344,7 @@
             const list = document.getElementById('challenge_move_list');
             list.innerHTML = '';
             document.getElementById('challenge_empty').classList.toggle('d-none', moves.length > 0);
-            moves.forEach((item, index) => { const row = document.createElement('div'); row.className = 'move-item d-flex align-items-center justify-content-between border rounded px-2 small'; row.innerHTML = `<span><span class='badge text-bg-danger me-1'>${index + 1}</span>${moveLabel(item.move)}</span><span class='text-secondary'>${item.side}${item.source ? ` · ${item.source}` : ''}</span>`; list.appendChild(row); });
+            moves.forEach((item, index) => { const row = document.createElement('div'); row.className = 'move-item d-flex align-items-center justify-content-between border rounded px-2 small'; row.innerHTML = `<span><span class='badge text-bg-danger me-1'>${index + 1}</span>${moveLabel(item.move)}</span><span class='text-secondary'>${item.side === '白方' ? 'AI落子' : '玩家落子'}</span>`; list.appendChild(row); });
         };
 
         const getBoardSize = () => {

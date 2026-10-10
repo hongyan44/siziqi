@@ -30,13 +30,14 @@ window.http_user_exist = async (ident) => {
 };
 
 /**
- * @description: 发送验证码（邮箱真实发送；手机号为占位固定码，不实际发送）
+ * @description: 发送验证码（邮箱与手机号均真实发送；手机号未配置短信服务商时后端回退占位固定码，dev 为 true）
  * @param {string} ident
- * @return {Promise<boolean>}
+ * @return {Promise<{dev: boolean} | void>}
  */
 window.http_user_sms = async (ident) => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/sms`, { ident });
-    return Boolean(rjson && rjson.status);
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
 };
 
 /**
@@ -45,10 +46,11 @@ window.http_user_sms = async (ident) => {
  * @param {string} code
  * @param {string} account
  * @param {string} pass
+ * @param {string} name
  * @return {Promise<boolean>}
  */
-window.http_user_register = async (ident, code, account, pass) => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/register`, { ident, code, account, pass });
+window.http_user_register = async (ident, code, account, pass, name = '') => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/register`, { ident, code, account, pass, name });
     return Boolean(rjson && rjson.status);
 };
 
@@ -165,6 +167,18 @@ window.http_user_update = async (token, name, avatar) => {
  */
 window.http_user_set_pass = async (token, code, pass) => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/set_pass`, { token, code, pass });
+    return Boolean(rjson && rjson.status);
+};
+
+/**
+ * @description: 设置登录账号（仅当前账号为空时可设置，设置后不可修改；需验证码校验，验证码发往已绑定的邮箱或手机号）
+ * @param {string} token
+ * @param {string} code
+ * @param {string} account
+ * @return {Promise<boolean>}
+ */
+window.http_user_set_account = async (token, code, account) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/set_account`, { token, code, account });
     return Boolean(rjson && rjson.status);
 };
 

@@ -17,9 +17,13 @@
 
 #include "../libs/security/Bytes.h"
 
+#include <cinatra/coro_http_client.hpp>
 #include <cinatra/smtp_client.hpp>
+#include <cinatra/url_encode_decode.hpp>
+#include <jsoncons/json.hpp>
 #include <sqlite/sqlite3.h>
 
+#include <chrono>
 #include <string>
 
 
@@ -109,6 +113,16 @@ bool create_sms(std::string_view mail, int64_t time, std::string& code, std::str
     if (rc != SQLITE_DONE) return false;
 
     return true;
+};
+
+// 删除验证码
+bool delete_sms(std::string_view mail) noexcept {
+    if (mail.empty()) return false;
+
+    sqlite3_bind_text(p_delete_sms, 1, mail.data(), mail.size(), nullptr);
+    const int rc = sqlite3_step(p_delete_sms);
+    sqlite3_reset(p_delete_sms);
+    return rc == SQLITE_DONE;
 };
 
 // 验证验证码
@@ -240,6 +254,49 @@ async_simple::coro::Lazy<bool> send_sms(std::string_view mail, std::string_view 
 
     // 发送邮件
     co_return co_await client.send_email(data);
+};
+
+
+// 手机短信通道是否已配置
+bool phone_sms_ready() noexcept {
+    return !SMS_YUNPIAN_APIKEY.empty() && !SMS_YUNPIAN_TPL_ID.empty();
+};
+
+// 发送手机短信验证码（云片「指定模板单发」，仅 11 位手机号）
+async_simple::coro::Lazy<bool> send_phone_sms(std::string_view phone, std::string_view code, coro_io::ExecutorWrapper<>* executor) noexcept {
+    // 仅 11 位手机号可发送：1 开头、第二位 3-9，其余一律拒绝
+    if (phone.size() != 11 || phone[0] != '1' || phone[1] < '3' || phone[1] > '9') co_return false;
+    for (const char c : phone) {
+        if (c < '0' || c > '9') co_return false;
+    }
+    if (!phone_sms_ready()) co_return false;
+
+    cinatra::coro_http_client client(executor);
+    cinatra::coro_http_client::config conf{};
+    conf.use_ssl                = true;
+    conf.conn_timeout_duration  = std::chrono::seconds(5);
+    conf.req_timeout_duration   = std::chrono::seconds(5);
+    client.init_config(conf);
+
+    // 云片要求：变量名与变量值先各自 urlencode，再整体 urlencode
+    std::string tpl_value = code_utils::url_encode(code_utils::url_encode("#code#") + "=" + code_utils::url_encode(std::string(code)));
+
+    std::string body;
+    body.append("apikey=").append(code_utils::url_encode(SMS_YUNPIAN_APIKEY));
+    body.append("&mobile=").append(code_utils::url_encode(std::string(phone)));
+    body.append("&tpl_id=").append(code_utils::url_encode(SMS_YUNPIAN_TPL_ID));
+    body.append("&tpl_value=").append(tpl_value);
+
+    auto result = co_await client.async_post(std::string(SMS_YUNPIAN_HOST), std::move(body), cinatra::req_content_type::form_url_encode);
+    if (result.status != 200) co_return false;
+
+    // 云片返回 code == 0 表示发送成功
+    try {
+        auto rjson = jsoncons::json::parse(std::string(result.resp_body));
+        co_return rjson["code"].as<int>() == 0;
+    } catch (...) {
+        co_return false;
+    }
 };
 } // namespace Sms
 } // namespace Manager

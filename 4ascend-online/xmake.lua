@@ -63,6 +63,7 @@ target('4ascend-online')
     add_files('src/**.cpp')
 
     add_defines('YLT_ENABLE_SSL')
+    add_defines('CINATRA_ENABLE_SSL')
     add_defines('CRYPTOPP_ENABLE_NAMESPACE_WEAK=1')
     
     add_ldflags('-static', {force = true})

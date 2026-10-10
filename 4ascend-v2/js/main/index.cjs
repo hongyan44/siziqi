@@ -24,6 +24,7 @@ const input_reg_ident = document.getElementById('input_reg_ident');
 const button_reg_sms = document.getElementById('button_reg_sms');
 const input_reg_code = document.getElementById('input_reg_code');
 const input_reg_account = document.getElementById('input_reg_account');
+const input_reg_name = document.getElementById('input_reg_name');
 const input_reg_pass = document.getElementById('input_reg_pass');
 const input_reg_pass2 = document.getElementById('input_reg_pass2');
 
@@ -55,6 +56,8 @@ const dialog_user = document.getElementById('dialog_user');
 const input_user_name = document.getElementById('input_user_name');
 const button_user_submit = document.getElementById('button_user_submit');
 const span_user_mail = document.getElementById('span_user_mail');
+const span_user_account = document.getElementById('span_user_account');
+const span_user_pass_status = document.getElementById('span_user_pass_status');
 const span_user_level = document.getElementById('span_user_level');
 const span_user_role = document.getElementById('span_user_role');
 const input_user_secret = document.getElementById('input_user_secret');
@@ -65,6 +68,12 @@ const button_user_pass_sms = document.getElementById('button_user_pass_sms');
 const input_user_pass = document.getElementById('input_user_pass');
 const input_user_pass2 = document.getElementById('input_user_pass2');
 const button_user_pass_submit = document.getElementById('button_user_pass_submit');
+
+const block_user_account_set = document.getElementById('block_user_account_set');
+const input_user_account_code = document.getElementById('input_user_account_code');
+const button_user_account_sms = document.getElementById('button_user_account_sms');
+const input_user_account = document.getElementById('input_user_account');
+const button_user_account_submit = document.getElementById('button_user_account_submit');
 
 // 当前账号绑定的邮箱或手机号，用于发送设置密码的验证码
 let user_ident = '';
@@ -232,7 +241,7 @@ HOME_FREE_PATHS.forEach((pathname) => {
 
 
 
-const { is_phone, check_login_ident, check_mail_phone, check_account, check_password, check_password_repeat, check_code } = window.AuthExports;
+const { check_login_ident, check_mail_phone, check_account, check_password, check_password_repeat, check_code } = window.AuthExports;
 
 // 当前登录/注册面板
 let init_tab = 'login';
@@ -267,10 +276,10 @@ const ident_sms = async (ident, check) => {
     if (message) return toast.error(message);
 
     try {
-        const status = await window.http_user_sms(ident);
-        if (!status) return toast.error('验证码发送失败！');
-        // 手机号暂未接入短信服务商，后端使用固定占位验证码，此处同步提示。
-        if (is_phone(ident)) toast.success(`验证码发送成功！测试阶段手机验证码固定为 ${window.AuthExports.PHONE_DEV_CODE}`);
+        const result = await window.http_user_sms(ident);
+        if (!result) return toast.error('验证码发送失败！');
+        // 后端未配置短信服务商时，手机号回退固定占位验证码，此处同步提示；已配置则真实下发。
+        if (result.dev) toast.success(`验证码发送成功！测试阶段手机验证码固定为 ${window.AuthExports.PHONE_DEV_CODE}`);
         else toast.success('验证码发送成功！');
 
     } catch (_) {
@@ -306,11 +315,12 @@ const login_submit = async (ident, pass, code) => {
  * @param {string} code
  * @param {string} account
  * @param {string} pass
+ * @param {string} name
  * @return {Promise<void>}
  */
-const register_submit = async (ident, code, account, pass) => {
+const register_submit = async (ident, code, account, pass, name) => {
     try {
-        const status = await window.http_user_register(ident, code, account, pass);
+        const status = await window.http_user_register(ident, code, account, pass, name);
         if (!status) return toast.error('注册失败，请检查验证码，或账号/邮箱/手机号已被占用！');
 
         toast.success('注册成功，可以使用注册的手机号/邮箱或账号进行账密登录，也可以验证码登录。');
@@ -334,13 +344,25 @@ const render_user_level = (level) => {
     if (span_user_role) span_user_role.innerText = safe_level === 4 ? '残局投稿：可管理昵称、提交并管理残局' : '残局投稿：可管理昵称并提交残局';
 };
 
+// 密码以摘要存储，前端只能展示“是否已设置”的状态
+const render_user_pass_status = (has_pass) => {
+    const set = Boolean(has_pass);
+    span_user_pass_status.innerText = set ? '已设置' : '未设置';
+    span_user_pass_status.classList.toggle('text-success', set);
+    span_user_pass_status.classList.toggle('text-secondary', !set);
+};
+
 const user_info = async (token) => {
     try {
         const info = await window.http_user_info(token);
         if (!info) return toast.error('获取账号信息失败！');
-        const { name, mail, phone, account, level } = info;
+        const { name, mail, phone, account, level, has_pass } = info;
         input_user_name.value = name;
         span_user_mail.innerText = mail || phone || account || '';
+        span_user_account.innerText = account || '未设置';
+        // 账号仅未设置时可设置，设置后固定
+        block_user_account_set.style.display = account ? 'none' : 'flex';
+        render_user_pass_status(has_pass);
         user_ident = mail || phone || '';
         render_user_level(level);
 
@@ -395,7 +417,30 @@ const user_set_pass = async (token, code, pass) => {
         if (!status) return toast.error('设置密码失败，请检查验证码是否正确！');
 
         [input_user_pass_code, input_user_pass, input_user_pass2].forEach((element) => { element.value = ''; });
+        render_user_pass_status(true);
         toast.success('密码设置成功，可使用新密码登录！');
+
+    } catch (_) {
+        toast.error('请求错误！');
+    }
+};
+
+/**
+ * @description: 设置登录账号（仅账号未设置时可设置，验证码校验通过后写入；设置后固定不可再改）
+ * @param {string} token
+ * @param {string} code
+ * @param {string} account
+ * @return {Promise<void>}
+ */
+const user_set_account = async (token, code, account) => {
+    try {
+        const status = await window.http_user_set_account(token, code, account);
+        if (!status) return toast.error('设置账号失败，请检查验证码，或该账号已被占用！');
+
+        [input_user_account_code, input_user_account].forEach((element) => { element.value = ''; });
+        span_user_account.innerText = account;
+        block_user_account_set.style.display = 'none';
+        toast.success('账号设置成功，可使用该账号登录！');
 
     } catch (_) {
         toast.error('请求错误！');
@@ -468,16 +513,18 @@ button_init_submit.addEventListener('pointerdown', (event) => {
     const ident = input_reg_ident.value.trim();
     const code = input_reg_code.value.trim();
     const account = input_reg_account.value.trim();
+    const name = input_reg_name.value.trim();
     const pass = input_reg_pass.value;
     const pass2 = input_reg_pass2.value;
 
     const message = check_mail_phone(ident) || check_code(code) || check_account(account) || check_password(pass) || check_password_repeat(pass, pass2);
     if (message) return toast.error(message);
+    if (name && window.name_length(name) > 16) return toast.error('昵称最长16个字符！');
 
     window.sleep_task(
-        [button_reg_sms, input_reg_ident, input_reg_code, input_reg_account, input_reg_pass, input_reg_pass2],
+        [button_reg_sms, input_reg_ident, input_reg_code, input_reg_account, input_reg_name, input_reg_pass, input_reg_pass2],
         button_init_submit,
-        async () => register_submit(ident, code, account, pass),
+        async () => register_submit(ident, code, account, pass, name),
     );
 });
 
@@ -486,7 +533,7 @@ dialog_init.addEventListener('sl-after-hide', (event) => {
     if (event.target !== dialog_init) return;
 
     switch_init_tab('login');
-    [input_login_ident, input_login_pass, input_login_code, input_reg_ident, input_reg_code, input_reg_account, input_reg_pass, input_reg_pass2]
+    [input_login_ident, input_login_pass, input_login_code, input_reg_ident, input_reg_code, input_reg_account, input_reg_name, input_reg_pass, input_reg_pass2]
         .forEach((element) => { element.value = ''; });
 });
 
@@ -515,6 +562,35 @@ button_user_unlock.addEventListener('pointerdown', (event) => {
         [button_user_unlock, input_user_secret],
         button_user_unlock,
         async () => user_unlock_level(window.get_token(), secret)
+    );
+});
+
+// 设置账号：发送验证码（发往当前绑定的邮箱或手机号）
+button_user_account_sms.addEventListener('pointerdown', (event) => {
+    if (event.target !== button_user_account_sms) return;
+    if (!user_ident) return toast.error('当前账号未绑定邮箱或手机号，无法发送验证码！');
+
+    window.sleep_task(
+        [button_user_account_sms, input_user_account_code, input_user_account],
+        button_user_account_sms,
+        async () => ident_sms(user_ident, check_mail_phone),
+    );
+});
+
+// 设置账号：提交（验证码 + 登录账号）
+button_user_account_submit.addEventListener('pointerdown', (event) => {
+    if (event.target !== button_user_account_submit) return;
+
+    const code = input_user_account_code.value.trim();
+    const account = input_user_account.value.trim();
+
+    const message = check_code(code) || check_account(account);
+    if (message) return toast.error(message);
+
+    window.sleep_task(
+        [button_user_account_sms, input_user_account_code, input_user_account],
+        button_user_account_submit,
+        async () => user_set_account(window.get_token(), code, account),
     );
 });
 
@@ -569,10 +645,15 @@ dialog_user.addEventListener('sl-after-hide', (event) => {
 
     input_user_name.value = '加载中...';
     span_user_mail.innerText = '加载中...';
+    span_user_account.innerText = '加载中...';
+    span_user_pass_status.innerText = '加载中...';
+    span_user_pass_status.classList.remove('text-success', 'text-secondary');
     render_user_level(1);
     if (span_user_role) span_user_role.innerText = '残局投稿：登录后可提交';
     input_user_secret.value = '';
     [input_user_pass_code, input_user_pass, input_user_pass2].forEach((element) => { element.value = ''; });
+    [input_user_account_code, input_user_account].forEach((element) => { element.value = ''; });
+    block_user_account_set.style.display = 'none';
     user_ident = '';
 });
 

@@ -40,6 +40,10 @@ inline void init() {
     Libs::Only::Flie::read("bin/sms_salt.bin", SMS_SALT);
     Libs::Only::Flie::read("bin/level_salt.bin", LEVEL_SALT);
 
+    // 云片短信配置可选：缺失时留空，手机验证码回退为占位固定码
+    Libs::Only::Flie::read("bin/sms_yunpian_apikey.bin", SMS_YUNPIAN_APIKEY);
+    Libs::Only::Flie::read("bin/sms_yunpian_tpl_id.bin", SMS_YUNPIAN_TPL_ID);
+
     // 数据库初始化
     Manager::Sms::init();
     Manager::User::init();

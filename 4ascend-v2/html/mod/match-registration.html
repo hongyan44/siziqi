@@ -691,6 +691,8 @@
                 node.rotate = node.rotate === 'first' ? 'first' : 'off';
                 node.results = node.results && typeof node.results === 'object' ? node.results : {};
                 node.player_uuids = node.player_uuids && typeof node.player_uuids === 'object' ? node.player_uuids : {};
+                // 被管理员移除过的身份标识码，防止保存时合并服务端数据把该账号“复活”
+                node.removed_uuids = Array.isArray(node.removed_uuids) ? node.removed_uuids : [];
                 if (!Array.isArray(node.groups) || node.groups.length !== node.groupCount) {
                     node.groups = Array.from({ length: node.groupCount }, () => []);
                     for (let i = 0; i < node.players.length; i++) {
@@ -756,14 +758,22 @@
             } catch (_) {}
         };
 
-        // 合并服务端签表：报名标识码以服务端为准；小分保留 updated_at 更新的一份
+        // 合并服务端签表：报名标识码只补入本地缺失且未被管理员移除的条目；小分保留 updated_at 更新的一份
         const merge_remote_state = (remote) => {
             if (!remote || !Array.isArray(remote.nodes) || !Array.isArray(state.nodes)) return;
             remote.nodes.forEach((rnode) => {
                 const lnode = state.nodes.find((item) => item.id === rnode.id);
                 if (!lnode) return;
                 if (rnode.player_uuids && typeof rnode.player_uuids === 'object') {
-                    lnode.player_uuids = Object.assign({}, lnode.player_uuids || {}, rnode.player_uuids);
+                    const removed = Array.isArray(lnode.removed_uuids) ? lnode.removed_uuids : [];
+                    const merged = Object.assign({}, lnode.player_uuids || {});
+                    Object.keys(rnode.player_uuids).forEach((key) => {
+                        const value = rnode.player_uuids[key];
+                        // 管理员已移除的身份不得回灌，否则该账号会被判定为已报名而无法再次报名
+                        if (!value || removed.includes(value)) return;
+                        if (!(key in merged)) merged[key] = value;
+                    });
+                    lnode.player_uuids = merged;
                 }
                 const rres = rnode.results && typeof rnode.results === 'object' ? rnode.results : {};
                 const lres = lnode.results && typeof lnode.results === 'object' ? lnode.results : {};
@@ -1132,6 +1142,7 @@
                 rotate: 'off',
                 results: {},
                 player_uuids: {},
+                removed_uuids: [],
                 x: parent.x + 340,
                 y: Math.max(24, parent.y + fan * 170)
             });
@@ -1297,10 +1308,11 @@
             renderNodes();
         };
 
-        // 方块已登记的唯一身份标识码集合（报名身份以 uuid 为准）
+        // 方块在册玩家对应的唯一身份标识码集合（以 players 名单为准，忽略历史残留的已移除账号）
         const registered_uuids = (node) => {
             const map = node.player_uuids && typeof node.player_uuids === 'object' ? node.player_uuids : {};
-            return Object.keys(map).map((key) => map[key]).filter(Boolean);
+            const players = Array.isArray(node.players) ? node.players : [];
+            return players.map((name) => map[name]).filter(Boolean);
         };
 
         // 报名条件：当前账号的 uuid 是否已进入该方块分组。
@@ -1312,8 +1324,37 @@
             return Boolean(name) && node.players.includes(name) && !map[name];
         };
 
+        // 从各组历史小分中剔除某身份并重算完成态；清空后保留空壳记录，防止合并服务端时旧战绩回灌
+        const purge_uuid_results = (node, uuid) => {
+            if (!uuid || !node.results || typeof node.results !== 'object') return;
+            const bo = normalize_bo(node.bo);
+            const target = Math.floor(bo / 2) + 1;
+            Object.keys(node.results).forEach((key) => {
+                const entry = node.results[key];
+                if (!entry || typeof entry !== 'object') return;
+                const wins = entry.wins && typeof entry.wins === 'object' ? Object.assign({}, entry.wins) : {};
+                if (!(uuid in wins)) return;
+                delete wins[uuid];
+                const uuids = Object.keys(wins);
+                const scores = uuids.map((item) => Number(wins[item]) || 0);
+                const max = scores.length ? Math.max(...scores) : 0;
+                const completed = max >= target;
+                let winner_uuid = '';
+                if (completed) {
+                    let best = -1;
+                    uuids.forEach((item, i) => { if (scores[i] > best) { best = scores[i]; winner_uuid = item; } });
+                }
+                entry.wins = wins;
+                entry.bo = bo;
+                entry.completed = completed;
+                entry.winner_uuid = winner_uuid;
+                entry.updated_at = Date.now();
+            });
+        };
+
         // 从方块中移除玩家
         const removePlayerFromNode = (node, name) => {
+            const uuid = node.player_uuids && typeof node.player_uuids === 'object' ? node.player_uuids[name] : null;
             node.players = node.players.filter((n) => n !== name);
             node.groups.forEach((g) => {
                 const idx = g.indexOf(name);
@@ -1321,6 +1362,19 @@
             });
             // 同步清理身份标识码，否则该账号会被判定为已报名而无法再次报名
             if (node.player_uuids && typeof node.player_uuids === 'object') delete node.player_uuids[name];
+            // 清除该身份的历史小分：被移除后重新报名必须走全新抽签，不得继承旧赛事战绩
+            purge_uuid_results(node, uuid);
+            // 记录被移除的身份，保存时合并服务端数据不得把它回灌
+            if (uuid) {
+                if (!Array.isArray(node.removed_uuids)) node.removed_uuids = [];
+                if (!node.removed_uuids.includes(uuid)) node.removed_uuids.push(uuid);
+            }
+        };
+
+        // 重新报名成功后撤销移除标记，恢复正常报名态
+        const clear_removed_uuid = (node, uuid) => {
+            if (!uuid || !Array.isArray(node.removed_uuids)) return;
+            node.removed_uuids = node.removed_uuids.filter((item) => item !== uuid);
         };
 
         // 查询某方块的全部前置方块（通过连线推导）
@@ -1407,8 +1461,11 @@
             const target = Math.floor(bo / 2) + 1;
             const entry = group_entry(node, index);
             const wins = entry.wins && typeof entry.wins === 'object' ? entry.wins : {};
-            const score_a = Number(wins[uuid_a]) || 0;
-            const score_b = Number(wins[uuid_b]) || 0;
+            // 仅当历史小分的身份键与当前组双方完全匹配时才采信，避免已移除选手的旧战绩残留显示
+            const win_keys = Object.keys(wins).filter((key) => Number(wins[key]) > 0);
+            const pair_matched = win_keys.every((key) => key === uuid_a || key === uuid_b);
+            const score_a = pair_matched ? Number(wins[uuid_a]) || 0 : 0;
+            const score_b = pair_matched ? Number(wins[uuid_b]) || 0 : 0;
             const completed = score_a >= target || score_b >= target;
             const winner_uuid = completed ? (score_a > score_b ? uuid_a : uuid_b) : '';
 
@@ -1596,6 +1653,13 @@
                 return;
             }
             await syncFromRemote();
+            // 重新报名成功后撤销移除标记，并清除该身份残留小分，确保走全新抽签、不继承旧战绩
+            const joined = findNode(node.id);
+            if (joined) {
+                clear_removed_uuid(joined, uuid);
+                purge_uuid_results(joined, uuid);
+                saveState();
+            }
             renderDialog();
         });
 
@@ -1624,16 +1688,10 @@
                 });
             }
 
-            // 如果总容量缩小，从后往前移除多余玩家
+            // 如果总容量缩小，从后往前移除多余玩家（同步清理标识码与记录移除标记）
             if (newMax < node.maxPlayers && node.players.length > newMax) {
                 const toRemove = node.players.slice(newMax);
-                toRemove.forEach((p) => {
-                    node.groups.forEach((g) => {
-                        const idx = g.indexOf(p);
-                        if (idx >= 0) g.splice(idx, 1);
-                    });
-                });
-                node.players = node.players.slice(0, newMax);
+                toRemove.forEach((p) => removePlayerFromNode(node, p));
             }
             node.maxPlayers = newMax;
 
