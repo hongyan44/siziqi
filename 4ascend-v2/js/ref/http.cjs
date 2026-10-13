@@ -411,6 +411,29 @@ window.http_contest_signup_update = async (token, data) => {
     return Boolean(rjson && rjson.status);
 };
 
+/**
+ * @description: 查询文档内容（游戏规则 / 使用手册）
+ * @param {string} key 'rule' | 'tip'
+ * @return {Promise<{data: string, creator: string, updated_at: number} | undefined>}
+ */
+window.http_docs_query = async (key) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/docs/query`, { key });
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+/**
+ * @description: 更新文档内容（仅管理员，保存后全服可见）
+ * @param {string} token
+ * @param {string} key 'rule' | 'tip'
+ * @param {string} data
+ * @return {Promise<boolean>}
+ */
+window.http_docs_update = async (token, key, data) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/docs/update`, { token, key, data });
+    return Boolean(rjson && rjson.status);
+};
+
 
 /**
  * @description: 好友心跳（更新在线时间，返回待处理申请数与最新对战邀请）
@@ -524,6 +547,30 @@ window.http_friend_challenge = async (token, uuid, room) => {
 window.http_friend_invite_clear = async (token, from) => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/invite_clear`, { token, from });
     return Boolean(rjson && rjson.status);
+};
+
+/**
+ * @description: 给好友发送私信（仅好友之间可发）
+ * @param {string} token
+ * @param {string} uuid 好友标识
+ * @param {string} content 私信内容
+ * @return {Promise<boolean>}
+ */
+window.http_friend_message_send = async (token, uuid, content) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/message_send`, { token, uuid, content });
+    return Boolean(rjson && rjson.status);
+};
+
+/**
+ * @description: 拉取与好友的会话记录（打开即标记对方来信为已读）
+ * @param {string} token
+ * @param {string} uuid 好友标识
+ * @return {Promise<{messages: Array<{mine: boolean, content: string, created_at: number}>, unread: number} | void>}
+ */
+window.http_friend_message_list = async (token, uuid) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/message_list`, { token, uuid });
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
 };
 
 

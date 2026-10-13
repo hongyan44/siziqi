@@ -87,6 +87,8 @@ const { GameNormal, GameBlight, GameNight, Board, OVER_ENUM, ASCEND_ENUM, PLANT_
 
 const toast = new ShToast();
 
+const { resolve_choice_uuid } = require('./view-color.cjs');
+
 
 let gl_time = 0;
 let gl_run = 0;
@@ -845,6 +847,11 @@ const run = async () => {
     const a_index = uuids.indexOf(my_uuid);
     const b_index = uuids.indexOf(foe_uuid);
 
+    // 发送方 uuid：view_sync 的 uuids[0] 恒为发送者本人（两端都发 [自己, 对方]）。
+    // 观战是第三方，my_uuid/foe_uuid 只是按 uuid 排序得到的上下显示位，与发送方无关，
+    // 因此发送方传来的 'my'/'foe' 这类相对选择必须借助 sender_uuid 才能还原成绝对黑白。
+    const sender_uuid = Array.isArray(result.uuids) && result.uuids[0] ? result.uuids[0] : my_uuid;
+
     const my_name = result.names[a_index];
     const foe_name = result.names[b_index];
 
@@ -919,9 +926,16 @@ const run = async () => {
 
 
     // 阵营决定
+    // gl_cf_color 是发送方相对自身的阵营选择（'my'=发送方执黑，'foe'=发送方执白），
+    // 必须结合 sender_uuid 解释成绝对黑白；否则观战会因“先收到哪一方的 view_sync”
+    // 不同而把黑白方反过来（对方收到 'foe' 时也会被误当成“最小 uuid 执黑”）。
     if (gl_cf_color !== 'rand') {
-        [my_color, my_stone, my_icon, my_label, my_index] = gl_cf_color === 'my' ? [PLAYER_ENUM.BLACK, STONE_ENUM.BLACK, '⚫', '黑方', 0] : [PLAYER_ENUM.WHITE, STONE_ENUM.WHITE, '⚪', '白方', 1];
-        [foe_color, foe_stone, foe_icon, foe_label, foe_index] = gl_cf_color === 'foe' ? [PLAYER_ENUM.BLACK, STONE_ENUM.BLACK, '⚫', '黑方', 0] : [PLAYER_ENUM.WHITE, STONE_ENUM.WHITE, '⚪', '白方', 1];
+        const black_uuid = resolve_choice_uuid(sender_uuid, gl_cf_color, my_uuid, foe_uuid);
+        my_color = black_uuid === my_uuid ? PLAYER_ENUM.BLACK : PLAYER_ENUM.WHITE;
+        foe_color = my_color === PLAYER_ENUM.BLACK ? PLAYER_ENUM.WHITE : PLAYER_ENUM.BLACK;
+
+        [my_stone, my_icon, my_label, my_index] = my_color === PLAYER_ENUM.BLACK ? [STONE_ENUM.BLACK, '⚫', '黑方', 0] : [STONE_ENUM.WHITE, '⚪', '白方', 1];
+        [foe_stone, foe_icon, foe_label, foe_index] = foe_color === PLAYER_ENUM.BLACK ? [STONE_ENUM.BLACK, '⚫', '黑方', 0] : [STONE_ENUM.WHITE, '⚪', '白方', 1];
     }
 
     // 生命值、初始盘面、先手平衡、先手决定
@@ -931,9 +945,9 @@ const run = async () => {
         hp = gl_cf_health;
 
         if (gl_cf_first !== 'rand') {
-            let temp_stone;
-            if (gl_cf_first === 'my') temp_stone = my_stone;
-            else if (gl_cf_first === 'foe') temp_stone = foe_stone;
+            // gl_cf_first 同样是发送方相对自身的先手选择，需按 sender_uuid 还原成绝对先手方
+            const first_uuid = resolve_choice_uuid(sender_uuid, gl_cf_first, my_uuid, foe_uuid);
+            const temp_stone = first_uuid === my_uuid ? my_stone : foe_stone;
 
             [first_color, first_icon, first_index] = temp_stone === STONE_ENUM.BLACK ? [PLAYER_ENUM.BLACK, '⚫', 0] : [PLAYER_ENUM.WHITE, '⚪', 1];
         }

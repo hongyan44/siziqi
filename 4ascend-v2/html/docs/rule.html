@@ -25,6 +25,12 @@
     <!-- Bootstrap V5 -->
     <link href='https://quantil.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css' rel='stylesheet'>
 
+    <!-- Shoelace -->
+    <link href='https://quantil.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/themes/light.css'
+        rel='stylesheet'>
+    <script src='https://quantil.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/shoelace-autoloader.js'
+        type='module'></script>
+
     <!-- Highlightjs  -->
     <link href='https://quantil.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css'
         rel='stylesheet'>
@@ -36,6 +42,8 @@
     <!-- MY -->
     <link href='/css/docs.min.css?v=replace' rel='stylesheet'>
 
+    <script src='/js/risk/api.min.js?v=replace'></script>
+    <script src='/js/global/ui.min.js?v=replace'></script>
     <script src='/js/ref/must.min.js?v=replace'></script>
     <script src='/js/ref/global-music.min.js?v=replace'></script>
     <script src='/js/ref/http.min.js?v=replace'></script>
@@ -81,6 +89,33 @@
                 transform: rotate(360deg);
             }
         }
+
+        /* 管理员编辑入口：固定在右下角，避免遮挡正文 */
+        #admin_bar {
+            position: fixed;
+            right: 16px;
+            bottom: 16px;
+            z-index: 1050;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .editor-hint code {
+            color: #0d6efd;
+        }
+
+        /* 预览面板沿用 Markdown 排版，但去掉文档容器的居中与页边距 */
+        .preview-pane {
+            max-width: none;
+            min-width: 0;
+            margin: 0;
+            padding: 12px 16px;
+            border: 1px solid #e1e4e8;
+            border-radius: 6px;
+            max-height: 40vh;
+            overflow: auto;
+        }
     </style>
 
     <div id='loading' class='loading-a'>
@@ -90,7 +125,27 @@
 
     <script>
         (async () => {
+            // 文档标识与静态兜底路径：管理员未配置时回退到源码 Markdown
+            const DOC_KEY = 'rule';
+            const STATIC_MD = '/md/rule.md';
+            const MAX_LEN = 65536;
+
+            let current_md = '';
+            let remote_ts = 0;
+
             const st = Date.now();
+
+            // 遮罩移除幂等，任何路径重复调用都安全
+            const hide_loading = () => {
+                if (window.loaded) return;
+                window.loaded = true;
+                const loader = document.getElementById('loading');
+                if (loader) {
+                    loader.style.opacity = '0';
+                    loader.style.visibility = 'hidden';
+                    setTimeout(() => loader.remove(), 400);
+                }
+            };
 
             if (document.readyState === 'loading') await new Promise((resolve) => document.addEventListener('DOMContentLoaded', resolve, { 'once': true }));
 
@@ -105,8 +160,6 @@
             await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
             await document.fonts.ready;
-
-            const md = await (await fetch(`/md/rule.md?v=${Math.random()}`)).text();
 
             marked.setOptions({
                 'renderer': new marked.Renderer(),
@@ -123,21 +176,128 @@
                 'smartypants': false
             });
 
-            document.getElementById('content').innerHTML = marked(md);
+            const content = document.getElementById('content');
+
+            const render_markdown = (md) => {
+                content.innerHTML = marked(md);
+            };
+
+            const fetch_static = async () => (await fetch(`${STATIC_MD}?v=${Math.random()}`)).text();
+
+            // 优先取服务端内容；服务端尚未配置时回退到静态 Markdown 文件
+            const fetch_markdown = async () => {
+                try {
+                    const remote = await window.http_docs_query(DOC_KEY);
+                    if (remote && typeof remote.data === 'string' && remote.data.trim()) {
+                        remote_ts = Number(remote.updated_at) || 0;
+                        return remote.data;
+                    }
+                } catch (_) {}
+                return await fetch_static();
+            };
+
+            // 正文加载失败（如静态文件与接口都不可用）不能阻断后续的管理员入口初始化
+            try {
+                current_md = await fetch_markdown();
+                render_markdown(current_md);
+            } catch (_) {}
 
             const elapsed = Date.now() - st;
-            const delay = Math.max(0, 300 - elapsed); // 至少运行0.5s
+            setTimeout(hide_loading, Math.max(0, 300 - elapsed));
 
-            setTimeout(() => {
-                window.loaded = true;
+            // ==================== 管理员编辑 ====================
+            const adminBar = document.getElementById('admin_bar');
+            const editButton = document.getElementById('button_edit');
+            const editDialog = document.getElementById('dialog_edit');
+            const editContent = document.getElementById('edit_content');
+            const editPreview = document.getElementById('edit_preview');
+            const editStatus = document.getElementById('edit_status');
+            const editSave = document.getElementById('button_edit_save');
+            const editCancel = document.getElementById('button_edit_cancel');
 
-                const loader = document.getElementById('loading');
-                if (loader) {
-                    loader.style.opacity = '0';
-                    loader.style.visibility = 'hidden';
-                    setTimeout(() => loader.remove(), 400);
+            const set_status = (message, className) => {
+                editStatus.textContent = message || '';
+                editStatus.className = `small ${className || 'text-secondary'}`;
+            };
+
+            const update_preview = () => { editPreview.innerHTML = marked(editContent.value || ''); };
+
+            let preview_timer = null;
+            editContent.addEventListener('sl-input', () => {
+                if (preview_timer) clearTimeout(preview_timer);
+                preview_timer = setTimeout(update_preview, 150);
+            });
+
+            editButton.addEventListener('click', () => {
+                if (typeof editDialog.show !== 'function') { window.alert('编辑器组件未就绪，请刷新页面后重试。'); return; }
+                editContent.value = current_md;
+                set_status('', '');
+                update_preview();
+                editDialog.show();
+            });
+
+            editCancel.addEventListener('click', () => editDialog.hide());
+
+            editSave.addEventListener('click', async () => {
+                // 编辑入口本就仅对管理员可见，此处不再重复校验权限
+                const token = window.get_token();
+                if (!token) { set_status('登录状态已失效，请重新登录后重试。', 'text-danger'); return; }
+
+                const data = editContent.value;
+                if (!data.trim()) { set_status('文档内容不能为空。', 'text-danger'); return; }
+                if (data.length > MAX_LEN) { set_status('内容过长，请精简到 64KB 以内。', 'text-danger'); return; }
+
+                editSave.disabled = true;
+                set_status('正在保存…', 'text-secondary');
+                let ok = false;
+                try {
+                    ok = await window.http_docs_update(token, DOC_KEY, data);
+                } finally {
+                    // 无论请求成功、失败还是抛错，都必须恢复按钮，避免界面卡死
+                    editSave.disabled = false;
                 }
-            }, delay);
+                if (!ok) { set_status('保存失败，服务暂不可用，请稍后重试。', 'text-danger'); return; }
+
+                current_md = data;
+                render_markdown(current_md);
+                remote_ts = Date.now();
+                editDialog.hide();
+            });
+
+            // 轮询服务端，普通用户也能及时看到管理员的改动
+            const sync_remote = async () => {
+                if (editDialog.open) return;
+                try {
+                    const remote = await window.http_docs_query(DOC_KEY);
+                    if (!remote || typeof remote.data !== 'string' || !remote.data.trim()) return;
+                    const ts = Number(remote.updated_at) || 0;
+                    if (ts <= remote_ts) return;
+                    remote_ts = ts;
+                    current_md = remote.data;
+                    render_markdown(current_md);
+                } catch (_) {}
+            };
+
+            // 仅管理员（level = 4）显示编辑入口
+            const setup_admin = async () => {
+                const token = window.get_token();
+                if (!token) return;
+                let info = null;
+                try { info = await window.http_user_info(token); } catch (_) { return; }
+                if (!info || Number(info.level) !== 4) return;
+
+                // 等编辑器组件注册完成；超时兜底，避免个别环境卡住
+                await Promise.race([
+                    customElements.whenDefined('sl-dialog').catch(() => {}),
+                    new Promise((resolve) => setTimeout(resolve, 3000)),
+                ]);
+
+                adminBar.classList.remove('d-none');
+            };
+
+            await setup_admin();
+
+            setInterval(() => { if (!document.hidden) sync_remote(); }, 10000);
         })();
     </script>
 </head>
@@ -145,6 +305,35 @@
 
 <body class='p-0'>
     <div id='content' class='markdown-body'></div>
+
+    <div id='admin_bar' class='d-none'>
+        <sl-badge variant='warning' pill>管理员模式</sl-badge>
+        <sl-button id='button_edit' variant='warning' size='small'>
+            <sl-icon slot='prefix' name='pencil-square'></sl-icon>编辑文档
+        </sl-button>
+    </div>
+
+    <sl-dialog id='dialog_edit' label='编辑游戏规则' style='--width: 52rem;'>
+        <div class='d-flex flex-column gap-3'>
+            <div class='editor-hint text-secondary small'>
+                提示：直接编辑 Markdown 全文，保存后全服立即生效；支持标题、<code>**加粗**</code>、<code>[链接](http://...)</code>、列表、表格等语法。
+            </div>
+            <sl-textarea id='edit_content' label='文档内容（Markdown）' rows='18' resize='vertical'></sl-textarea>
+            <div>
+                <div class='d-flex align-items-center gap-2 mb-2'>
+                    <sl-icon name='eye'></sl-icon>
+                    <div class='fw-bold'>实时预览</div>
+                </div>
+                <div id='edit_preview' class='markdown-body preview-pane'></div>
+            </div>
+            <div id='edit_status' class='small text-secondary'></div>
+        </div>
+
+        <div slot='footer' class='gap-2'>
+            <sl-button id='button_edit_cancel' variant='neutral'>取消</sl-button>
+            <sl-button id='button_edit_save' variant='warning'>保存并发布</sl-button>
+        </div>
+    </sl-dialog>
 </body>
 
 
