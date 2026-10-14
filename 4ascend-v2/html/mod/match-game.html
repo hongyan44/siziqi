@@ -1,0 +1,563 @@
+<!--
+ * @Author: CsVeryLoveXieWenLi
+ * @Description: 赛事比赛
+ * @Copyright (c) 2026 by CsVeryLoveXieWenLi, All Rights Reserved.
+-->
+<!DOCTYPE html>
+<html>
+
+
+<head>
+    <meta charset='UTF-8'>
+    <meta http-equiv='X-UA-Compatible' content='IE=edge'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0, user-scalable=no'>
+
+
+    <link rel='shortcut icon' href='/favicon.png' type='image/png'>
+
+    <title>四子棋 赛事比赛</title>
+
+
+    <!-- Bootstrap V5 -->
+    <link href='https://quantil.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css' rel='stylesheet'>
+
+    <!-- Shoelace -->
+    <link href='https://quantil.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/themes/light.css' rel='stylesheet'>
+    <script src='https://quantil.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/shoelace-autoloader.js'
+        type='module'></script>
+
+    <!-- Clipboard -->
+    <script src='https://quantil.jsdelivr.net/npm/clipboard-js@0.3.6/clipboard.min.js'></script>
+
+    <!-- MY -->
+    <script src='/js/risk/api.min.js?v=replace'></script>
+    <script src='/js/global/ui.min.js?v=replace'></script>
+
+    <script src='/js/global/game.min.js?v=replace'></script>
+    <script src='/js/global/fascend.min.js?v=replace'></script>
+    <script src='/js/global/utils.min.js?v=replace'></script>
+
+    <link href='/css/main.min.css?v=replace' rel='stylesheet'>
+    <link href='/css/global.min.css?v=replace' rel='stylesheet'>
+    <link href='/css/game.min.css?v=replace' rel='stylesheet'>
+
+
+    <!-- 加载动画 -->
+    <style>
+        .loading-a {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 1);
+            transition: all 0.4s ease;
+        }
+
+        .loading-p {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            animation: loading-spin 1s linear infinite;
+        }
+
+        .loading-t {
+            margin-top: 15px;
+            font-family: sans-serif;
+            color: #666;
+            font-size: 14px;
+        }
+
+        @keyframes loading-spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* 赛事 BO 系列赛 UI */
+        .series-card {
+            display: none;
+        }
+
+        .series-card.show {
+            display: block;
+        }
+
+        .series-strip {
+            display: none;
+        }
+
+        .series-strip.show {
+            display: flex;
+        }
+
+        .series-end {
+            display: none;
+        }
+
+        .series-end.show {
+            display: block;
+        }
+    </style>
+
+    <div id='loading' class='loading-a'>
+        <div class='loading-p'></div>
+        <p class='loading-t'>正在初始化...</p>
+    </div>
+
+    <script>
+        (async () => {
+            const icons = Array.from(document.querySelectorAll('sl-icon'));
+            const st = Date.now();
+
+            await Promise.allSettled([
+                customElements.whenDefined('sl-button'),
+                customElements.whenDefined('sl-icon'),
+                customElements.whenDefined('sl-input'),
+                customElements.whenDefined('sl-select'),
+                customElements.whenDefined('sl-alert'),
+                customElements.whenDefined('sl-tag'),
+                customElements.whenDefined('sl-details'),
+                customElements.whenDefined('sl-dialog'),
+            ]);
+
+            if (document.readyState === 'loading') await new Promise((resolve) => document.addEventListener('DOMContentLoaded', resolve, { 'once': true }))
+
+            await Promise.allSettled(icons.map((icon) => {
+                return new Promise((resolve) => {
+                    if (icon.hasAttribute('library')) resolve();
+                    icon.addEventListener('sl-load', () => requestAnimationFrame(() => requestAnimationFrame(resolve)), { 'once': true });
+                });
+            }));
+
+            await new Promise((resolve) => {
+                if (document.readyState === 'complete') resolve();
+                else window.addEventListener('load', resolve, { 'once': true });
+            });
+
+            await Promise.allSettled([...document.images]
+                .map((image) => image.complete ? Promise.resolve() : new Promise((resolve) => image.onload = resolve)));
+
+            await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+            // await document.fonts.ready;
+
+            const elapsed = Date.now() - st;
+            const delay = Math.max(0, 300 - elapsed); // 至少运行1s
+
+            setTimeout(() => {
+                window.loaded = true;
+
+                const loader = document.getElementById('loading');
+                if (loader) {
+                    loader.style.opacity = '0';
+                    loader.style.visibility = 'hidden';
+                    setTimeout(() => loader.remove(), 400);
+                }
+            }, delay);
+        })();
+    </script>
+</head>
+
+
+<body class='d-flex flex-column w-100 h-100 bg-light'>
+    <div id='button_home' class='position-fixed top-0 start-0 d-flex p-2' style="z-index: 1050;">
+        <sl-button variant='default' href='/' circle>
+            <sl-icon name='house'></sl-icon>
+        </sl-button>
+    </div>
+
+
+    <div class='d-flex flex-column w-100 h-100'>
+        <header id='header' class='text-center py-1'>
+            <h1 id='game_msg' class='h4 fw-bold m-0 msg-active text-color'>
+                等待加入房间
+            </h1>
+        </header>
+
+
+        <main id='main'
+            class='d-flex flex-column justify-content-center align-items-center flex-grow-1 position-relative'>
+            <div id='main_opt'
+                class='d-flex flex-column w-100 h-100 justify-content-center align-items-stretch px-2 main-transition main-show'
+                style='max-width: 500px;'>
+                <div class='text-center'>
+                    <sl-icon id='game_icon' name='controller' class='text-primary' style='font-size: 4rem;'></sl-icon>
+                    <p class='text-muted'>赛事比赛</p>
+                </div>
+
+                <div id='series_opt' class='series-card card border-0 shadow-sm mb-2'>
+                    <div class='card-body py-2 px-3 d-flex flex-column gap-1'>
+                        <div class='d-flex align-items-center justify-content-between'>
+                            <span class='text-secondary small'>赛事系列赛</span>
+                            <sl-badge id='series_bo_opt' variant='primary' pill>BO3</sl-badge>
+                        </div>
+                        <div class='d-flex align-items-center justify-content-between'>
+                            <span id='series_round_opt' class='fw-bold'>第 1 局</span>
+                            <span id='series_score_opt' class='fw-bold text-primary'>0 : 0</span>
+                        </div>
+                        <div id='series_note_opt' class='text-secondary' style='font-size: 0.72rem;'></div>
+                    </div>
+                </div>
+
+                <div class='d-flex flex-column gap-2'>
+                    <sl-select id='select_server_region' placeholder='选择节点' value='online.siziqi.net' size='large'
+                        pill hoist>
+                        <sl-option value='online.siziqi.net'>全球1 (通用) (nh)</sl-option>
+                    </sl-select>
+
+                    <div class='d-flex flex-row gap-1 w-100'>
+                        <sl-input style='flex: 1; min-width: 0;' value='HYBHYB' id='input_server_room'
+                            placeholder='输入 房间代号' size='large' pill></sl-input>
+                        <sl-input style='flex: 1; min-width: 0;' id='input_server_archive' placeholder='输入 棋局存档'
+                            size='large' pill></sl-input>
+                    </div>
+
+                    <div class='d-flex flex-row gap-1'>
+                        <sl-select id='select_server_balance' value='ncg' placeholder='平衡规则' size='large' pill hoist>
+                            <sl-option value='ncg'>新村规</sl-option>
+                        </sl-select>
+                        <sl-select id='select_server_mode' value='normal' placeholder='游戏模式' size='large' pill hoist>
+                            <sl-option value='normal'>普通</sl-option>
+                        </sl-select>
+                    </div>
+
+                    <div class='d-flex flex-row gap-1'>
+                        <sl-select id='select_server_first' value='rand' placeholder='先手决定' size='large' pill hoist>
+                            <sl-option value='my'>我方是先手</sl-option>
+                            <sl-option value='foe'>对方是先手</sl-option>
+                            <sl-option value='rand'>随机</sl-option>
+                        </sl-select>
+                        <sl-select id='select_server_color' value='rand' placeholder='阵营决定' size='large' pill hoist>
+                            <sl-option value='my'>我方是黑方</sl-option>
+                            <sl-option value='foe'>对方是黑方</sl-option>
+                            <sl-option value='rand'>随机</sl-option>
+                        </sl-select>
+                    </div>
+
+                    <sl-button id='button_server_join' variant='primary' size='large' pill>开始对局</sl-button>
+                </div>
+            </div>
+
+
+            <div id='main_game'
+                class='d-flex flex-column w-100 h-100 align-items-center gap-2 main-transition main-hide'>
+                <div id='series_game' class='series-strip flex-row align-items-center justify-content-center gap-2'>
+                    <sl-badge id='series_bo_game' variant='primary' pill>BO3</sl-badge>
+                    <span id='series_round_game' class='text-color' style='font-size: 0.8rem;'>第 1 局</span>
+                    <span id='series_score_game' class='fw-bold text-primary' style='font-size: 0.8rem;'>0 : 0</span>
+                </div>
+                <div id='game_top_card' class='d-flex flex-column gap-2 justify-content-center align-items-center'>
+                    <div class='d-flex flex-row gap-1 w-100'>
+                        <div id='game_p1_card' class='card card-bg py-3 px-1 rounded-2 w-50 turn-init'>
+                            <span class='d-flex align-items-center justify-content-around'>
+                                <!-- <sl-avatar
+                                    image='https://q.qlogo.cn/headimg_dl?dst_uin=2032325676&spec=640&img_type=jpg'
+                                    shape='rounded' style='--size: 1.5rem;'></sl-avatar> -->
+
+                                <span id='game_p1_name' class='d-flex align-items-center hp-color-p1'>
+                                    <!-- 我是十个字我是十个 -->
+                                </span>
+                            </span>
+                        </div>
+
+                        <div id='game_p2_card' class='card card-bg py-3 px-1 rounded-2 w-50 turn-init'>
+                            <span class='d-flex align-items-center justify-content-around'>
+                                <!-- <sl-avatar
+                                    image='https://q.qlogo.cn/headimg_dl?dst_uin=2032325676&spec=640&img_type=jpg'
+                                    shape='rounded' style='--size: 1.5rem;'></sl-avatar> -->
+
+                                <span id='game_p2_name' class='d-flex align-items-center hp-color-p2'>
+                                    <!-- 我是十个字我是十个 -->
+                                </span>
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class='d-flex flex-row gap-1 w-100'>
+                        <div id='game_p1_info' class='card card-bg py-3 px-1 rounded-2 w-50 turn-init'>
+                            <span class='d-flex align-items-center justify-content-around'>
+                                <span id='game_p1_hp' class='d-flex align-items-center hp-color-p1'>
+                                    <!-- HP: 3/6 -->
+                                </span>
+
+                                <span id='game_p1_ascend' class='d-flex align-items-center text-color'>
+                                    <!-- ASC: 4+0 -->
+                                </span>
+                            </span>
+                        </div>
+
+                        <div id='game_p2_info' class='card card-bg py-3 px-1 rounded-2 w-50 turn-init'>
+                            <span class='d-flex align-items-center justify-content-around'>
+                                <span id='game_p2_hp' class='d-flex align-items-center hp-color-p2'>
+                                    <!-- HP: 3/6 -->
+                                </span>
+
+                                <span id='game_p2_ascend' class='d-flex align-items-center text-color'>
+                                    <!-- ASC: 4+0 -->
+                                </span>
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class='d-flex flex-row gap-1 w-100'>
+                        <div id='game_p1_time' class='card card-bg py-1 px-1 rounded-2 w-50 turn-init'>
+                            <span class='d-flex align-items-center justify-content-around'>
+                                <!-- <sl-avatar
+                                    image='https://q.qlogo.cn/headimg_dl?dst_uin=2032325676&spec=640&img_type=jpg'
+                                    shape='rounded' style='--size: 1.5rem;'></sl-avatar> -->
+
+                                <span id='game_p1_stone' class='d-flex align-items-center'>
+                                    <!-- ⚪ -->
+                                </span>
+
+                                <span id='game_p1_clock' class='d-flex align-items-center'>
+                                    <!-- 我是十个字我是十个 -->
+                                </span>
+                            </span>
+                        </div>
+
+                        <div id='game_p2_time' class='card card-bg py-1 px-1 rounded-2 w-50 turn-init'>
+                            <span class='d-flex align-items-center justify-content-around'>
+                                <!-- <sl-avatar
+                                    image='https://q.qlogo.cn/headimg_dl?dst_uin=2032325676&spec=640&img_type=jpg'
+                                    shape='rounded' style='--size: 1.5rem;'></sl-avatar> -->
+
+                                <span id='game_p2_stone' class='d-flex align-items-center'>
+                                    <!-- ⚫ -->
+                                </span>
+
+                                <span id='game_p2_clock' class='d-flex align-items-center'>
+                                    <!-- 我是十个字我是十个 -->
+                                </span>
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class='d-flex flex-row gap-1 w-100'>
+                        <div class='card card-bg py-1 rounded-2 w-100'>
+                            <span class='d-flex align-items-center justify-content-around'>
+                                <div>|</div>
+                                <div id='game_info_turn'>t Turns</div>
+                                <div>|</div>
+
+                                <div id='game_info_p1'>W+w</div>
+                                <div>vs</div>
+                                <div id='game_info_p2'>B+b</div>
+
+                                <div>|</div>
+                                <div id='game_info_plant_cd'>CD=cd</div>
+                                <div>|</div>
+
+                                <div id='game_info_plant_normal'>p NPlants</div>
+                                <div>|</div>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+
+                <div class='d-flex position-relative justify-content-center align-items-center'>
+                    <canvas id='canvas_board'></canvas>
+
+                    <canvas id='canvas_stone_fill' class='position-absolute pe-none top-0 start-0 w-100 h-100'></canvas>
+                    <canvas id='canvas_stone_ascend'
+                        class='position-absolute pe-none top-0 start-0 w-100 h-100'></canvas>
+
+                    <canvas id='canvas_plant' class='position-absolute pe-none top-0 start-0 w-100 h-100'></canvas>
+
+                    <canvas id='canvas_view_turn' class='position-absolute pe-none top-0 start-0 w-100 h-100'></canvas>
+                    <canvas id='canvas_view_ascend'
+                        class='position-absolute pe-none top-0 start-0 w-100 h-100'></canvas>
+                    <canvas id='canvas_view_move' class='position-absolute pe-none top-0 start-0 w-100 h-100'></canvas>
+                </div>
+            </div>
+        </main>
+
+
+        <footer class='text-center text-muted py-1' style='font-size: 0.74rem;'>
+            <div class='d-flex flex-row justify-content-center align-items-center gap-1'>
+                <a href='https://beian.miit.gov.cn/' target='_blank' class='text-decoration-none text-secondary'>
+                    <sl-icon name='file-earmark-text' style='vertical-align: -0.15em;'></sl-icon>
+                    津ICP备2026002838号
+                </a>
+                <div>||</div>
+                <a href='https://beian.mps.gov.cn/#/query/webSearch?code=12010302002790' target='_blank'
+                    class='text-decoration-none text-secondary'>
+                    <sl-icon name='shield-check' style='vertical-align: -0.15em;'></sl-icon>
+                    津公网安备12010302002790号
+                </a>
+            </div>
+        </footer>
+    </div>
+
+
+    <sl-dialog id='dialog_tools' class='d-none' label='功能面板'>
+        <div class='d-flex flex-column gap-4'>
+            <div class='d-flex align-items-center justify-content-between p-2 rounded'
+                style='background-color: var(--sl-color-neutral-50); border: 1px solid var(--sl-color-neutral-200);'>
+
+                <div class='text-center flex-fill'>
+                    <div style='font-size: var(--sl-font-size-x-small); color: var(--sl-color-neutral-500);'>我方积分</div>
+                    <div id='score_tools_p1'
+                        style='font-size: var(--sl-font-size-medium); font-weight: var(--sl-font-weight-semibold); color: var(--sl-color-primary-600);'>
+                        0</div>
+                </div>
+
+                <div
+                    style='font-size: var(--sl-font-size-x-small); font-weight: var(--sl-font-weight-bold); color: var(--sl-color-neutral-300); padding: 0 0.5rem;'>
+                    VS</div>
+
+                <div class='text-center flex-fill'>
+                    <div style='font-size: var(--sl-font-size-x-small); color: var(--sl-color-neutral-500);'>对方积分</div>
+                    <div id='score_tools_p2'
+                        style='font-size: var(--sl-font-size-medium); font-weight: var(--sl-font-weight-semibold); color: var(--sl-color-danger-600);'>
+                        0</div>
+                </div>
+            </div>
+
+            <sl-details id='details_tools_observers' summary='观战人数 加载中...'>
+                <div id='details_tools_names' class='d-flex flex-wrap gap-1'>
+                </div>
+            </sl-details>
+
+            <div class='d-flex flex-wrap gap-2'>
+                <sl-button id='button_tools_archive' size='medium' class='w-100 flex-fill'
+                    style='max-width: calc(50% - 0.25rem);'>
+                    <sl-icon slot='prefix' name='film'></sl-icon>对局储存
+                </sl-button>
+                <sl-button id='button_tools_restart' size='medium' class='w-100 flex-fill'
+                    style='max-width: calc(50% - 0.25rem);'>
+                    <sl-icon slot='prefix' name='arrow-counterclockwise'></sl-icon>离开对局
+                </sl-button>
+            </div>
+        </div>
+
+        <div slot='footer' class='gap-2'>
+            <sl-button onclick='this.closest("sl-dialog").hide();' variant='neutral'>关闭</sl-button>
+            <!-- <sl-button id='button_clear_submit' variant='primary'>确认</sl-button> -->
+        </div>
+    </sl-dialog>
+
+
+    <sl-dialog id='dialog_end' class='d-none' label='对局结算'>
+        <div class='d-flex justify-content-center mb-3'>
+            <sl-icon name='trophy' style='font-size: 3rem; color: var(--sl-color-primary-600);'></sl-icon>
+        </div>
+
+        <div class='d-flex flex-column gap-2 mb-4'>
+            <div class='d-flex justify-content-between align-items-center p-3 bg-light rounded shadow-sm'>
+                <span class='text-secondary small'>获胜者</span>
+                <span id='span_end_win' class='fw-bold text-dark'>神秘下棋猫神秘</span>
+            </div>
+
+            <div class='d-flex justify-content-between align-items-center p-3 bg-light rounded shadow-sm'>
+                <span class='text-secondary small'>剩余血量</span>
+                <span id='span_end_hp' class='fw-bold text-dark'>1 vs 1</span>
+            </div>
+
+            <div class='d-flex justify-content-between align-items-center p-3 bg-light rounded shadow-sm'>
+                <span class='text-secondary small'>对局时间</span>
+                <span id='span_end_time' class='fw-bold text-dark'>08:24</span>
+            </div>
+        </div>
+
+        <div id='series_end' class='series-end mb-4'>
+            <div class='d-flex flex-column gap-2 p-3 rounded shadow-sm'
+                style='background: rgba(13, 110, 253, 0.06); border: 1px solid rgba(13, 110, 253, 0.2);'>
+                <div class='d-flex align-items-center justify-content-between'>
+                    <span class='text-secondary small'>系列赛制</span>
+                    <sl-badge id='series_end_bo' variant='primary' pill>BO3</sl-badge>
+                </div>
+                <div class='d-flex align-items-center justify-content-between'>
+                    <span class='text-secondary small'>系列赛总比分</span>
+                    <span id='series_end_score' class='fw-bold text-dark' style='font-size: 1.15rem;'>0 : 0</span>
+                </div>
+                <div id='series_end_result' class='text-center fw-bold text-primary'></div>
+            </div>
+        </div>
+
+        <div class='d-flex flex-column gap-2'>
+            <sl-button id='button_end_restart' variant='primary'>
+                <sl-icon slot='prefix' name='arrow-repeat'></sl-icon>
+                重赛
+            </sl-button>
+
+            <sl-button id='button_end_archive' variant='default'>
+                <sl-icon slot='prefix' name='copy'></sl-icon>
+                复制回放
+            </sl-button>
+        </div>
+    </sl-dialog>
+
+
+    <sl-dialog id='dialog_diyerror' class='d-none' label='提示'>
+        <div class='d-flex flex-column gap-4'>
+            <div id='span_diy_my' class='d-flex flex-column gap-4'>
+            </div>
+
+            <div id='span_diy_foe' class='d-flex flex-column gap-4'>
+            </div>
+
+            对局配置冲突，请刷新网页并重连！
+        </div>
+
+        <div slot='footer' class='gap-2'>
+            <sl-button onclick='this.closest("sl-dialog").hide();' variant='neutral'>关闭</sl-button>
+            <!-- <sl-button id='button_tip' variant='primary'>确定</sl-button> -->
+        </div>
+    </sl-dialog>
+
+
+    <sl-dialog id='dialog_leave' class='d-none' label='提示'>
+        <div class='d-flex flex-column gap-4'>
+            确定返回主页并逃跑吗？
+        </div>
+
+        <div slot='footer' class='gap-2'>
+            <sl-button onclick='this.closest("sl-dialog").hide();' variant='neutral'>关闭</sl-button>
+            <sl-button id='buttom_leave' variant='primary'>确定</sl-button>
+        </div>
+    </sl-dialog>
+
+
+    <sl-dialog id='dialog_data' class='d-none' label='提示'>
+        <div class='d-flex flex-column gap-4'>
+            对局数据不正确，请刷新网页重连！
+        </div>
+
+        <div slot='footer' class='gap-2'>
+            <sl-button onclick='this.closest("sl-dialog").hide();' variant='neutral'>关闭</sl-button>
+            <!-- <sl-button id='buttom_leave' variant='primary'>确定</sl-button> -->
+        </div>
+    </sl-dialog>
+
+
+    <div class='d-none'>
+        <sl-alert></sl-alert>
+        <sl-icon slot='icon' name='info-circle'></sl-icon>
+        <sl-tag></sl-tag>
+    </div>
+</body>
+
+
+<script src='/js/ref/must.min.js?v=replace'></script>
+<script src='/js/ref/http.min.js?v=replace'></script>
+<script src='/js/ref/friends.min.js?v=replace'></script>
+
+<script src='/js/core/online.min.js?v=replace'></script>
+<script src='/js/main/match-game.min.js?v=replace'></script>
+
+
+<script>console.log('AliceInCradle 4ASCEND Author: 橋野みずは || URL: https://unityroom.com/games/4ascend');</script>
+
+
+</html>

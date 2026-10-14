@@ -1,0 +1,662 @@
+<!--
+ * @Author: CsVeryLoveXieWenLi
+ * @Description: 赛事规则
+ * @Copyright (c) 2026 by CsVeryLoveXieWenLi, All Rights Reserved.
+-->
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset='UTF-8'>
+    <meta http-equiv='X-UA-Compatible' content='IE=edge'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0, user-scalable=no'>
+
+    <link rel='shortcut icon' href='/favicon.png' type='image/png'>
+    <title>四子棋 赛事规则</title>
+
+    <!-- Bootstrap V5 -->
+    <link href='https://quantil.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css' rel='stylesheet'>
+
+    <!-- Shoelace -->
+    <link href='https://quantil.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/themes/light.css' rel='stylesheet'>
+    <script src='https://quantil.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/shoelace-autoloader.js'
+        type='module'></script>
+
+    <!-- MY -->
+    <script src='/js/risk/api.min.js?v=replace'></script>
+    <script src='/js/global/ui.min.js?v=replace'></script>
+    <script src='/js/ref/must.min.js?v=replace'></script>
+    <script src='/js/ref/music.min.js?v=replace'></script>
+    <script src='/js/ref/global-music.min.js?v=replace'></script>
+    <script src='/js/ref/http.min.js?v=replace'></script>
+    <script src='/js/ref/friends.min.js?v=replace'></script>
+    <link href='/css/global.min.css?v=replace' rel='stylesheet'>
+
+    <style>
+        .loading-a {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 1);
+            transition: all 0.4s ease;
+        }
+
+        .loading-p {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            animation: loading-spin 1s linear infinite;
+        }
+
+        .loading-t {
+            margin-top: 15px;
+            font-family: sans-serif;
+            color: #666;
+            font-size: 14px;
+        }
+
+        @keyframes loading-spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .category-title {
+            font-size: 1.1rem;
+            color: var(--sl-color-neutral-600);
+            border-left: 4px solid var(--sl-color-primary-500);
+            padding-left: 8px;
+            margin-bottom: 0.5rem;
+        }
+
+        .admin-panel {
+            border: 1px solid rgba(255, 193, 7, 0.35);
+            background: rgba(255, 193, 7, 0.08);
+            border-radius: 0.7rem;
+        }
+
+        .section-editor {
+            border-color: rgba(13, 110, 253, 0.22) !important;
+            background: rgba(255, 255, 255, 0.7);
+        }
+
+        .editor-hint code {
+            color: var(--sl-color-primary-700);
+        }
+    </style>
+
+    <div id='loading' class='loading-a'>
+        <div class='loading-p'></div>
+        <p class='loading-t'>正在初始化...</p>
+    </div>
+
+    <script>
+        (async () => {
+            // 遮罩移除幂等，任何路径重复调用都安全
+            const hide_loading = () => {
+                if (window.loaded) return;
+                window.loaded = true;
+                const loader = document.getElementById('loading');
+                if (loader) {
+                    loader.style.opacity = '0';
+                    loader.style.visibility = 'hidden';
+                    setTimeout(() => loader.remove(), 400);
+                }
+            };
+
+            // 兜底：组件或资源加载异常时也必须移除遮罩，页面绝不能卡在初始化
+            setTimeout(hide_loading, 5000);
+
+            try {
+                const icons = Array.from(document.querySelectorAll('sl-icon'));
+                const st = Date.now();
+
+                // 只等待首屏静态存在的组件；动态创建的组件由自动加载器按需注册
+                await Promise.race([
+                    Promise.allSettled([
+                        customElements.whenDefined('sl-button'),
+                        customElements.whenDefined('sl-icon'),
+                        customElements.whenDefined('sl-badge'),
+                        customElements.whenDefined('sl-dialog'),
+                        customElements.whenDefined('sl-input'),
+                        customElements.whenDefined('sl-icon-button'),
+                    ]),
+                    new Promise((resolve) => setTimeout(resolve, 3000)),
+                ]);
+
+                if (document.readyState === 'loading') await new Promise((resolve) => document.addEventListener('DOMContentLoaded', resolve, { 'once': true }));
+
+                await Promise.race([
+                    Promise.allSettled(icons.map((icon) => new Promise((resolve) => {
+                        if (icon.hasAttribute('library')) resolve();
+                        icon.addEventListener('sl-load', () => requestAnimationFrame(() => requestAnimationFrame(resolve)), { 'once': true });
+                    }))),
+                    new Promise((resolve) => setTimeout(resolve, 3000)),
+                ]);
+
+                await Promise.race([
+                    new Promise((resolve) => {
+                        if (document.readyState === 'complete') resolve();
+                        else window.addEventListener('load', resolve, { 'once': true });
+                    }),
+                    new Promise((resolve) => setTimeout(resolve, 3000)),
+                ]);
+
+                const elapsed = Date.now() - st;
+                setTimeout(hide_loading, Math.max(0, 300 - elapsed));
+            } catch (_) {
+                hide_loading();
+            }
+        })();
+    </script>
+</head>
+
+<body class='d-flex flex-column w-100 h-100 bg-light'>
+    <div id='button_music_wrap' class='position-fixed top-0 start-0 d-flex p-2' style='z-index: 1050;'>
+        <sl-button id='button_music_toggle' variant='default' circle title='单击切换下一首；1 秒内双击开始/停止播放' aria-label='单击切换下一首；1 秒内双击开始/停止播放'>
+            <sl-icon id='icon_music_toggle' name='volume-up'></sl-icon>
+        </sl-button>
+    </div>
+
+    <div class='d-flex flex-column w-100 h-100'>
+        <header></header>
+
+        <main class='container py-4 flex-grow-1 justify-content-center align-items-center overflow-auto' style='max-width: 960px;'>
+            <header class='text-center'>
+                <sl-icon name='journal-text' style='font-size: 3.5rem; color: var(--sl-color-primary-600);'></sl-icon>
+                <h1 id='rules_title' class='display-5 fw-bold mt-2 mb-1' style='letter-spacing: -1px;'>赛事规则</h1>
+                <p id='rules_subtitle' class='text-secondary'>赛事相关 · 规则说明</p>
+            </header>
+
+            <div class='d-flex align-items-center justify-content-end gap-2 px-2 mt-2'>
+                <sl-badge id='admin_badge' class='d-none me-auto' variant='warning' pill>管理员模式</sl-badge>
+                <sl-button id='button_edit' class='d-none' variant='warning' outline size='small'>
+                    <sl-icon slot='prefix' name='pencil-square'></sl-icon>编辑规则
+                </sl-button>
+            </div>
+
+            <div id='rules_body' class='d-flex flex-column gap-4 px-2 mt-3'></div>
+        </main>
+
+        <footer class='text-center text-muted py-1' style='font-size: 0.74rem;'>
+            <a href='/pages/mod/match.html' class='text-decoration-none text-secondary'>返回赛事大厅</a>
+        </footer>
+    </div>
+
+    <!-- 预热仅在编辑器中动态创建的组件，让自动加载器在首屏就完成注册 -->
+    <div class='d-none' aria-hidden='true'>
+        <sl-textarea></sl-textarea>
+        <sl-icon-button></sl-icon-button>
+    </div>
+
+    <sl-dialog id='dialog_edit' label='编辑赛事规则' style='--width: 46rem;'>
+        <div class='d-flex flex-column gap-3'>
+            <div class='admin-panel p-3'>
+                <div class='d-flex align-items-center gap-2 mb-2'>
+                    <sl-icon name='window' class='text-warning'></sl-icon>
+                    <div class='fw-bold'>页面标题</div>
+                </div>
+                <div class='d-flex flex-column gap-2'>
+                    <sl-input id='edit_header_title' label='主标题'></sl-input>
+                    <sl-input id='edit_header_subtitle' label='副标题'></sl-input>
+                </div>
+            </div>
+
+            <div class='admin-panel p-3'>
+                <div class='d-flex align-items-center gap-2 mb-2'>
+                    <sl-icon name='info-circle' class='text-warning'></sl-icon>
+                    <div class='fw-bold'>赛事信息</div>
+                </div>
+                <div class='d-flex flex-column gap-2'>
+                    <sl-input id='edit_event_section_title' label='板块标题'></sl-input>
+                    <sl-input id='edit_event_title' label='赛事名称'></sl-input>
+                    <sl-input id='edit_event_time' label='时间说明'></sl-input>
+                    <sl-input id='edit_event_status' label='状态标签' help-text='显示在赛事信息卡片右上角'></sl-input>
+                </div>
+            </div>
+
+            <div class='admin-panel p-3'>
+                <div class='d-flex align-items-center justify-content-between gap-2 mb-2'>
+                    <div class='d-flex align-items-center gap-2'>
+                        <sl-icon name='list-ul' class='text-warning'></sl-icon>
+                        <div class='fw-bold'>规则板块</div>
+                    </div>
+                    <sl-button id='button_add_section' size='small' variant='warning' outline>
+                        <sl-icon slot='prefix' name='plus-lg'></sl-icon>添加板块
+                    </sl-button>
+                </div>
+                <div id='edit_sections' class='d-flex flex-column gap-3'></div>
+            </div>
+
+            <div class='admin-panel p-3'>
+                <div class='d-flex align-items-center justify-content-between gap-2 mb-2'>
+                    <div class='d-flex align-items-center gap-2'>
+                        <sl-icon name='trophy' class='text-warning'></sl-icon>
+                        <div class='fw-bold'>奖金分配</div>
+                    </div>
+                    <sl-button id='button_add_prize' size='small' variant='warning' outline>
+                        <sl-icon slot='prefix' name='plus-lg'></sl-icon>添加奖项
+                    </sl-button>
+                </div>
+                <sl-input id='edit_prize_title' class='mb-2' label='板块标题'></sl-input>
+                <div id='edit_prizes' class='d-flex flex-column gap-2'></div>
+            </div>
+
+            <div class='editor-hint text-secondary small'>
+                提示：正文支持 <code>**加粗**</code> 与 <code>[文字](链接)</code> 两种简单格式；空条目会在保存时自动忽略。
+            </div>
+        </div>
+
+        <div slot='footer' class='gap-2'>
+            <sl-button id='button_edit_cancel' variant='neutral'>取消</sl-button>
+            <sl-button id='button_edit_save' variant='warning'>保存并发布</sl-button>
+        </div>
+    </sl-dialog>
+
+    <script>
+        const STORAGE_KEY = 'match_rules_state_v1';
+        const toast = new window.UiExports.ShToast();
+
+        // 服务端无数据时的兜底内容（与改造前页面一致）
+        const default_rules = () => ({
+            header: { title: '赛事规则', subtitle: '赛事相关 · 规则说明' },
+            event: {
+                section_title: '赛事信息',
+                title: '红颜杯——国庆赛',
+                time: '2026年10月3、4日 晚7点半 准时开赛',
+                status: '已发布'
+            },
+            sections: [
+                {
+                    title: '赛制规则',
+                    items: [
+                        '在报名的 **16 位选手**中，将随机两两分组进行较量。',
+                        '获胜的一方进入到下一轮，进行抽签后再次对战，直到决赛。',
+                        '本次比赛是**三局两胜制**，唯有决赛是**五局三胜制**，无复活赛。'
+                    ]
+                },
+                {
+                    title: '补充说明',
+                    items: [
+                        '按照抽签的组数从低到高开始比赛；如果有特殊情况选手未到，可能会先让下一组先比。',
+                        '比赛过程全程在 bilibili 直播（[直播间 22743437](http://live.bilibili.com/22743437)），有直播回放，公平公正公开。'
+                    ]
+                }
+            ],
+            prize: {
+                title: '奖金分配',
+                rows: [
+                    { label: '冠军', value: '80 元' },
+                    { label: '亚军', value: '30 元' },
+                    { label: '第三名 / 第四名（不做区分）', value: '各 5 元' }
+                ]
+            }
+        });
+
+        // 规整数据结构：裁剪空白、丢弃空条目，并对缺失字段回退到默认值
+        const sanitize = (input) => {
+            const src = input && typeof input === 'object' ? input : {};
+            const header = src.header && typeof src.header === 'object' ? src.header : {};
+            const event = src.event && typeof src.event === 'object' ? src.event : {};
+            const prize = src.prize && typeof src.prize === 'object' ? src.prize : {};
+            const text = (value) => String(value == null ? '' : value).trim();
+
+            return {
+                header: {
+                    title: text(header.title) || '赛事规则',
+                    subtitle: text(header.subtitle)
+                },
+                event: {
+                    section_title: text(event.section_title) || '赛事信息',
+                    title: text(event.title),
+                    time: text(event.time),
+                    status: text(event.status)
+                },
+                sections: (Array.isArray(src.sections) ? src.sections : []).map((sec) => ({
+                    title: text(sec && sec.title),
+                    items: (sec && Array.isArray(sec.items) ? sec.items : []).map(text).filter(Boolean)
+                })).filter((sec) => sec.title || sec.items.length),
+                prize: {
+                    title: text(prize.title) || '奖金分配',
+                    rows: (Array.isArray(prize.rows) ? prize.rows : []).map((row) => ({
+                        label: text(row && row.label),
+                        value: text(row && row.value)
+                    })).filter((row) => row.label || row.value)
+                }
+            };
+        };
+
+        const normalize = (raw) => {
+            const def = default_rules();
+            if (!raw || typeof raw !== 'object') return def;
+            return sanitize({
+                header: raw.header || def.header,
+                event: raw.event || def.event,
+                sections: Array.isArray(raw.sections) ? raw.sections : def.sections,
+                prize: raw.prize || def.prize
+            });
+        };
+
+        let model = default_rules();
+        let draft = null;
+        let isAdmin = false;
+        let userInfo = null;
+
+        const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (c) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        })[c]);
+
+        // 先转义再解析简单内联格式，避免管理员输入被当作 HTML 执行
+        const renderInline = (value) => {
+            let out = escapeHtml(value);
+            out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (match, label, url) => (
+                `<a href='${url}' target='_blank' class='text-decoration-none'>${label}</a>`
+            ));
+            out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+            return out;
+        };
+
+        const rulesBody = document.getElementById('rules_body');
+        const rulesTitle = document.getElementById('rules_title');
+        const rulesSubtitle = document.getElementById('rules_subtitle');
+        const adminBadge = document.getElementById('admin_badge');
+        const editButton = document.getElementById('button_edit');
+        const editDialog = document.getElementById('dialog_edit');
+        const sectionsWrap = document.getElementById('edit_sections');
+        const prizesWrap = document.getElementById('edit_prizes');
+        const headerTitleInput = document.getElementById('edit_header_title');
+        const headerSubtitleInput = document.getElementById('edit_header_subtitle');
+        const eventSectionTitleInput = document.getElementById('edit_event_section_title');
+        const eventTitleInput = document.getElementById('edit_event_title');
+        const eventTimeInput = document.getElementById('edit_event_time');
+        const eventStatusInput = document.getElementById('edit_event_status');
+        const prizeTitleInput = document.getElementById('edit_prize_title');
+        const addSectionButton = document.getElementById('button_add_section');
+        const addPrizeButton = document.getElementById('button_add_prize');
+        const editSaveButton = document.getElementById('button_edit_save');
+        const editCancelButton = document.getElementById('button_edit_cancel');
+
+        const prize_icons = ['trophy', 'award', 'people', 'star', 'gift'];
+
+        const section_event = () => {
+            const section = document.createElement('section');
+            section.innerHTML = `
+                <div class='category-title fw-bold'>${escapeHtml(model.event.section_title)}</div>
+                <div class='card shadow-sm'>
+                    <div class='card-body p-4'>
+                        <div class='d-flex align-items-start justify-content-between gap-3'>
+                            <div>
+                                <div class='fw-bold fs-5'>${escapeHtml(model.event.title)}</div>
+                                <div class='text-secondary small mt-1'>
+                                    <sl-icon name='clock' style='vertical-align: -0.15em;'></sl-icon>
+                                    ${escapeHtml(model.event.time)}
+                                </div>
+                            </div>
+                            <sl-badge variant='success' pill>${escapeHtml(model.event.status)}</sl-badge>
+                        </div>
+                    </div>
+                </div>
+            `;
+            return section;
+        };
+
+        const section_list = (sec) => {
+            const section = document.createElement('section');
+            const title = document.createElement('div');
+            title.className = 'category-title fw-bold';
+            title.textContent = sec.title;
+            const card = document.createElement('div');
+            card.className = 'card shadow-sm';
+            const body = document.createElement('div');
+            body.className = 'card-body p-4';
+            const list = document.createElement('ul');
+            list.className = 'mb-0 ps-3 d-flex flex-column gap-2';
+            sec.items.forEach((item) => {
+                const li = document.createElement('li');
+                li.innerHTML = renderInline(item);
+                list.appendChild(li);
+            });
+            body.appendChild(list);
+            card.appendChild(body);
+            section.append(title, card);
+            return section;
+        };
+
+        const section_prize = () => {
+            const section = document.createElement('section');
+            const title = document.createElement('div');
+            title.className = 'category-title fw-bold';
+            title.textContent = model.prize.title;
+            const card = document.createElement('div');
+            card.className = 'card shadow-sm';
+            const body = document.createElement('div');
+            body.className = 'card-body p-4';
+            const list = document.createElement('div');
+            list.className = 'd-flex flex-column gap-2';
+            model.prize.rows.forEach((row, index) => {
+                const item = document.createElement('div');
+                item.className = 'd-flex justify-content-between align-items-center' + (index === model.prize.rows.length - 1 ? '' : ' border-bottom pb-2');
+                const icon = prize_icons[index % prize_icons.length];
+                const iconClass = index === 0 ? 'text-warning' : 'text-secondary';
+                const valueClass = index === 0 ? 'fw-bold text-danger' : 'fw-bold';
+                item.innerHTML = `
+                    <span><sl-icon name='${icon}' class='${iconClass} me-1'></sl-icon>${escapeHtml(row.label)}</span>
+                    <span class='${valueClass}'>${escapeHtml(row.value)}</span>
+                `;
+                list.appendChild(item);
+            });
+            body.appendChild(list);
+            card.appendChild(body);
+            section.append(title, card);
+            return section;
+        };
+
+        const render = () => {
+            rulesTitle.textContent = model.header.title;
+            rulesSubtitle.textContent = model.header.subtitle;
+            rulesSubtitle.classList.toggle('d-none', !model.header.subtitle);
+            rulesBody.innerHTML = '';
+            rulesBody.appendChild(section_event());
+            model.sections.forEach((sec) => rulesBody.appendChild(section_list(sec)));
+            rulesBody.appendChild(section_prize());
+        };
+
+        // ==================== 管理员编辑 ====================
+        const section_editor = (sec, si) => {
+            const box = document.createElement('div');
+            box.className = 'section-editor border rounded p-2';
+
+            const head = document.createElement('div');
+            head.className = 'd-flex align-items-end gap-2';
+            const titleInput = document.createElement('sl-input');
+            titleInput.className = 'flex-grow-1';
+            titleInput.label = '板块标题';
+            titleInput.value = sec.title;
+            titleInput.addEventListener('sl-input', () => { draft.sections[si].title = titleInput.value; });
+            const removeButton = document.createElement('sl-icon-button');
+            removeButton.name = 'trash';
+            removeButton.label = '删除板块';
+            removeButton.style.fontSize = '1.1rem';
+            removeButton.addEventListener('click', () => { draft.sections.splice(si, 1); render_editor(); });
+            head.append(titleInput, removeButton);
+
+            const itemsWrap = document.createElement('div');
+            itemsWrap.className = 'd-flex flex-column gap-2 mt-2';
+            sec.items.forEach((item, ii) => {
+                const row = document.createElement('div');
+                row.className = 'd-flex align-items-end gap-2';
+                const area = document.createElement('sl-textarea');
+                area.className = 'flex-grow-1';
+                area.rows = 2;
+                area.resize = 'auto';
+                area.placeholder = '条目内容';
+                area.value = item;
+                area.addEventListener('sl-input', () => { draft.sections[si].items[ii] = area.value; });
+                const removeItem = document.createElement('sl-icon-button');
+                removeItem.name = 'trash';
+                removeItem.label = '删除条目';
+                removeItem.addEventListener('click', () => { draft.sections[si].items.splice(ii, 1); render_editor(); });
+                row.append(area, removeItem);
+                itemsWrap.appendChild(row);
+            });
+
+            const addItem = document.createElement('sl-button');
+            addItem.size = 'small';
+            addItem.variant = 'default';
+            addItem.outline = true;
+            addItem.className = 'mt-2';
+            addItem.innerHTML = `<sl-icon slot='prefix' name='plus-lg'></sl-icon>添加条目`;
+            addItem.addEventListener('click', () => { draft.sections[si].items.push(''); render_editor(); });
+
+            box.append(head, itemsWrap, addItem);
+            return box;
+        };
+
+        const prize_editor = (row, ri) => {
+            const box = document.createElement('div');
+            box.className = 'd-flex align-items-end gap-2';
+            const labelInput = document.createElement('sl-input');
+            labelInput.className = 'flex-grow-1';
+            labelInput.label = '奖项';
+            labelInput.value = row.label;
+            labelInput.addEventListener('sl-input', () => { draft.prize.rows[ri].label = labelInput.value; });
+            const valueInput = document.createElement('sl-input');
+            valueInput.style.width = '8rem';
+            valueInput.label = '奖金';
+            valueInput.value = row.value;
+            valueInput.addEventListener('sl-input', () => { draft.prize.rows[ri].value = valueInput.value; });
+            const removeButton = document.createElement('sl-icon-button');
+            removeButton.name = 'trash';
+            removeButton.label = '删除奖项';
+            removeButton.addEventListener('click', () => { draft.prize.rows.splice(ri, 1); render_editor(); });
+            box.append(labelInput, valueInput, removeButton);
+            return box;
+        };
+
+        const render_editor = () => {
+            headerTitleInput.value = draft.header.title;
+            headerSubtitleInput.value = draft.header.subtitle;
+            eventSectionTitleInput.value = draft.event.section_title;
+            eventTitleInput.value = draft.event.title;
+            eventTimeInput.value = draft.event.time;
+            eventStatusInput.value = draft.event.status;
+            prizeTitleInput.value = draft.prize.title;
+
+            sectionsWrap.innerHTML = '';
+            draft.sections.forEach((sec, si) => sectionsWrap.appendChild(section_editor(sec, si)));
+
+            prizesWrap.innerHTML = '';
+            draft.prize.rows.forEach((row, ri) => prizesWrap.appendChild(prize_editor(row, ri)));
+        };
+
+        headerTitleInput.addEventListener('sl-input', () => { draft.header.title = headerTitleInput.value; });
+        headerSubtitleInput.addEventListener('sl-input', () => { draft.header.subtitle = headerSubtitleInput.value; });
+        eventSectionTitleInput.addEventListener('sl-input', () => { draft.event.section_title = eventSectionTitleInput.value; });
+        eventTitleInput.addEventListener('sl-input', () => { draft.event.title = eventTitleInput.value; });
+        eventTimeInput.addEventListener('sl-input', () => { draft.event.time = eventTimeInput.value; });
+        eventStatusInput.addEventListener('sl-input', () => { draft.event.status = eventStatusInput.value; });
+        prizeTitleInput.addEventListener('sl-input', () => { draft.prize.title = prizeTitleInput.value; });
+
+        addSectionButton.addEventListener('click', () => {
+            draft.sections.push({ title: '新板块', items: [''] });
+            render_editor();
+        });
+
+        addPrizeButton.addEventListener('click', () => {
+            draft.prize.rows.push({ label: '新奖项', value: '' });
+            render_editor();
+        });
+
+        editButton.addEventListener('click', () => {
+            if (!isAdmin) return;
+            if (typeof editDialog.show !== 'function') { toast.error('编辑器组件未就绪，请刷新页面后重试。'); return; }
+            draft = JSON.parse(JSON.stringify(model));
+            render_editor();
+            editDialog.show();
+        });
+
+        editCancelButton.addEventListener('click', () => editDialog.hide());
+
+        editSaveButton.addEventListener('click', async () => {
+            // 编辑入口本就仅对管理员可见，此处不再重复校验权限
+            const token = window.get_token();
+            if (!token) { toast.error('登录状态已失效，请重新登录后重试。'); return; }
+
+            const data = JSON.stringify(sanitize(draft));
+            editSaveButton.disabled = true;
+            let ok = false;
+            try {
+                ok = await window.http_contest_rules_update(token, data);
+            } finally {
+                // 无论请求成功、失败还是抛错，都必须恢复按钮，避免界面卡死
+                editSaveButton.disabled = false;
+            }
+            if (!ok) { toast.error('保存失败，服务暂不可用，请稍后重试。'); return; }
+
+            model = JSON.parse(data);
+            localStorage.setItem(STORAGE_KEY, data);
+            localStorage.setItem(STORAGE_KEY + '_ts', String(Date.now()));
+            render();
+            editDialog.hide();
+            toast.success('规则已保存，全服可见');
+        });
+
+        // ==================== 数据同步 ====================
+        const load_cache = () => {
+            try {
+                const saved = localStorage.getItem(STORAGE_KEY);
+                if (!saved) return;
+                model = normalize(JSON.parse(saved));
+            } catch (_) {}
+        };
+
+        const sync_from_remote = async () => {
+            try {
+                const remote = await window.http_contest_rules_query();
+                if (!remote || !remote.data) return;
+                const remoteTs = Number(remote.updated_at) || 0;
+                const localTs = Number(localStorage.getItem(STORAGE_KEY + '_ts') || 0);
+                if (remoteTs <= localTs && localStorage.getItem(STORAGE_KEY)) return;
+                model = normalize(JSON.parse(remote.data));
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(model));
+                localStorage.setItem(STORAGE_KEY + '_ts', String(remoteTs));
+                render();
+            } catch (_) {}
+        };
+
+        const verify_admin = async () => {
+            const token = window.get_token();
+            if (!token) return;
+            try {
+                userInfo = await window.http_user_info(token);
+                isAdmin = Number(userInfo && userInfo.level) === 4;
+            } catch (_) {
+                isAdmin = false;
+            }
+        };
+
+        const apply_admin_ui = () => {
+            adminBadge.classList.toggle('d-none', !isAdmin);
+            editButton.classList.toggle('d-none', !isAdmin);
+        };
+
+        load_cache();
+
+        window.addEventListener('load', async () => {
+            render();
+            sync_from_remote();
+            await verify_admin();
+            apply_admin_ui();
+
+            // 轮询服务端，普通用户也能看到管理员的改动
+            setInterval(() => { if (!document.hidden && !editDialog.open) sync_from_remote(); }, 10000);
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,812 @@
+<!--
+ * @Author: CsVeryLoveXieWenLi
+ * @Description: 剧情系统 - 对话框 + AI 对局播放页
+ * @Copyright (c) 2026 by CsVeryLoveXieWenLi, All Rights Reserved.
+-->
+<!DOCTYPE html>
+<html lang='zh-CN'>
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0, user-scalable=no'>
+    <link rel='shortcut icon' href='/favicon.png' type='image/png'>
+    <title>四子棋 剧情对局</title>
+    <link href='https://quantil.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css' rel='stylesheet'>
+    <link href='https://quantil.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/themes/light.css' rel='stylesheet'>
+    <script src='https://quantil.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/shoelace-autoloader.js' type='module'></script>
+    <script src='/vendor/comlink/comlink.min.js'></script>
+    <script src='/js/global/ui.min.js?v=replace'></script>
+    <script src='/js/global/endgame.min.js?v=replace'></script>
+    <script src='/js/global/fascend.min.js?v=replace'></script>
+    <script src='/js/global/story.min.js?v=replace'></script>
+    <script src='/js/risk/api.min.js?v=replace'></script>
+    <script src='/js/ref/must.min.js?v=replace'></script>
+    <script src='/js/ref/http.min.js?v=replace'></script>
+    <script src='/js/ref/friends.min.js?v=replace'></script>
+    <script src='/js/global/game.min.js?v=replace'></script>
+    <script src='/js/global/utils.min.js?v=replace'></script>
+    <link href='/css/main.min.css?v=replace' rel='stylesheet'>
+    <link href='/css/global.min.css?v=replace' rel='stylesheet'>
+    <link href='/css/game.min.css?v=replace' rel='stylesheet'>
+    <style>
+        .story-main { max-width: 1180px; }
+        .story-board-wrap { width: min(94vw, 680px); aspect-ratio: 1; background: #fff; border: 1px solid rgba(0, 0, 0, .08); border-radius: .75rem; overflow: hidden; }
+        .story-board { position: relative; width: 100%; height: 100%; }
+        .story-board canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+        #canvas_board { position: absolute; z-index: 1; touch-action: none; cursor: crosshair; }
+        .story-board canvas:not(#canvas_board) { z-index: 2; }
+        .story-board canvas { pointer-events: none; }
+        .story-board #canvas_board { pointer-events: auto; }
+        #canvas_annot { z-index: 3; }
+        .mark-layer { position: fixed; inset: 0; z-index: 1095; pointer-events: none; overflow: hidden; }
+        .mark-arrow { position: absolute; width: 36px; height: 36px; will-change: transform; }
+        .mark-arrow > svg { display: block; width: 100%; height: 100%; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .45)); animation: mark-bounce .9s ease-in-out infinite; }
+        .mark-arrow--up { transform: rotate(0deg); }
+        .mark-arrow--down { transform: rotate(180deg); }
+        .mark-arrow--left { transform: rotate(-90deg); }
+        .mark-arrow--right { transform: rotate(90deg); }
+        @keyframes mark-bounce { 0%, 100% { transform: translateY(-5px); } 50% { transform: translateY(5px); } }
+        .story-top-panel { width: min(94vw, 680px); }
+        .story-board-wrap { box-shadow: 0 0 0 2px rgba(52, 152, 219, .08), 0 12px 28px rgba(0, 0, 0, .12); }
+        .story-board-wrap.is-dialogue { filter: blur(2px) brightness(.72); pointer-events: none; }
+        #game_p1_name, #game_p1_hp, #game_p2_name, #game_p2_hp { transition: color .5s ease; }
+        .dialogue-panel { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1100; padding: .75rem; transition: transform .3s ease, opacity .3s ease; }
+        .dialogue-panel.is-hidden { transform: translateY(120%); opacity: 0; pointer-events: none; }
+        .dialogue-inner { max-width: 900px; margin-inline: auto; background: rgba(23, 26, 33, .94); color: #f5f6f8; border-radius: .8rem; box-shadow: 0 -6px 26px rgba(0, 0, 0, .35); padding: 1rem 1.1rem 1.1rem; cursor: pointer; }
+        .met-cursor-pointer .dialogue-inner { cursor: pointer; }
+        .dialogue-head { display: flex; align-items: center; gap: .6rem; margin-bottom: .55rem; }
+        .dialogue-avatar { width: 38px; height: 38px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: #3498db; color: #fff; font-size: 1.2rem; flex: 0 0 auto; }
+        .dialogue-speaker { font-weight: 700; font-size: 1.02rem; color: #8fd0ff; }
+        .dialogue-text { font-size: clamp(1rem, 2.4vw, 1.18rem); line-height: 1.85; min-height: 4.2em; white-space: pre-wrap; }
+        .dialogue-options { display: flex; flex-direction: column; gap: .5rem; margin-top: .85rem; }
+        .dialogue-option { text-align: left; border: 1px solid rgba(143, 208, 255, .5); background: rgba(52, 152, 219, .16); color: #eaf6ff; border-radius: .5rem; padding: .55rem .8rem; font-size: 1rem; transition: background .15s ease, border-color .15s ease; }
+        .dialogue-option:hover { background: rgba(52, 152, 219, .34); border-color: #8fd0ff; }
+        .dialogue-next { text-align: right; font-size: .82rem; color: #9fb0c0; margin-top: .5rem; animation: dialogue-blink 1.4s ease-in-out infinite; }
+        @keyframes dialogue-blink { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+        .result-overlay { position: fixed; inset: 0; z-index: 1150; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(12, 14, 18, .66); color: #fff; }
+        .result-overlay-icon { font-size: 4.4rem; color: #ffd166; }
+        .result-overlay.is-win .result-overlay-icon { color: #62d84e; }
+        .result-overlay.is-lose .result-overlay-icon { color: #ff6b6b; }
+        .result-overlay-text { font-size: 2rem; font-weight: 800; margin-top: .6rem; letter-spacing: .06em; }
+        .ending-panel { position: fixed; inset: 0; z-index: 1200; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(12, 14, 18, .9); color: #fff; gap: 1rem; }
+        .ending-title { font-size: 2.6rem; font-weight: 800; letter-spacing: .3em; }
+        .story-subtitle { font-size: .82rem; }
+        .story-plant-hint { font-size: .74rem; color: var(--sl-color-neutral-500); }
+        @media (max-width: 991.98px) { .story-board-wrap, .story-top-panel { width: min(94vw, 620px); } }
+    </style>
+</head>
+<body class='d-flex flex-column w-100 h-100 bg-light'>
+    <div class='position-fixed top-0 start-0 d-flex p-2 met-cursor-pointer' style='z-index: 1050;'>
+        <sl-button variant='default' href='/pages/docs/story.html' circle aria-label='返回剧情列表'><sl-icon name='arrow-left'></sl-icon></sl-button>
+    </div>
+    <div class='d-flex flex-column w-100 h-100'>
+        <header class='text-center py-2'>
+            <h1 class='h4 fw-bold m-0 msg-active text-color' id='game_msg'>剧情对局</h1>
+            <div class='text-secondary small story-subtitle' id='story_subtitle'>对话框推进剧情，对局决定走向</div>
+        </header>
+        <main class='container story-main flex-grow-1 overflow-auto pb-3'>
+            <div id='game_top_card' class='story-top-panel d-flex flex-column gap-2 justify-content-center align-items-center mx-auto mb-3'>
+                <div class='d-flex flex-row gap-1 w-100'>
+                    <div id='game_p1_card' class='card card-bg py-2 px-1 rounded-2 w-50 turn-init'>
+                        <span class='d-flex align-items-center justify-content-around'>
+                            <span id='game_p1_stone' class='d-flex align-items-center hp-color-p1'>黑子</span>
+                            <span id='game_p1_name' class='d-flex align-items-center hp-color-p1'>黑方</span>
+                        </span>
+                    </div>
+                    <div id='game_p2_card' class='card card-bg py-2 px-1 rounded-2 w-50 turn-init'>
+                        <span class='d-flex align-items-center justify-content-around'>
+                            <span id='game_p2_stone' class='d-flex align-items-center hp-color-p2'>白子</span>
+                            <span id='game_p2_name' class='d-flex align-items-center hp-color-p2'>白方</span>
+                        </span>
+                    </div>
+                </div>
+                <div class='d-flex flex-row gap-1 w-100'>
+                    <div id='game_p1_info' class='card card-bg py-2 px-1 rounded-2 w-50 turn-init'>
+                        <span class='d-flex align-items-center justify-content-around'>
+                            <span id='game_p1_hp' class='d-flex align-items-center hp-color-p1'>HP: 6/6</span>
+                            <span id='game_p1_ascend' class='d-flex align-items-center text-color'>PR：0+0</span>
+                        </span>
+                    </div>
+                    <div id='game_p2_info' class='card card-bg py-2 px-1 rounded-2 w-50 turn-init'>
+                        <span class='d-flex align-items-center justify-content-around'>
+                            <span id='game_p2_hp' class='d-flex align-items-center hp-color-p2'>HP: 6/6</span>
+                            <span id='game_p2_ascend' class='d-flex align-items-center text-color'>PR：0+0</span>
+                        </span>
+                    </div>
+                </div>
+                <div class='d-flex flex-row gap-1 w-100'>
+                    <div class='card card-bg py-1 rounded-2 w-100'>
+                        <span class='d-flex align-items-center justify-content-around'>
+                            <div id='game_info_turn'>0 Turns</div>
+                            <div>|</div>
+                            <div id='game_info_plant_cd'>CD=cd</div>
+                            <div>|</div>
+                            <div id='game_info_plant_normal'>0 NPlants</div>
+                            <div>|</div>
+                            <div id='game_info_plant_left'>剩余刷草点：0</div>
+                        </span>
+                    </div>
+                </div>
+            </div>
+            <div class='d-flex justify-content-center'>
+                <div id='board_wrap' class='story-board-wrap'>
+                    <div class='story-board'>
+                        <canvas id='canvas_board' aria-label='剧情对局棋盘'></canvas>
+                        <canvas id='canvas_stone_fill' class='pe-none'></canvas>
+                        <canvas id='canvas_stone_ascend' class='pe-none'></canvas>
+                        <canvas id='canvas_plant' class='pe-none'></canvas>
+                        <canvas id='canvas_view_turn' class='pe-none'></canvas>
+                        <canvas id='canvas_view_ascend' class='pe-none'></canvas>
+                        <canvas id='canvas_view_move' class='pe-none'></canvas>
+                        <canvas id='canvas_annot' class='pe-none' aria-hidden='true'></canvas>
+                    </div>
+                </div>
+            </div>
+            <div id='story_status' class='text-center text-secondary small mt-2 story-plant-hint'>正在加载剧情...</div>
+        </main>
+    </div>
+
+    <div id='mark_layer' class='mark-layer' aria-hidden='true'></div>
+
+    <div id='dialogue' class='dialogue-panel is-hidden'>
+        <div class='dialogue-inner'>
+            <div class='dialogue-head'>
+                <div class='dialogue-avatar'><sl-icon name='person-fill'></sl-icon></div>
+                <div id='dialogue_speaker' class='dialogue-speaker'>旁白</div>
+            </div>
+            <div id='dialogue_text' class='dialogue-text'></div>
+            <div id='dialogue_options' class='dialogue-options d-none'></div>
+            <div id='dialogue_next' class='dialogue-next'>点击继续 ▼</div>
+        </div>
+    </div>
+
+    <div id='result_overlay' class='result-overlay d-none'>
+        <sl-icon id='result_overlay_icon' class='result-overlay-icon' name='trophy'></sl-icon>
+        <div id='result_overlay_text' class='result-overlay-text'>胜利！</div>
+    </div>
+
+    <div id='ending' class='ending-panel d-none'>
+        <sl-icon name='journals' style='font-size: 3.6rem; color: #8fd0ff;'></sl-icon>
+        <div class='ending-title'>剧 终</div>
+        <div class='text-secondary' id='ending_tip'>本段剧情已结束。</div>
+        <sl-button variant='primary' href='/pages/docs/story.html'><sl-icon slot='prefix' name='arrow-left'></sl-icon>返回关卡列表</sl-button>
+    </div>
+
+    <script>
+        const params = new URLSearchParams(location.search);
+        const targetLevel = Math.max(1, Number.parseInt(params.get('level') || '1', 10) || 1);
+        const boardCanvas = document.getElementById('canvas_board');
+        const { GameStory, Board, State, RulesRuntime, PLAYER_ENUM, STONE_ENUM, PLANT_ENUM, ASCEND_ENUM, OVER_ENUM, RandAIC, RandUnity } = window.FAscendExports;
+        const { StoryScript, StoryRuntime } = window.StoryExports;
+        const GameCanvas = window.GameExports.Canvas;
+        const ENDGAME_SIMULATIONS = 888;
+
+        const $ = (id) => document.getElementById(id);
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const indexOf = (x, y) => y * 9 + x;
+
+        let runtime = null;
+        let playerName = '你';
+        let mode = 'dialogue';
+        let game = null, state = null, ui = null, sound = null, aiWorker = null, aiWorkerThread = null;
+        let aiReady = false;
+        let branch = null;
+        let bookedWhite = null;
+        let moves = [];
+        let running = false;
+        let gameOver = false;
+        let gameGeneration = 0;
+        let settlementDamage = [0, 0];
+        let selfPlayer = PLAYER_ENUM.BLACK;
+        let aiPlayer = PLAYER_ENUM.WHITE;
+        let importedArchive = false;
+        let currentConfig = null;
+        let hpMax = { black: 6, white: 6 };
+        let pendingAscend = [[], []];
+        let typingTimer = null, typingChars = [], typingIndex = 0;
+
+        const setStatus = (message, variant = 'primary') => { const node = $('story_status'); node.className = `text-center small mt-2 text-${variant === 'primary' ? 'secondary' : variant}`; node.textContent = message; };
+        const showAlertText = (message) => { $('game_msg').textContent = message; };
+
+        // ==================== 剧本引擎 ====================
+        const dialoguePanel = $('dialogue');
+        const setDialogueVisible = (visible) => { dialoguePanel.classList.toggle('is-hidden', !visible); $('board_wrap').classList.toggle('is-dialogue', visible); };
+
+        const finishTyping = () => {
+            if (!typingTimer) return false;
+            clearInterval(typingTimer); typingTimer = null;
+            typingIndex = typingChars.length;
+            $('dialogue_text').textContent = typingChars.join('');
+            $('dialogue_next').classList.remove('d-none');
+            return true;
+        };
+        const typeText = (text) => {
+            if (typingTimer) clearInterval(typingTimer);
+            typingChars = Array.from(String(text == null ? '' : text));
+            typingIndex = 0;
+            $('dialogue_text').textContent = '';
+            $('dialogue_next').classList.add('d-none');
+            typingTimer = setInterval(() => {
+                typingIndex++;
+                $('dialogue_text').textContent = typingChars.slice(0, typingIndex).join('');
+                if (typingIndex >= typingChars.length) { clearInterval(typingTimer); typingTimer = null; $('dialogue_next').classList.remove('d-none'); }
+            }, 22);
+        };
+        const applyPlaceholders = (text) => String(text == null ? '' : text).split('<玩家名称>').join(playerName);
+
+        // ==================== 剧情标注（红色动态箭头 / 旋转虚线圈） ====================
+        const MARK_SIZE = 36;
+        const MARK_GAP = 6;
+        const MARK_DEFAULT_COLOR = '#ff2d2d';
+        const MARK_ARROW_SVG = "<svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'><path d='M12 2 L21 13 L14.6 13 L14.6 22 L9.4 22 L9.4 13 L3 13 Z' fill='#ff2d2d' stroke='#ffffff' stroke-width='1.6' stroke-linejoin='round'/></svg>";
+        const MARK_ANCHOR_IDS = {
+            '名字': ['game_p1_card', 'game_p2_card'],
+            '棋子颜色': ['game_p1_stone', 'game_p2_stone'],
+            '生命值': ['game_p1_info', 'game_p2_info'],
+            '信息': ['game_info_turn', 'game_info_plant_cd', 'game_info_plant_normal', 'game_info_plant_left'],
+            '刷草点': ['game_info_plant_left'],
+            '棋盘': ['board_wrap'],
+        };
+        const markLayer = $('mark_layer');
+        const annotCanvas = $('canvas_annot');
+        let activeArrow = null;
+        let activeCircle = null;
+        let markArrowNode = null;
+        let markFrame = 0;
+        let markPhase = 0;
+
+        const sanitizeColor = (value) => {
+            const text = String(value == null ? '' : value).trim();
+            return /^#[0-9a-fA-F]{3,8}$/.test(text) || /^(rgb|hsl)a?\(/i.test(text) ? text : MARK_DEFAULT_COLOR;
+        };
+
+        const anchorRect = (target) => {
+            const text = String(target == null ? '' : target).trim();
+            let ids = MARK_ANCHOR_IDS[text] || null;
+            if (!ids && text === '我方') ids = [selfPlayer === PLAYER_ENUM.BLACK ? 'game_p1_card' : 'game_p2_card'];
+            if (!ids && text === '对手') ids = [selfPlayer === PLAYER_ENUM.BLACK ? 'game_p2_card' : 'game_p1_card'];
+            if (!ids && text.startsWith('#')) ids = [text.slice(1)];
+            if (!ids) return null;
+            const nodes = ids.map((id) => $(id)).filter((node) => node && node.getBoundingClientRect);
+            if (!nodes.length) return null;
+            const rects = nodes.map((node) => node.getBoundingClientRect());
+            const left = Math.min(...rects.map((r) => r.left));
+            const top = Math.min(...rects.map((r) => r.top));
+            const right = Math.max(...rects.map((r) => r.right));
+            const bottom = Math.max(...rects.map((r) => r.bottom));
+            if (right - left <= 0 || bottom - top <= 0) return null;
+            return { 'left': left, 'top': top, 'right': right, 'bottom': bottom, 'width': right - left, 'height': bottom - top };
+        };
+
+        const placeArrow = () => {
+            if (!activeArrow || !markArrowNode) return;
+            const rect = anchorRect(activeArrow.anchor);
+            if (!rect) { markArrowNode.style.display = 'none'; return; }
+            markArrowNode.style.display = '';
+            const vw = window.innerWidth || document.documentElement.clientWidth;
+            const vh = window.innerHeight || document.documentElement.clientHeight;
+            const reach = MARK_SIZE + MARK_GAP + 4;
+            const spaceLeft = rect.left;
+            const spaceRight = vw - rect.right;
+            let dir;
+            if (Math.max(spaceLeft, spaceRight) >= reach) dir = spaceRight >= spaceLeft ? 'left' : 'right';
+            else if (rect.top >= reach) dir = 'down';
+            else dir = 'up';
+            const midX = rect.left + rect.width / 2;
+            const midY = rect.top + rect.height / 2;
+            let cx, cy;
+            if (dir === 'down') { cx = midX; cy = rect.top - MARK_GAP - MARK_SIZE / 2; }
+            else if (dir === 'up') { cx = midX; cy = rect.bottom + MARK_GAP + MARK_SIZE / 2; }
+            else if (dir === 'left') { cx = rect.right + MARK_GAP + MARK_SIZE / 2; cy = midY; }
+            else { cx = rect.left - MARK_GAP - MARK_SIZE / 2; cy = midY; }
+            cx = Math.min(Math.max(cx, MARK_SIZE / 2 + 2), Math.max(MARK_SIZE / 2 + 2, vw - MARK_SIZE / 2 - 2));
+            cy = Math.min(Math.max(cy, MARK_SIZE / 2 + 2), Math.max(MARK_SIZE / 2 + 2, vh - MARK_SIZE / 2 - 2));
+            markArrowNode.className = `mark-arrow mark-arrow--${dir}`;
+            markArrowNode.style.left = `${Math.round(cx - MARK_SIZE / 2)}px`;
+            markArrowNode.style.top = `${Math.round(cy - MARK_SIZE / 2)}px`;
+        };
+
+        const drawAnnotCircle = () => {
+            if (!annotCanvas) return;
+            const ctx = annotCanvas.getContext('2d');
+            if (!ctx) return;
+            if (!activeCircle || mode !== 'game' || !ui || !game || !ui.spacing) {
+                if (annotCanvas.width) ctx.clearRect(0, 0, annotCanvas.width, annotCanvas.height);
+                return;
+            }
+            const size = ui.size;
+            const dpr = window.devicePixelRatio || 1;
+            const pixel = Math.round(size * dpr);
+            if (annotCanvas.width !== pixel || annotCanvas.height !== pixel) {
+                annotCanvas.width = pixel;
+                annotCanvas.height = pixel;
+                annotCanvas.style.width = `${size}px`;
+                annotCanvas.style.height = `${size}px`;
+            }
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, size, size);
+            const cx = ui.offset + activeCircle.x * ui.spacing;
+            const cy = ui.offset + activeCircle.y * ui.spacing;
+            const radius = ui.spacing * ((ui.stone_radius || 0.41) + 0.16);
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+            ctx.setLineDash([Math.max(6, ui.spacing * 0.22), Math.max(5, ui.spacing * 0.15)]);
+            ctx.lineDashOffset = -markPhase;
+            ctx.strokeStyle = activeCircle.color;
+            ctx.lineWidth = Math.max(3, ui.spacing * 0.09);
+            ctx.shadowColor = activeCircle.color;
+            ctx.shadowBlur = Math.max(4, ui.spacing * 0.18);
+            ctx.stroke();
+            ctx.closePath();
+            ctx.restore();
+        };
+
+        const markTick = () => {
+            markFrame = 0;
+            markPhase = (markPhase + 1.6) % 720;
+            if (activeArrow) placeArrow();
+            drawAnnotCircle();
+            if (activeArrow || activeCircle) markFrame = requestAnimationFrame(markTick);
+        };
+
+        const ensureMarkLoop = () => {
+            if (!markFrame && (activeArrow || activeCircle)) markFrame = requestAnimationFrame(markTick);
+        };
+
+        const clearMarks = () => {
+            activeArrow = null;
+            activeCircle = null;
+            if (markFrame) { cancelAnimationFrame(markFrame); markFrame = 0; }
+            if (markArrowNode) { markArrowNode.remove(); markArrowNode = null; }
+            if (annotCanvas && annotCanvas.width) annotCanvas.getContext('2d').clearRect(0, 0, annotCanvas.width, annotCanvas.height);
+        };
+
+        const applyMark = (node) => {
+            clearMarks();
+            if (!node || node.kind === 'clear') return;
+            const color = sanitizeColor(node.color);
+            if (node.kind === 'arrow') {
+                activeArrow = { 'anchor': node.target, 'color': color };
+                markArrowNode = document.createElement('div');
+                markArrowNode.className = 'mark-arrow';
+                markArrowNode.innerHTML = MARK_ARROW_SVG.split(MARK_DEFAULT_COLOR).join(color);
+                markLayer.append(markArrowNode);
+            } else if (node.kind === 'circle') {
+                if (!node.cell) return;
+                activeCircle = { 'x': node.cell[0], 'y': node.cell[1], 'color': color };
+            }
+            ensureMarkLoop();
+        };
+
+        const renderNode = () => {
+            const node = runtime.current();
+            if (!node || node.type === 'end' || runtime.is_end()) { endStory(); return; }
+            if (node.type === 'say') {
+                $('dialogue_speaker').textContent = node.speaker || '旁白';
+                $('dialogue_options').classList.add('d-none');
+                $('dialogue_options').innerHTML = '';
+                typeText(applyPlaceholders(node.text));
+                return;
+            }
+            if (node.type === 'choice') {
+                $('dialogue_speaker').textContent = '请选择';
+                typeText(applyPlaceholders(node.prompt));
+                const options = $('dialogue_options');
+                options.innerHTML = '';
+                options.classList.remove('d-none');
+                $('dialogue_next').classList.add('d-none');
+                node.options.forEach((option, index) => {
+                    const button = document.createElement('button');
+                    button.type = 'button'; button.className = 'dialogue-option'; button.textContent = option.text;
+                    button.addEventListener('click', (event) => { event.stopPropagation(); runtime.choose(index); renderNode(); });
+                    options.append(button);
+                });
+                return;
+            }
+            if (node.type === 'jump') { runtime.goto(node.target); renderNode(); return; }
+            if (node.type === 'mark') { applyMark(node); runtime.advance(); renderNode(); return; }
+            if (node.type === 'game') { startGame(node); return; }
+            runtime.advance(); renderNode();
+        };
+
+        const advanceDialogue = () => {
+            if (mode !== 'dialogue') return;
+            const node = runtime.current();
+            if (!node) return;
+            if (node.type === 'choice' && !$('dialogue_options').classList.contains('d-none')) return;
+            if (finishTyping()) return;
+            runtime.advance();
+            renderNode();
+        };
+        dialoguePanel.addEventListener('click', advanceDialogue);
+
+        const endStory = () => {
+            mode = 'end';
+            clearMarks();
+            setDialogueVisible(false);
+            const tip = $('ending_tip');
+            tip.textContent = `${runtime && runtime.nodes ? runtime.nodes.length : 0} 个节点已播放完毕。`;
+            $('ending').classList.remove('d-none');
+        };
+
+        // ==================== 对局引擎 ====================
+        const toStone = (stone) => ({ 'black': STONE_ENUM.BLACK, 'white': STONE_ENUM.WHITE, 'black-ascend': STONE_ENUM.BLACK_ASCEND, 'white-ascend': STONE_ENUM.WHITE_ASCEND, 'black-used': STONE_ENUM.BLACK_USED, 'white-used': STONE_ENUM.WHITE_USED })[stone] || STONE_ENUM.NONE;
+        const toPlant = (plant) => plant === 2 ? PLANT_ENUM.TWO : plant === 1 ? PLANT_ENUM.ONE : PLANT_ENUM.NONE;
+        const toPlayer = (player) => Number(player) === 1 ? PLAYER_ENUM.WHITE : PLAYER_ENUM.BLACK;
+        const toAscend = (status) => Number(status) === 1 ? ASCEND_ENUM.START : Number(status) === 2 ? ASCEND_ENUM.END : ASCEND_ENUM.NONE;
+        const toOver = (status) => Number(status) === 1 ? OVER_ENUM.ENABLE : Number(status) === 2 ? OVER_ENUM.EXECUTE : OVER_ENUM.NONE;
+        const colorFor = (stone) => stone === STONE_ENUM.BLACK ? '#2c3e50' : stone === STONE_ENUM.WHITE ? '#ecf0f1' : stone === STONE_ENUM.BLACK_ASCEND ? '#e74c3c' : '#3498db';
+        const fromPlayer = () => state.turn_player === PLAYER_ENUM.BLACK ? STONE_ENUM.BLACK : STONE_ENUM.WHITE;
+        const legal = (x, y) => game && game.valid(x, y, fromPlayer());
+        const moveLabel = (move) => `${move[0] + 1} · ${move[1] + 1}`;
+        const archiveMoveToBoard = ([x, y]) => importedArchive ? [x, 8 - y] : [x, y];
+
+        const getBoardSize = () => {
+            const wrap = boardCanvas.parentElement;
+            const width = wrap ? wrap.clientWidth : 0;
+            const height = wrap ? wrap.clientHeight : 0;
+            return Math.max(280, Math.floor(Math.min(width || 320, height || width || 320)));
+        };
+
+        const redraw = () => {
+            if (!ui || !game) return;
+            ui.size = getBoardSize();
+            ui.init(); ui.draw_board();
+            game.board.data.forEach((pos) => {
+                if (pos.stone === STONE_ENUM.BLACK) ui.draw_stone_fill(pos.x, pos.y, '#2c3e50');
+                else if (pos.stone === STONE_ENUM.WHITE) ui.draw_stone_fill(pos.x, pos.y, '#ecf0f1');
+                else if (pos.stone === STONE_ENUM.BLACK_ASCEND) ui.draw_stone_ascend(pos.x, pos.y, '#e74c3c');
+                else if (pos.stone === STONE_ENUM.WHITE_ASCEND) ui.draw_stone_ascend(pos.x, pos.y, '#3498db');
+                if (pos.plant === PLANT_ENUM.ONE) ui.draw_plant(pos.x, pos.y);
+                else if (pos.plant === PLANT_ENUM.TWO) ui.draw_2plant(pos.x, pos.y);
+            });
+            if (state.turn_count > 0) ui.draw_stone_turn(state.turn_pos[0], state.turn_pos[1], '#FFD700', 5);
+        };
+
+        const renderInfo = () => {
+            const blackHp = state ? state.hp[0] : hpMax.black;
+            const whiteHp = state ? state.hp[1] : hpMax.white;
+            const blackHpPercent = hpMax.black ? Math.trunc(Math.max(0, Math.min(1, blackHp / hpMax.black)).toFixed(2) * 100) : 0;
+            const whiteHpPercent = hpMax.white ? Math.trunc(Math.max(0, Math.min(1, whiteHp / hpMax.white)).toFixed(2) * 100) : 0;
+            document.documentElement.style.setProperty('--hp-color-p1', String(blackHpPercent));
+            document.documentElement.style.setProperty('--hp-color-p2', String(whiteHpPercent));
+            $('game_p1_name').textContent = selfPlayer === PLAYER_ENUM.BLACK ? playerName : '对手 AI';
+            $('game_p2_name').textContent = selfPlayer === PLAYER_ENUM.WHITE ? playerName : '对手 AI';
+            $('game_p1_hp').textContent = `HP: ${blackHp}/${hpMax.black}`;
+            $('game_p2_hp').textContent = `HP: ${whiteHp}/${hpMax.white}`;
+            const ascendPower = (stone) => game ? game.board.data.filter((pos) => pos.stone === stone).reduce((sum, pos) => sum + 1 + (pos.plant === PLANT_ENUM.TWO ? 2 : pos.plant === PLANT_ENUM.ONE ? 1 : 0), 0) : 0;
+            const ascendCount = (stone) => game ? game.board.data.filter((pos) => pos.stone === stone).length : 0;
+            const blackPower = ascendPower(STONE_ENUM.BLACK_ASCEND), whitePower = ascendPower(STONE_ENUM.WHITE_ASCEND);
+            $('game_p1_ascend').textContent = `PR：${ascendCount(STONE_ENUM.BLACK_ASCEND)}+${Math.max(0, blackPower - ascendCount(STONE_ENUM.BLACK_ASCEND))}`;
+            $('game_p2_ascend').textContent = `PR：${ascendCount(STONE_ENUM.WHITE_ASCEND)}+${Math.max(0, whitePower - ascendCount(STONE_ENUM.WHITE_ASCEND))}`;
+            $('game_info_turn').textContent = `${state ? state.turn_count : 0} Turns`;
+            $('game_info_plant_cd').textContent = state && state.ascend_status !== ASCEND_ENUM.NONE ? (state.ascend_status === ASCEND_ENUM.START ? 'CD=st' : 'CD=ed') : `CD=${state ? state.grow_count : 'cd'}`;
+            const normalPlants = game ? game.board.data.filter((pos) => pos.stone === STONE_ENUM.NONE && pos.plant !== PLANT_ENUM.NONE).length : 0;
+            $('game_info_plant_normal').textContent = `${normalPlants} NPlants`;
+            $('game_info_plant_left').textContent = `剩余刷草点：${game && Array.isArray(game.plant_points) ? game.plant_points.length : 0}`;
+            $('game_p1_card').classList.toggle('is-defeated', blackHp <= 0);
+            $('game_p2_card').classList.toggle('is-defeated', whiteHp <= 0);
+            $('game_p1_info').classList.toggle('is-defeated', blackHp <= 0);
+            $('game_p2_info').classList.toggle('is-defeated', whiteHp <= 0);
+            const playerTurn = state && state.turn_player === selfPlayer;
+            $('game_p1_card').classList.toggle('turn-green', Boolean(playerTurn && selfPlayer === PLAYER_ENUM.BLACK));
+            $('game_p1_info').classList.toggle('turn-green', Boolean(playerTurn && selfPlayer === PLAYER_ENUM.BLACK));
+            $('game_p2_card').classList.toggle('turn-blue', Boolean(playerTurn && selfPlayer === PLAYER_ENUM.WHITE));
+            $('game_p2_info').classList.toggle('turn-blue', Boolean(playerTurn && selfPlayer === PLAYER_ENUM.WHITE));
+        };
+
+        const stoneMeta = (pos) => ({
+            gx: pos.x, gy: pos.y,
+            power: pos.plant === PLANT_ENUM.ONE ? 2 : pos.plant === PLANT_ENUM.TWO ? 3 : 1,
+            plant: pos.plant === PLANT_ENUM.ONE ? 1 : pos.plant === PLANT_ENUM.TWO ? 2 : 0,
+            color: pos.stone === STONE_ENUM.BLACK_ASCEND ? '#e74c3c' : '#3498db',
+            stone_color: pos.stone === STONE_ENUM.BLACK_ASCEND ? '#2c3e50' : '#ecf0f1',
+            marker_color: pos.stone === STONE_ENUM.BLACK_ASCEND ? '#e74c3c' : '#3498db',
+        });
+
+        const recordModelHistory = () => {
+            game.history_boards.push(RulesRuntime.solidBoard(game));
+            while (game.history_boards.length > 7) game.history_boards.shift();
+        };
+
+        const syncAiStone = async (x, y, generation) => {
+            if (!aiWorker || generation !== gameGeneration) return;
+            const result = await aiWorker.ENDGAME_APPLY(indexOf(x, y));
+            if (!result || !result.legal) throw new Error(`4zero MCTS 拒绝了合法落子：${x},${y}`);
+        };
+        const syncAiBoard = async () => {
+            if (!aiWorker) return;
+            await aiWorker.ENDGAME_LOAD(RulesRuntime.snapshot(game));
+        };
+
+        const renderMove = async (x, y, source, generation) => {
+            const stone = fromPlayer();
+            const isBlack = stone === STONE_ENUM.BLACK;
+            ui.clear_view_move(); ui.clear_view_turn();
+            ui.draw_stone_turn(x, y, source === 'ai' ? '#00FFC5' : '#FFD700', 5);
+            sound && sound.play_stone();
+            const points = game.ed_as_1();
+            renderInfo();
+            if (sound && sound.context && sound.context.state === 'suspended') sound.context.resume().catch(() => {});
+            if (!points) {
+                ui.clear_stone_fill(x, y); ui.clear_stone_ascend(x, y);
+                ui.draw_stone_fill(x, y, isBlack ? '#2c3e50' : '#ecf0f1');
+                const pos = game.board.get_pos(x, y);
+                if (pos.plant === PLANT_ENUM.ONE) ui.draw_plant(x, y);
+                else if (pos.plant === PLANT_ENUM.TWO) ui.draw_2plant(x, y);
+                ui.draw_effect_place(x, y, isBlack ? '#2c3e50' : '#95a5a6');
+                return;
+            }
+            const lifted = points.filter((pos) => pos.stone === STONE_ENUM.BLACK_ASCEND || pos.stone === STONE_ENUM.WHITE_ASCEND);
+            lifted.forEach((pos) => {
+                ui.clear_stone_fill(pos.x, pos.y); ui.clear_stone_ascend(pos.x, pos.y);
+                ui.draw_stone_ascend(pos.x, pos.y, pos.stone === STONE_ENUM.BLACK_ASCEND ? '#e74c3c' : '#3498db');
+            });
+            await ui.ascend_lift(lifted.map(stoneMeta), isBlack ? 'left' : 'right');
+            if (generation !== gameGeneration) return;
+            lifted.forEach((pos) => ui.draw_effect_ascend(pos.x, pos.y, pos.stone === STONE_ENUM.BLACK_ASCEND ? '#e74c3c' : '#3498db'));
+            pendingAscend[game.state.ascend_status === ASCEND_ENUM.START ? 0 : 1].push(...lifted);
+            sound && sound.play_orbit();
+        };
+
+        const settleRound = async (generation) => {
+            if (generation !== gameGeneration) return true;
+            const as = game.ed_as_2(true);
+            settlementDamage = game.state.pending_damage ? [...game.state.pending_damage] : [0, 0];
+            if (as !== undefined) {
+                const nextHp = [game.state.hp[0] - settlementDamage[0], game.state.hp[1] - settlementDamage[1]];
+                const fxDone = ui.ascend_settle(
+                    { left: $('game_p1_hp'), right: $('game_p2_hp') },
+                    () => { if (game.state.pending_damage) { game.state.hp[0] -= game.state.pending_damage[0]; game.state.hp[1] -= game.state.pending_damage[1]; game.state.pending_damage = null; } renderInfo(); },
+                    () => setStatus(`ASCEND 结算：黑方 ${nextHp[0]} · 白方 ${nextHp[1]}`, 'info')
+                );
+                await sleep(900);
+                $('game_p1_ascend').textContent = 'PR：0+0';
+                $('game_p2_ascend').textContent = 'PR：0+0';
+                await fxDone;
+                pendingAscend.flat().forEach((pos) => { ui.clear_stone_ascend(pos.x, pos.y); ui.clear_plant(pos.x, pos.y); });
+                pendingAscend[0].length = 0; pendingAscend[1].length = 0;
+            }
+            game.ed_tr_2();
+            const win = game.ed_win();
+            if (win) { concludeGame(win); return true; }
+            settlementDamage = [0, 0];
+            const plants = game.ed_pl_1();
+            if (plants) {
+                plants.forEach((pos) => {
+                    ui.clear_plant(pos.x, pos.y);
+                    const count = pos.plant === PLANT_ENUM.TWO ? 2 : 1;
+                    ui.draw_effect_plant(pos.x, pos.y, count);
+                    count === 1 ? ui.draw_plant(pos.x, pos.y) : ui.draw_2plant(pos.x, pos.y);
+                });
+                sound && sound.play_plant();
+                setStatus(`刷草点生成：${plants.map((pos) => `${pos.x + 1},${pos.y + 1}`).join(' / ')}`, 'info');
+                // 新草必须同步给 AI：Worker 不会自然刷草，否则 AI 看到的盘面落后一株。
+                await syncAiBoard();
+                await sleep(420);
+            }
+            game.ed_as_3();
+            renderInfo();
+            return false;
+        };
+
+        const aiThink = async () => {
+            if (aiWorker) {
+                try {
+                    const search = await aiWorker.ENDGAME_THINK(ENDGAME_SIMULATIONS);
+                    const index = search && search.action;
+                    const move = Number.isInteger(index) && index >= 0 && index < 81 ? [index % 9, Math.floor(index / 9)] : null;
+                    if (move && legal(move[0], move[1])) {
+                        const label = search.corrected || search.engine === 'endgame-tactics' ? `战术矫正：${search.reason || '矫正'}` : null;
+                        if (label) setStatus(`${label} @ ${move[0] + 1},${move[1] + 1}`, 'info');
+                        else setStatus(`4zero MCTS 完成：${search.simulations || 0}/${search.requestedSimulations || ENDGAME_SIMULATIONS} 次模拟`, 'info');
+                        return move;
+                    }
+                } catch (error) { console.warn('剧情 AI 搜索失败，启用合法落点保护。', error); }
+            }
+            for (let y = 0; y < 9; y++) for (let x = 0; x < 9; x++) if (legal(x, y)) return [x, y];
+            return null;
+        };
+
+        const applyMove = async (move, source, generation) => {
+            if (ui.ascend_is_lifted(move[0], move[1])) ui.ascend_counter(move[0], move[1]);
+            recordModelHistory();
+            if (!game.ed_tr_1(move[0], move[1])) { game.history_boards.pop(); return false; }
+            await syncAiStone(move[0], move[1], generation);
+            moves.push({ move, source });
+            await renderMove(move[0], move[1], source, generation);
+            return await settleRound(generation);
+        };
+
+        const runAiTurns = async (generation) => {
+            while (!gameOver && generation === gameGeneration && state.turn_player === aiPlayer) {
+                setStatus('对手 AI（战术矫正 + 4zero）正在计算...', 'info');
+                const response = bookedWhite;
+                bookedWhite = null;
+                let move = response && response.white_move ? response.white_move : null;
+                if (move && !legal(move[0], move[1])) move = null;
+                if (!move) move = await aiThink();
+                if (!move || !legal(move[0], move[1])) { setStatus('对手 AI 未找到合法落点。', 'danger'); return; }
+                const ended = await applyMove(move, 'ai', generation);
+                if (ended || gameOver) return;
+            }
+        };
+
+        const playerTurn = async (x, y) => {
+            if (mode !== 'game' || running || gameOver || !state || state.turn_player !== selfPlayer) return;
+            if (!aiReady) { setStatus('对手 AI 仍在准备，请稍候。', 'warning'); return; }
+            if (!legal(x, y)) { setStatus('此处不能落子。', 'danger'); return; }
+            if (activeCircle && activeCircle.x === x && activeCircle.y === y) clearMarks();
+            running = true;
+            const generation = gameGeneration;
+            try {
+                let currentBook = null;
+                if (selfPlayer === PLAYER_ENUM.BLACK && branch) currentBook = await branch.black_move([x, y], {});
+                const ended = await applyMove([x, y], 'player', generation);
+                if (ended || gameOver) return;
+                const white = currentBook && currentBook.white_move ? currentBook.white_move : null;
+                // 作者预案命中时白方严格按预案应手；偏离后 currentBook.white_move 已是普通 AI 结果。
+                bookedWhite = white ? { white_move: white } : null;
+                await runAiTurns(generation);
+            } catch (error) {
+                console.error('剧情对局回合失败。', error);
+                setStatus('回合执行失败，请返回列表重试。', 'danger');
+            } finally { running = false; }
+        };
+
+        const pointFromEvent = (event) => {
+            const rect = boardCanvas.getBoundingClientRect();
+            if (!rect.width || !rect.height || !ui.spacing) return [-1, -1];
+            const drawX = (event.clientX - rect.left) * ui.size / rect.width;
+            const drawY = (event.clientY - rect.top) * ui.size / rect.height;
+            return [Math.round((drawX - ui.offset) / ui.spacing), Math.round((drawY - ui.offset) / ui.spacing)];
+        };
+        boardCanvas.addEventListener('pointerdown', (event) => {
+            event.preventDefault();
+            if (mode !== 'game') return;
+            const [x, y] = pointFromEvent(event);
+            if (x >= 0 && x < 9 && y >= 0 && y < 9) playerTurn(x, y);
+        });
+
+        const archiveFlatToBoard = (values) => {
+            if (!importedArchive) return Array.from(values || []);
+            return Array.from({ length: 81 }, (_, index) => values[(8 - Math.floor(index / 9)) * 9 + (index % 9)]);
+        };
+
+        const createGame = (config, archiveData) => {
+            const boardSize = getBoardSize();
+            ui = new GameCanvas(boardCanvas, $('canvas_stone_fill'), $('canvas_stone_ascend'), $('canvas_plant'), $('canvas_view_turn'), $('canvas_view_ascend'), $('canvas_view_move'), 9, 9, .41, .12, .062, boardSize);
+            const saved = (archiveData && archiveData.snapshot) || {};
+            const integer = (value, fallback) => Number.isFinite(Number(value)) ? Math.trunc(Number(value)) : fallback;
+            const hp = Array.isArray(saved.hp) ? saved.hp : [hpMax.black, hpMax.white];
+            state = new State();
+            state.hp = [Math.max(0, integer(hp[0], hpMax.black)), Math.max(0, integer(hp[1], hpMax.white))];
+            state.turn_player = toPlayer(saved.turnPlayer);
+            state.turn_count = Math.max(0, integer(saved.turnCount, 0));
+            state.turn_pos = archiveMoveToBoard(Array.isArray(saved.turnPos) ? saved.turnPos : [0, 0]);
+            state.ascend_status = toAscend(saved.ascendStatus);
+            state.pending_damage = Array.isArray(saved.pendingDamage) ? saved.pendingDamage.map((value) => integer(value, 0)) : null;
+            state.unascend_charge = Math.max(0, integer(saved.unascendCharge, 25));
+            state.unascend_chargef = Array.isArray(saved.fastUnascendCharge) ? saved.fastUnascendCharge.map((value) => Math.max(0, integer(value, 9))) : [9, 9];
+            state.grow_count = Math.max(1, integer(saved.growCount, 11));
+            state.just_unascend = Boolean(saved.justUnascend);
+            state.over_status = toOver(saved.overStatus);
+            state.turn_player = toPlayer(config.first === 'white' ? 1 : 0);
+            const randAic = new RandAIC(0x4A534B31), randUnity = new RandUnity(0x4A534B32);
+            game = new GameStory(new Board(9, 9), state, randAic, randUnity);
+            game.plant_points = (config.points || []).map((point) => [point[0], point[1]]);
+            game.first_player = state.turn_player;
+            game.history_boards = [];
+            const soundOptions = (() => { let savedOpt = {}; try { savedOpt = JSON.parse(localStorage.getItem('opt') || '{}') || {}; } catch (_) { /* 默认音量 */ } const read = (key, fallback) => Number.isFinite(Number(savedOpt[key])) ? Number(savedOpt[key]) : fallback; return { bgmv: read('bgmv', 1), stonev: read('stonev', 5), plantv: read('plantv', 5), matchv: read('matchv', 5), tickv: read('tickv', 5), annihilationv: read('annihilationv', 0), hitv: read('hitv', 0), orbitv: read('orbitv', 0), flyv: read('flyv', 0) }; })();
+            sound = new window.GameExports.Sound(soundOptions.bgmv, soundOptions.stonev, soundOptions.plantv, soundOptions.matchv, soundOptions.tickv, soundOptions.tickv, soundOptions.annihilationv, soundOptions.hitv, soundOptions.orbitv, soundOptions.flyv);
+            ui.set_sound(sound);
+            if (archiveData && archiveData.cells) archiveData.cells.forEach((cell, index) => {
+                const x = index % 9, y = 8 - Math.floor(index / 9);
+                game.board.set_pos(x, y, toStone(cell.stone), toPlant(cell.plant));
+            });
+            RulesRuntime.initialize(game, game.first_player);
+            game.board.turns = (saved.turns || []).map(archiveMoveToBoard);
+            ui.init(); ui.draw_board(); redraw(); renderInfo();
+        };
+
+        const initAi = async () => {
+            aiReady = false;
+            if (sound) sound.init().catch(() => {});
+            try {
+                aiWorkerThread = new Worker('/js/worker/ai.min.js');
+                aiWorker = Comlink.wrap(aiWorkerThread);
+                await aiWorker.AI_INIT();
+                await syncAiBoard();
+                aiReady = true;
+            } catch (error) {
+                console.warn('4zero MCTS 加载失败，将使用合法落点保护模式。', error);
+                if (aiWorkerThread) aiWorkerThread.terminate();
+                aiWorkerThread = null; aiWorker = null; aiReady = true;
+                setStatus('4zero MCTS 不可用，将使用首个合法落点。', 'warning');
+            }
+        };
+
+        const concludeGame = async (winner) => {
+            if (gameOver) return;
+            gameOver = true;
+            const outcome = winner === selfPlayer ? 'win' : 'lose';
+            renderInfo();
+            const overlay = $('result_overlay');
+            overlay.className = `result-overlay is-${outcome}`;
+            $('result_overlay_icon').name = outcome === 'win' ? 'trophy' : 'x-octagon';
+            $('result_overlay_text').textContent = outcome === 'win' ? '胜利！' : '失败…';
+            overlay.classList.remove('d-none');
+            await sleep(1500);
+            overlay.classList.add('d-none');
+            if (aiWorkerThread) aiWorkerThread.terminate();
+            aiWorkerThread = null; aiWorker = null; aiReady = false;
+            runtime.finish_game(outcome);
+            mode = 'dialogue';
+            setDialogueVisible(true);
+            renderNode();
+        };
+
+        const startGame = async (node) => {
+            const config = node.config || {};
+            currentConfig = config;
+            importedArchive = false;
+            let archiveData = null;
+            if (config.archive) {
+                try { archiveData = window.EndgameExports.EndgameArchive.decode(config.archive); importedArchive = true; }
+                catch (error) { console.warn('残局码解析失败，改用空盘。', error); }
+            }
+            const selfSide = config.self || (archiveData ? archiveData.player : 'black');
+            const firstSide = config.first || (archiveData ? archiveData.first : 'black');
+            selfPlayer = selfSide === 'white' ? PLAYER_ENUM.WHITE : PLAYER_ENUM.BLACK;
+            aiPlayer = selfPlayer === PLAYER_ENUM.BLACK ? PLAYER_ENUM.WHITE : PLAYER_ENUM.BLACK;
+            hpMax = archiveData ? { black: Math.max(1, archiveData.hp.black), white: Math.max(1, archiveData.hp.white) } : { black: 6, white: 6 };
+            config.self = selfSide; config.first = firstSide;
+            mode = 'game';
+            setDialogueVisible(false);
+            $('ending').classList.add('d-none');
+            $('board_wrap').classList.remove('is-dialogue');
+            const generation = ++gameGeneration;
+            running = true; gameOver = false; moves = []; bookedWhite = null;
+            pendingAscend[0].length = 0; pendingAscend[1].length = 0;
+            if (aiWorkerThread) aiWorkerThread.terminate();
+            aiWorkerThread = null; aiWorker = null; aiReady = false;
+            createGame(config, archiveData);
+            branch = selfPlayer === PLAYER_ENUM.BLACK && archiveData && (archiveData.black_book || []).length
+                ? window.EndgameExports.create_branch(archiveData.black_book.map(archiveMoveToBoard), archiveData.white_turns.map(archiveMoveToBoard), async () => aiThink())
+                : null;
+            setStatus('正在加载对手 AI...', 'primary');
+            showAlertText(node.title || '剧情对局');
+            await initAi();
+            if (generation !== gameGeneration) return;
+            running = false;
+            renderInfo();
+            setStatus(state.turn_player === selfPlayer ? '轮到你落子。' : '对手 AI 先手...', 'primary');
+            await runAiTurns(generation);
+            if (!gameOver && generation === gameGeneration) setStatus(state.turn_player === selfPlayer ? '轮到你落子。' : '对手 AI 回合。', 'primary');
+        };
+
+        window.addEventListener('resize', () => { if (ui && game && mode === 'game') redraw(); });
+
+        (async () => {
+            if (!window.get_token || !window.get_token()) { playerName = '你'; }
+            else { try { const info = await window.http_user_info(window.get_token()); if (info && info.name) playerName = info.name; } catch (_) { /* 使用默认称呼 */ } }
+            let catalog = window.StoryExports.DEFAULT_CATALOG;
+            try {
+                const doc = await window.http_docs_query('story');
+                if (doc && doc.data) { const parsed = JSON.parse(doc.data); if (parsed && Array.isArray(parsed.levels) && parsed.levels.length) catalog = parsed; }
+            } catch (_) { /* 回退内置目录 */ }
+            const levels = Array.isArray(catalog.levels) ? catalog.levels.slice().sort((a, b) => Number(a.level) - Number(b.level)) : [];
+            const level = levels.find((item) => Number(item.level) === targetLevel) || levels[0];
+            if (!level) { setStatus('未找到剧情关卡。', 'danger'); return; }
+            const parsed = StoryScript.parse(level.script);
+            runtime = new StoryRuntime(parsed);
+            $('story_subtitle').textContent = `第 ${level.level} 关 · ${level.title}`;
+            document.title = `四子棋 剧情 - ${level.title}`;
+            setStatus('对话框推进剧情，对局决定走向。', 'primary');
+            mode = 'dialogue';
+            setDialogueVisible(true);
+            renderNode();
+        })();
+    </script>
+</body>
+</html>
