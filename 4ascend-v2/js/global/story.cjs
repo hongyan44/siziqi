@@ -7,7 +7,7 @@
 const BOARD_SIZE = 9;
 
 // 对局节点允许的配置键
-const GAME_KEYS = ['残局码', '刷草点', '我方', '先手', '胜利', '失败', '平局'];
+const GAME_KEYS = ['残局码', '刷草点', '刷草计划', '我方', '先手', '胜利', '失败', '平局'];
 // 保留目标：直接结束剧情
 const END_TARGETS = ['结束', '剧终'];
 
@@ -69,6 +69,28 @@ const parseCell = (value) => {
 };
 
 /**
+ * @description: 解析刷草计划：3:4,4;5,4|9:2,2
+ * 每条计划形如 回合:坐标;坐标，多条用 | 分隔；坐标数即该回合刷草的数量。
+ * @param {string} value
+ * @return {{turn: number, cells: [number, number][]}[]}
+ */
+const parseSchedule = (value) => {
+    const result = [];
+    String(value == null ? '' : value).split('|').forEach((chunk) => {
+        const text = chunk.trim();
+        if (!text) return;
+        const split = text.indexOf(':');
+        if (split < 0) return;
+        const turn = Number.parseInt(text.slice(0, split), 10);
+        if (!Number.isInteger(turn) || turn < 0) return;
+        const cells = parsePoints(text.slice(split + 1));
+        if (cells.length === 0) return;
+        result.push({ turn, cells });
+    });
+    return result;
+};
+
+/**
  * @description: 归一化对局配置
  * @param {object} raw
  * @return {object}
@@ -76,12 +98,15 @@ const parseCell = (value) => {
 const normalizeGameConfig = (raw) => {
     const source = raw || {};
     const pointsText = String(source['刷草点'] == null ? '' : source['刷草点']);
+    const scheduleText = String(source['刷草计划'] == null ? '' : source['刷草计划']);
     const selfText = String(source['我方'] == null ? '' : source['我方']).trim();
     const firstText = String(source['先手'] == null ? '' : source['先手']).trim();
     return {
         'archive': String(source['残局码'] == null ? '' : source['残局码']).trim(),
         'points': parsePoints(pointsText),
         'points_text': pointsText,
+        'schedule': parseSchedule(scheduleText),
+        'schedule_text': scheduleText,
         'self': selfText ? toSide(selfText) : null,
         'self_text': selfText,
         'first': firstText ? toSide(firstText) : null,
@@ -98,6 +123,13 @@ const normalizeGameConfig = (raw) => {
  * @return {string}
  */
 const pointsToText = (points) => (points || []).map((point) => `${point[0]},${point[1]}`).join(';');
+
+/**
+ * @description: 把刷草计划数组还原成文本
+ * @param {{turn: number, cells: [number, number][]}[]} schedule
+ * @return {string}
+ */
+const scheduleToText = (schedule) => (schedule || []).map((entry) => `${entry.turn}:${pointsToText(entry.cells)}`).join('|');
 
 
 class StoryScript {
@@ -234,6 +266,7 @@ class StoryScript {
                     if (config[key] && !hasTarget(config[key])) result.push(`对局“${node.title}”的“${key}”指向了不存在的标签：${config[key]}`);
                 });
                 if (config.points_text && config.points.length === 0) result.push(`对局“${node.title}”的刷草点格式无效：${config.points_text}`);
+                if (config.schedule_text && config.schedule.length === 0) result.push(`对局“${node.title}”的刷草计划格式无效：${config.schedule_text}（应形如 3:4,4;5,4|9:2,2）`);
             } else if (node.type === 'mark') {
                 if (node.kind === 'arrow') {
                     const anchor = String(node.target || '').trim();
@@ -266,6 +299,7 @@ class StoryScript {
                 lines.push(`* ${node.title}`);
                 if (config.archive) lines.push(`  残局码=${config.archive}`);
                 if (config.points.length) lines.push(`  刷草点=${pointsToText(config.points)}`);
+                if (config.schedule.length) lines.push(`  刷草计划=${scheduleToText(config.schedule)}`);
                 if (config.self) lines.push(`  我方=${config.self === SIDE_BLACK ? '黑' : '白'}`);
                 if (config.first) lines.push(`  先手=${config.first === SIDE_BLACK ? '黑' : '白'}`);
                 if (config.win) lines.push(`  胜利=${config.win}`);

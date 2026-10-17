@@ -84,6 +84,13 @@ class Canvas {
 
         this.handler_click_ = this.handler_click.bind(this);
         this.handler_move_ = this.handler_move.bind(this);
+
+        // 轮到自己回合时，棋盘外缘呼吸光晕（蓝色与无色之间平滑过渡）
+        this.canvas_turn_glow = null;
+        this.turn_flash_on = false;
+        this.turn_flash_timer = null;
+        this.turn_flash_phase = 0;
+        this.turn_flash_start = null;
     };
 
     set_sound(sound) {
@@ -218,6 +225,21 @@ class Canvas {
         this.canvas_ascend_marker.style.height = size + 'px';
         this.canvas_ascend_marker.getContext('2d').scale(dpr, dpr);
         this.clear_ascend_marker();
+
+        // 回合呼吸光晕层（最外缘柔光，独立层以便逐帧淡入淡出，不污染棋盘内容）
+        if (!this.canvas_turn_glow) {
+            this.canvas_turn_glow = document.createElement('canvas');
+            this.canvas_turn_glow.id = 'canvas_turn_glow';
+            this.canvas_turn_glow.className = this.canvas_view_move.className;
+            this.canvas_turn_glow.style.zIndex = '6';
+            this.canvas_view_move.parentElement.appendChild(this.canvas_turn_glow);
+        }
+
+        this.canvas_turn_glow.width = size * dpr;
+        this.canvas_turn_glow.height = size * dpr;
+        this.canvas_turn_glow.style.width = size + 'px';
+        this.canvas_turn_glow.style.height = size + 'px';
+        this.canvas_turn_glow.getContext('2d').scale(dpr, dpr);
 
         this.rect = this.canvas_board.getBoundingClientRect();
     };
@@ -389,8 +411,91 @@ class Canvas {
             }
         }
         // ====================================================================
+
     };
-    
+
+    /**
+     * @description: 开关“轮到自己回合”的棋盘外缘呼吸光晕。
+     * @param {boolean} active
+     * @return {void}
+     */
+    set_turn_flash(active) {
+        const next = Boolean(active);
+        if (next === this.turn_flash_on) return;
+        this.turn_flash_on = next;
+        if (next) this.start_turn_flash();
+        else this.stop_turn_flash();
+    };
+
+    /**
+     * @description: 启动外缘呼吸光晕（蓝色与无色之间平滑过渡，单次呼吸周期 4960ms）。
+     * @return {void}
+     */
+    start_turn_flash() {
+        if (this.turn_flash_timer !== null) return;
+        this.turn_flash_phase = 0;
+        this.turn_flash_start = performance.now();
+        this.turn_flash_timer = requestAnimationFrame((now) => this.tick_turn_flash(now));
+    };
+
+    /**
+     * @description: 呼吸光晕帧循环，按正弦曲线在蓝色（1）与无色（0）之间平滑过渡。
+     * @param {number} now rAF 提供的时间戳
+     * @return {void}
+     */
+    tick_turn_flash(now) {
+        if (!this.turn_flash_on) return;
+        // 频率较上一版再减半：单次呼吸周期 4960ms
+        const period = 4960;
+        const progress = ((now - this.turn_flash_start) % period) / period;
+        // 平滑呼吸：0 -> 1 -> 0，避免生硬跳变
+        this.turn_flash_phase = (1 - Math.cos(progress * Math.PI * 2)) / 2;
+        this.draw_turn_flash();
+        this.turn_flash_timer = requestAnimationFrame((t) => this.tick_turn_flash(t));
+    };
+
+    /**
+     * @description: 停止外缘呼吸光晕并清空光晕层，还原棋盘原本边框。
+     * @return {void}
+     */
+    stop_turn_flash() {
+        if (this.turn_flash_timer !== null) {
+            cancelAnimationFrame(this.turn_flash_timer);
+            this.turn_flash_timer = null;
+        }
+        this.turn_flash_phase = 0;
+        this.turn_flash_start = null;
+        // 光晕绘制在独立层上，直接清空即可还原棋盘原本边框。
+        if (this.canvas_turn_glow) {
+            this.canvas_turn_glow.getContext('2d').clearRect(0, 0, this.size, this.size);
+        }
+    };
+
+    /**
+     * @description: 在当前相位绘制最外缘蓝色呼吸光晕（0 = 无色，1 = 蓝色）。
+     * @return {void}
+     */
+    draw_turn_flash() {
+        if (!this.turn_flash_on || !this.canvas_turn_glow) return;
+        const ctx = this.canvas_turn_glow.getContext('2d');
+        // 每帧先清空光晕层，避免半透明描边逐帧叠加、导致无法淡出
+        ctx.clearRect(0, 0, this.size, this.size);
+        // 无色相位不绘制任何内容，保留棋盘原本的深色外框
+        if (this.turn_flash_phase <= 0) return;
+        ctx.save();
+        const color = '#3b82f6'; // 蓝色光晕
+        ctx.globalAlpha = this.turn_flash_phase * 0.85;
+        ctx.lineWidth = 4; // 保持细线
+        ctx.strokeStyle = color;
+        // 边缘模糊：用同色阴影做柔光扩散，形成呼吸光效
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 14;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+        ctx.strokeRect(0, 0, this.size, this.size);
+        ctx.restore();
+    };
+
 
     /**
      * @description: 绘制常态棋子
@@ -960,7 +1065,7 @@ class Canvas {
         if (this.ascendfx) this.ascendfx.reset();
         if (this.sound) this.sound.stop_orbit();
 
-        [this.canvas_view_ascend, this.canvas_view_move, this.canvas_view_turn].forEach((canvas) => {
+        [this.canvas_view_ascend, this.canvas_view_move, this.canvas_view_turn, this.canvas_turn_glow].forEach((canvas) => {
             if (canvas) canvas.getContext('2d').clearRect(0, 0, this.size, this.size);
         });
         if (this.canvas_effect) this.canvas_effect.getContext('2d').clearRect(0, 0, this.size, this.size);
@@ -996,6 +1101,11 @@ class Canvas {
         if (this.canvas_ascend_marker) {
             this.canvas_ascend_marker.style.width = 0;
             this.canvas_ascend_marker.style.height = 0;
+        }
+        if (this.canvas_turn_glow) {
+            this.canvas_turn_glow.getContext('2d').clearRect(0, 0, this.size, this.size);
+            this.canvas_turn_glow.style.width = 0;
+            this.canvas_turn_glow.style.height = 0;
         }
         this.canvas_board.style.width = 0;
         this.canvas_board.style.height = 0;

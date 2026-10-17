@@ -248,6 +248,7 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
     ok('后端注册 /docs/query', api_cpp.includes('"/docs/query"'));
     ok('后端注册 /docs/update', api_cpp.includes('"/docs/update"'));
     ok('后端仅放行固定文档键', api_cpp.includes('key == "rule"') && api_cpp.includes('key == "tip"'));
+    ok('后端放行剧情文档键 story', api_cpp.includes('key == "story"'));
     ok('后端更新校验管理员等级', api_cpp.includes('level == 4'));
     const init_h = fs.readFileSync(path.join(project, '4ascend-online', 'src', 'Init.h'), 'utf8');
     ok('Init 初始化 Docs 管理模块', init_h.includes('Manager::Docs::init'));

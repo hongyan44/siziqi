@@ -35,6 +35,7 @@ const CLEAN = [
     '* 对局 第一场',
     '  残局码=abc123',
     '  刷草点=4,4;5,4;6,5',
+    '  刷草计划=3:4,4;5,4|9:2,2',
     '  我方=黑',
     '  先手=白',
     '  胜利=胜利',
@@ -80,6 +81,10 @@ const TYPES = ['say', 'choice', 'label', 'say', 'game', 'label', 'say', 'end', '
     assert.equal(game.title, '对局 第一场');
     assert.equal(game.config.archive, 'abc123');
     assert.deepEqual(game.config.points, [[4, 4], [5, 4], [6, 5]]);
+    assert.deepEqual(game.config.schedule, [
+        { turn: 3, cells: [[4, 4], [5, 4]] },
+        { turn: 9, cells: [[2, 2]] },
+    ], '刷草计划应解析为回合+坐标数组');
     assert.equal(game.config.self, 'black');
     assert.equal(game.config.first, 'white');
     assert.equal(game.config.win, '胜利');
@@ -225,6 +230,74 @@ const TYPES = ['say', 'choice', 'label', 'say', 'game', 'label', 'say', 'end', '
     assert.ok(out.includes('@ 清除'), '清除应完整还原');
     assert.deepEqual(StoryScript.validate(out), [], '还原后应校验通过');
     console.log('PASS: 标注还原');
+}
+
+// 17) 刷草计划：解析与还原
+{
+    const src = '[A] hi\n* 对局 x\n  刷草计划=3:4,4;5,4|9:2,2\n结束';
+    const parsed = StoryScript.parse(src);
+    const game = parsed.nodes.find((n) => n.type === 'game');
+    assert.deepEqual(game.config.schedule, [
+        { turn: 3, cells: [[4, 4], [5, 4]] },
+        { turn: 9, cells: [[2, 2]] },
+    ]);
+    const out = StoryScript.stringify(parsed);
+    assert.ok(out.includes('刷草计划=3:4,4;5,4|9:2,2'), `刷草计划应完整还原：${out}`);
+    assert.deepEqual(StoryScript.validate(out), [], '还原后应校验通过');
+    console.log('PASS: 刷草计划解析与还原');
+}
+
+// 18) 刷草计划：格式无效应报错
+{
+    const badTurn = '[A] hi\n* 对局 x\n  刷草计划=abc:4,4\n结束';
+    assert.ok(StoryScript.validate(badTurn).some((e) => e.includes('刷草计划')), '应报刷草计划回合无效');
+    const badCell = '[A] hi\n* 对局 x\n  刷草计划=3:9,9\n结束';
+    assert.ok(StoryScript.validate(badCell).some((e) => e.includes('刷草计划')), '应报刷草计划坐标无效');
+    console.log('PASS: 刷草计划校验');
+}
+
+// 19) 刷草计划：解析坐标时过滤越界/缺失的点
+{
+    const parsed = StoryScript.parse('[A] hi\n* 对局 x\n  刷草计划=2:0,0;9,9;3,3\n结束');
+    const game = parsed.nodes.find((n) => n.type === 'game');
+    assert.deepEqual(game.config.schedule, [{ turn: 2, cells: [[0, 0], [3, 3]] }], '越界坐标应被丢弃');
+    console.log('PASS: 刷草计划过滤越界坐标');
+}
+
+// 20) GameStory：定时刷草按回合触发 / 去重 / 非法宿主跳过
+{
+    const { PLANT_ENUM: PLANT, STONE_ENUM: STONE } = load('fascend/enum.cjs');
+    const { Board } = load('fascend/board.cjs');
+    const { State } = load('fascend/state.cjs');
+    const { RandAIC, RandUnity } = load('fascend/rand.cjs');
+    const { GameStory } = load('fascend/game_story.cjs');
+
+    const board = new Board(9, 9);
+    const state = new State();
+    const game = new GameStory(board, state, new RandAIC(1), new RandUnity(2));
+    // 隔离自然刷草，只验证定时刷草
+    game.natural_plant = false;
+    game.plant_schedule = [{ turn: 3, cells: [[4, 4], [5, 4]] }, { turn: 5, cells: [[1, 1]] }];
+
+    state.turn_count = 2;
+    assert.equal(game.ed_pl_1(), undefined, '未到回合不应刷草');
+
+    state.turn_count = 3;
+    const first = game.ed_pl_1();
+    assert.equal(first.length, 2, '第 3 回合应刷 2 株草');
+    assert.equal(board.get_pos(4, 4).plant, PLANT.ONE);
+    assert.equal(board.get_pos(5, 4).plant, PLANT.ONE);
+
+    state.turn_count = 4;
+    assert.equal(game.ed_pl_1(), undefined, '已触发的计划不应重复触发');
+
+    // 1,1 放置普通棋子后该点不再是合法宿主，应跳过
+    state.turn_count = 5;
+    board.set_pos(1, 1, STONE.BLACK, PLANT.NONE);
+    const second = game.ed_pl_1();
+    assert.equal(second, undefined, '宿主被占用的点应跳过，结果为 undefined');
+    assert.equal(game.plant_fired.has(1), true, '跳过也要标记为已触发');
+    console.log('PASS: GameStory 定时刷草');
 }
 
 console.log('story-script: ALL PASS');

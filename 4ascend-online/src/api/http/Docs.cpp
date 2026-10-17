@@ -25,7 +25,7 @@ namespace Docs {
 namespace {
 // 只允许固定几篇文档，避免写入任意键值污染数据库
 bool valid_key(std::string_view key) noexcept {
-    return key == "rule" || key == "tip";
+    return key == "rule" || key == "tip" || key == "story";
 }
 
 std::string json_string(const jsoncons::json& value, std::string_view key) noexcept {

@@ -9,7 +9,8 @@ const { RandAIC, RandUnity } = require('./fascend/rand.cjs');
 
 const BOARD_SIZE = 9;
 const BOARD_CELLS = BOARD_SIZE * BOARD_SIZE;
-const ARCHIVE_VERSION = 2;
+const ARCHIVE_VERSION = 3;
+const SNAPSHOT_ARCHIVE_VERSION = 2;
 const LEGACY_ARCHIVE_VERSION = 1;
 const MAGIC = [0x45, 0x47, 0x4B]; // EGK: EndGame Keyframe
 const FALLBACK_AI = '4ascend-zero';
@@ -95,6 +96,35 @@ const normalize_moves = (moves, name) => {
     });
 };
 
+const MAX_PLANT_SCHEDULE = 255;
+
+/**
+ * @description 归一化作者定义的定时刷草计划。
+ * 每条计划为 { turn, cells }：turn 为触发回合（1 表示玩家第一次落子后），
+ * cells 为编辑器坐标（左下原点）的刷草点数组。
+ * @param {*} schedule
+ * @return {{turn: number, cells: [number, number][]}[]}
+ */
+const normalize_plant_schedule = (schedule) => {
+    if (schedule === undefined || schedule === null) return [];
+    if (!Array.isArray(schedule)) throw new TypeError('刷草计划必须是数组');
+    if (schedule.length > MAX_PLANT_SCHEDULE) throw new RangeError(`刷草计划不能超过 ${MAX_PLANT_SCHEDULE} 条`);
+    return schedule.map((entry, index) => {
+        if (!entry || typeof entry !== 'object') throw new TypeError(`刷草计划[${index}] 无效`);
+        const turn = bounded_integer(entry.turn, 0, 65535, 1, `刷草计划[${index}] 回合`);
+        if (!Array.isArray(entry.cells)) throw new TypeError(`刷草计划[${index}] 的刷草点必须是数组`);
+        if (entry.cells.length > BOARD_CELLS) throw new RangeError(`刷草计划[${index}] 的刷草点不能超过 ${BOARD_CELLS} 个`);
+        return {
+            turn,
+            cells: entry.cells.map((cell, cellIndex) => {
+                const move = normalize_move(cell);
+                if (!move) throw new RangeError(`刷草计划[${index}] 的刷草点 ${cellIndex} 不是合法坐标`);
+                return move;
+            }),
+        };
+    });
+};
+
 const STONE_NAMES = ['none', 'black', 'white', 'black-ascend', 'white-ascend', 'black-used', 'white-used'];
 const stone_code = (stone) => {
     if (Number.isInteger(stone) && stone >= 0 && stone < STONE_NAMES.length) return stone;
@@ -147,9 +177,10 @@ const normalize_turns = (turns) => (turns || []).slice(-255).map((move, index) =
 
 class EndgameArchive {
     /**
-     * V2 stores a complete turn-boundary snapshot: transient stone/state
-     * codes, both RNG streams, model history, move history, and the authored
-     * solution line. V1 decoding remains supported for published puzzles.
+     * V3 stores a complete turn-boundary snapshot: transient stone/state
+     * codes, both RNG streams, model history, move history, the authored
+     * solution line, and the author-defined scheduled-plant plan.
+     * V1/V2 decoding remains supported for published puzzles.
      */
     static save(data) {
         if (!data || typeof data !== 'object') throw new TypeError('残局数据无效');
@@ -158,6 +189,7 @@ class EndgameArchive {
         const blackBook = normalize_moves(data.blackBook || data.black_book || [], '黑方正着');
         const whiteTurns = normalize_moves(data.whiteTurns || data.white_turns || [], '白方预案');
         if (blackBook.length !== whiteTurns.length) throw new RangeError('黑方正着与白方预案手数必须一致');
+        const plantSchedule = normalize_plant_schedule(data.plantSchedule || data.plant_schedule);
 
         const hp = data.hp || {};
         const snapshotHp = Array.isArray(snapshot.hp) ? snapshot.hp : [];
@@ -236,6 +268,15 @@ class EndgameArchive {
             writer.write(blackMove[0], 4); writer.write(blackMove[1], 4);
             writer.write(whiteMove[0], 4); writer.write(whiteMove[1], 4);
         });
+
+        // V3 追加作者定义的定时刷草计划（V1/V2 无此段，读取时按版本区分）。
+        writer.write(plantSchedule.length, 8);
+        plantSchedule.forEach((entry) => {
+            writer.write(entry.turn, 16);
+            writer.write(entry.cells.length, 8);
+            entry.cells.forEach((cell) => { writer.write(cell[0], 4); writer.write(cell[1], 4); });
+        });
+
         writer.align();
         const body = writer.toUint8Array();
         const result = new Uint8Array(body.length + 2);
@@ -253,7 +294,9 @@ class EndgameArchive {
         const magic = [reader.read(8), reader.read(8), reader.read(8)];
         if (magic.some((byte, index) => byte !== MAGIC[index])) throw new Error('不是有效的残局关卡数据');
         const version = reader.read(8);
-        if (version !== ARCHIVE_VERSION && version !== LEGACY_ARCHIVE_VERSION) throw new Error(`不支持的残局关卡版本: ${version}`);
+        if (version !== ARCHIVE_VERSION && version !== SNAPSHOT_ARCHIVE_VERSION && version !== LEGACY_ARCHIVE_VERSION) {
+            throw new Error(`不支持的残局关卡版本: ${version}`);
+        }
         const flags = reader.read(8);
         const fallbackLevel = reader.read(8);
         const blackHp = reader.read(7);
@@ -333,6 +376,18 @@ class EndgameArchive {
             blackBook.push([reader.read(4), reader.read(4)]);
             whiteTurns.push([reader.read(4), reader.read(4)]);
         }
+        // V3 起追加定时刷草计划；V1/V2 没有该段，保持向后兼容。
+        const plantSchedule = [];
+        if (version >= ARCHIVE_VERSION) {
+            const scheduleCount = reader.read(8);
+            for (let i = 0; i < scheduleCount; i++) {
+                const turn = reader.read(16);
+                const cellCount = reader.read(8);
+                const scheduleCells = [];
+                for (let j = 0; j < cellCount; j++) scheduleCells.push([reader.read(4), reader.read(4)]);
+                plantSchedule.push({ turn, cells: scheduleCells });
+            }
+        }
         reader.align();
         const checksumOffset = reader.offset / 8;
         if (checksumOffset + 2 !== data.length) throw new Error('残局数据存在截断或多余字节');
@@ -352,6 +407,7 @@ class EndgameArchive {
             cells,
             black_book: blackBook,
             white_turns: whiteTurns,
+            plant_schedule: plantSchedule,
             snapshot,
             fallback: { mode: 'normal', ai: FALLBACK_AI, level: fallbackLevel, trigger: 'black-deviation' },
         };

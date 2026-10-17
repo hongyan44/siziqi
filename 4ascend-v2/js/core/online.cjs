@@ -1452,6 +1452,9 @@ const run_once = async () => {
         // 回合颜色
         turn_color(my_turn);
 
+        // 轮到我方时，棋盘外缘低频闪烁
+        if (gl_ui) gl_ui.set_turn_flash(my_turn);
+
         // 数据显示
         game_match(my_stone, foe_stone);
 
@@ -1657,6 +1660,7 @@ const run_once = async () => {
         const win = game.ed_win();
         if (win) {
             gl_wins = true;
+            if (gl_ui) gl_ui.set_turn_flash(false);
             winner_color = win;
             game_msg.innerText = win === my_color ? `🏆|${my_name}|胜利${my_icon}` : `💀|${foe_name}|胜利${foe_icon}`;
             span_end_win.innerText = win === my_color ? my_name : foe_name;

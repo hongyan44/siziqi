@@ -144,6 +144,12 @@ const randomSnapshot = (random) => ({
     'states': random && Array.isArray(random.states) ? random.states.map((state) => state >>> 0) : [],
 });
 
+/** Deep-copy an author-defined scheduled-plant plan ({ turn, cells }[]). */
+const clonePlantSchedule = (schedule) => (Array.isArray(schedule) ? schedule : []).map((entry) => ({
+    'turn': finiteInteger(entry && entry.turn, 0),
+    'cells': (Array.isArray(entry && entry.cells) ? entry.cells : []).map((cell) => [finiteInteger(cell[0], 0), finiteInteger(cell[1], 0)]),
+}));
+
 const cloneHistory = (history, cells) => (history || []).slice(-7).map((entry, historyIndex) => {
     if (!entry || entry.length !== cells) throw new RangeError(`History board ${historyIndex} must contain ${cells} cells.`);
     return Uint8Array.from(entry, (stone) => {
@@ -186,6 +192,9 @@ class RulesRuntime {
         game.history_boards = (source.history_boards || []).map((entry) => Uint8Array.from(entry));
         if ('natural_plant' in source) game.natural_plant = source.natural_plant;
         if ('always_overload' in source) game.always_overload = source.always_overload;
+        // 作者定义的定时刷草计划也要随搜索分支复制，否则 MCTS 模拟与实局不同步。
+        game.plant_schedule = clonePlantSchedule(source.plant_schedule);
+        game.plant_fired = source.plant_fired instanceof Set ? new Set(source.plant_fired) : new Set();
         return game;
     }
 
@@ -264,7 +273,47 @@ class RulesRuntime {
         if ('alwaysOverload' in snapshot) game.always_overload = Boolean(snapshot.alwaysOverload);
         game.first_player = playerFromCode(snapshot.firstPlayer);
         game.history_boards = cloneHistory(snapshot.history, cells);
+        // 定时刷草计划与已触发标记必须随快照往返，否则 AI Worker 复现的棋局会漏刷草。
+        game.plant_schedule = clonePlantSchedule(snapshot.plantSchedule);
+        game.plant_fired = new Set(Array.isArray(snapshot.plantFired) ? snapshot.plantFired.map((value) => finiteInteger(value, 0)) : []);
         return RulesRuntime.initialize(game, game.first_player);
+    }
+
+    /**
+     * Apply the author-defined scheduled plants for the current turn.
+     * Each schedule entry { turn, cells } fires exactly once, the first time
+     * ed_pl_1 runs with turn_count >= turn. A host cell must be empty (or an
+     * ASCEND used stone) and may hold at most one plant, matching the natural
+     * plant rules. Entries skipped during ASCEND START stay pending.
+     * @param {GameNormal | GameBlight | GameNight} game
+     * @return {object[]} freshly planted positions
+     */
+    static applyScheduledPlants(game) {
+        if (!Array.isArray(game.plant_schedule) || game.plant_schedule.length === 0) return [];
+        // ASCEND 发起阶段棋子被抬起，与自然刷草一致，此阶段不落草。
+        if (game.state.ascend_status === ASCEND_ENUM.START) return [];
+        if (!(game.plant_fired instanceof Set)) game.plant_fired = new Set();
+
+        const result = [];
+        game.plant_schedule.forEach((entry, index) => {
+            if (!entry || game.plant_fired.has(index)) return;
+            if (game.state.turn_count < finiteInteger(entry.turn, 0)) return;
+            game.plant_fired.add(index);
+            (Array.isArray(entry.cells) ? entry.cells : []).forEach((cell) => {
+                if (!Array.isArray(cell) || cell.length < 2) return;
+                const x = finiteInteger(cell[0], -1);
+                const y = finiteInteger(cell[1], -1);
+                if (!game.board.in_bounds(x, y)) return;
+                const pos = game.board.get_pos(x, y);
+                const empty = pos.stone === STONE_ENUM.NONE
+                    || pos.stone === STONE_ENUM.BLACK_USED
+                    || pos.stone === STONE_ENUM.WHITE_USED;
+                if (!empty || pos.plant === PLANT_ENUM.TWO) return;
+                game.board.set_plant(x, y, pos.plant === PLANT_ENUM.NONE ? PLANT_ENUM.ONE : PLANT_ENUM.TWO);
+                result.push(pos);
+            });
+        });
+        return result;
     }
 
     static loadSnapshot(snapshot) {
@@ -333,8 +382,8 @@ class RulesRuntime {
             return { 'legal': true, action, winner, events };
         }
 
-        const plants = game.ed_pl_1();
-        if (collectEvents && plants) {
+        const plants = [...(game.ed_pl_1() || []), ...RulesRuntime.applyScheduledPlants(game)];
+        if (collectEvents && plants.length > 0) {
             events.push({ 'type': 'plants', 'points': plants.map(snapshotPos) });
         }
         game.ed_as_3();
@@ -373,6 +422,7 @@ class RulesRuntime {
             snapshot.overStatus,
             Number(snapshot.naturalPlant),
             Number(snapshot.alwaysOverload),
+            snapshot.plantFired.join(','),
             snapshot.randAic.states.join(','),
             snapshot.randUnity.states.join(','),
             history,
@@ -406,6 +456,8 @@ class RulesRuntime {
             'randUnity': randomSnapshot(game.rand_unity),
             'naturalPlant': 'natural_plant' in game ? Boolean(game.natural_plant) : false,
             'alwaysOverload': 'always_overload' in game ? Boolean(game.always_overload) : false,
+            'plantSchedule': clonePlantSchedule(game.plant_schedule),
+            'plantFired': game.plant_fired instanceof Set ? Array.from(game.plant_fired, (value) => finiteInteger(value, 0)) : [],
         };
     }
 }

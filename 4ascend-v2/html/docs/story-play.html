@@ -36,7 +36,9 @@
         .story-board canvas:not(#canvas_board) { z-index: 2; }
         .story-board canvas { pointer-events: none; }
         .story-board #canvas_board { pointer-events: auto; }
-        #canvas_annot { z-index: 3; }
+        #canvas_annot { position: fixed; inset: 0; z-index: 1096; pointer-events: none; }
+        .dialogue-dim { position: fixed; inset: 0; z-index: 1040; pointer-events: none; opacity: 1; transition: opacity .3s ease; }
+        .dialogue-dim.is-hidden { opacity: 0; }
         .mark-layer { position: fixed; inset: 0; z-index: 1095; pointer-events: none; overflow: hidden; }
         .mark-arrow { position: absolute; width: 36px; height: 36px; will-change: transform; }
         .mark-arrow > svg { display: block; width: 100%; height: 100%; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .45)); animation: mark-bounce .9s ease-in-out infinite; }
@@ -47,7 +49,7 @@
         @keyframes mark-bounce { 0%, 100% { transform: translateY(-5px); } 50% { transform: translateY(5px); } }
         .story-top-panel { width: min(94vw, 680px); }
         .story-board-wrap { box-shadow: 0 0 0 2px rgba(52, 152, 219, .08), 0 12px 28px rgba(0, 0, 0, .12); }
-        .story-board-wrap.is-dialogue { filter: blur(2px) brightness(.72); pointer-events: none; }
+        .story-board-wrap.is-dialogue { pointer-events: none; }
         #game_p1_name, #game_p1_hp, #game_p2_name, #game_p2_hp { transition: color .5s ease; }
         .dialogue-panel { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1100; padding: .75rem; transition: transform .3s ease, opacity .3s ease; }
         .dialogue-panel.is-hidden { transform: translateY(120%); opacity: 0; pointer-events: none; }
@@ -137,7 +139,6 @@
                         <canvas id='canvas_view_turn' class='pe-none'></canvas>
                         <canvas id='canvas_view_ascend' class='pe-none'></canvas>
                         <canvas id='canvas_view_move' class='pe-none'></canvas>
-                        <canvas id='canvas_annot' class='pe-none' aria-hidden='true'></canvas>
                     </div>
                 </div>
             </div>
@@ -145,7 +146,9 @@
         </main>
     </div>
 
+    <canvas id='dialogue_dim' class='dialogue-dim is-hidden' aria-hidden='true'></canvas>
     <div id='mark_layer' class='mark-layer' aria-hidden='true'></div>
+    <canvas id='canvas_annot' aria-hidden='true'></canvas>
 
     <div id='dialogue' class='dialogue-panel is-hidden'>
         <div class='dialogue-inner'>
@@ -209,7 +212,7 @@
 
         // ==================== 剧本引擎 ====================
         const dialoguePanel = $('dialogue');
-        const setDialogueVisible = (visible) => { dialoguePanel.classList.toggle('is-hidden', !visible); $('board_wrap').classList.toggle('is-dialogue', visible); };
+        const setDialogueVisible = (visible) => { dialoguePanel.classList.toggle('is-hidden', !visible); $('dialogue_dim').classList.toggle('is-hidden', !visible); $('board_wrap').classList.toggle('is-dialogue', visible); if (visible) drawDim(); };
 
         const finishTyping = () => {
             if (!typingTimer) return false;
@@ -305,37 +308,42 @@
             markArrowNode.style.top = `${Math.round(cy - MARK_SIZE / 2)}px`;
         };
 
+        const fitAnnotCanvas = () => {
+            const vw = window.innerWidth || document.documentElement.clientWidth;
+            const vh = window.innerHeight || document.documentElement.clientHeight;
+            const dpr = window.devicePixelRatio || 1;
+            const pixelW = Math.max(1, Math.round(vw * dpr));
+            const pixelH = Math.max(1, Math.round(vh * dpr));
+            if (annotCanvas.width !== pixelW || annotCanvas.height !== pixelH) { annotCanvas.width = pixelW; annotCanvas.height = pixelH; }
+            annotCanvas.style.width = `${vw}px`;
+            annotCanvas.style.height = `${vh}px`;
+            return { vw, vh, dpr };
+        };
+
+        // 圈绘制为全屏覆盖层（棋盘之上、暗化层之上），因此棋盘即使处于对话暗化阶段也能清晰指示
         const drawAnnotCircle = () => {
             if (!annotCanvas) return;
             const ctx = annotCanvas.getContext('2d');
             if (!ctx) return;
-            if (!activeCircle || mode !== 'game' || !ui || !game || !ui.spacing) {
-                if (annotCanvas.width) ctx.clearRect(0, 0, annotCanvas.width, annotCanvas.height);
-                return;
-            }
-            const size = ui.size;
-            const dpr = window.devicePixelRatio || 1;
-            const pixel = Math.round(size * dpr);
-            if (annotCanvas.width !== pixel || annotCanvas.height !== pixel) {
-                annotCanvas.width = pixel;
-                annotCanvas.height = pixel;
-                annotCanvas.style.width = `${size}px`;
-                annotCanvas.style.height = `${size}px`;
-            }
-            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-            ctx.clearRect(0, 0, size, size);
-            const cx = ui.offset + activeCircle.x * ui.spacing;
-            const cy = ui.offset + activeCircle.y * ui.spacing;
-            const radius = ui.spacing * ((ui.stone_radius || 0.41) + 0.16);
+            const view = fitAnnotCanvas();
+            ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+            ctx.clearRect(0, 0, view.vw, view.vh);
+            if (!activeCircle || !ui || !ui.spacing || !ui.size || !boardCanvas) return;
+            const rect = boardCanvas.getBoundingClientRect();
+            if (!rect.width || !rect.height) return;
+            const scale = rect.width / ui.size;
+            const cx = rect.left + (ui.offset + activeCircle.x * ui.spacing) * scale;
+            const cy = rect.top + (ui.offset + activeCircle.y * ui.spacing) * scale;
+            const radius = ui.spacing * ((ui.stone_radius || 0.41) + 0.16) * scale;
             ctx.save();
             ctx.beginPath();
             ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-            ctx.setLineDash([Math.max(6, ui.spacing * 0.22), Math.max(5, ui.spacing * 0.15)]);
+            ctx.setLineDash([Math.max(6, radius * 0.38), Math.max(5, radius * 0.26)]);
             ctx.lineDashOffset = -markPhase;
             ctx.strokeStyle = activeCircle.color;
-            ctx.lineWidth = Math.max(3, ui.spacing * 0.09);
+            ctx.lineWidth = Math.max(3, radius * 0.16);
             ctx.shadowColor = activeCircle.color;
-            ctx.shadowBlur = Math.max(4, ui.spacing * 0.18);
+            ctx.shadowBlur = Math.max(4, radius * 0.32);
             ctx.stroke();
             ctx.closePath();
             ctx.restore();
@@ -344,8 +352,8 @@
         const markTick = () => {
             markFrame = 0;
             markPhase = (markPhase + 1.6) % 720;
-            if (activeArrow) placeArrow();
-            drawAnnotCircle();
+            if (activeArrow) { placeArrow(); drawDim(); }
+            if (activeCircle) drawAnnotCircle();
             if (activeArrow || activeCircle) markFrame = requestAnimationFrame(markTick);
         };
 
@@ -358,7 +366,66 @@
             activeCircle = null;
             if (markFrame) { cancelAnimationFrame(markFrame); markFrame = 0; }
             if (markArrowNode) { markArrowNode.remove(); markArrowNode = null; }
-            if (annotCanvas && annotCanvas.width) annotCanvas.getContext('2d').clearRect(0, 0, annotCanvas.width, annotCanvas.height);
+            if (annotCanvas) {
+                const ctx = annotCanvas.getContext('2d');
+                if (ctx && annotCanvas.width && annotCanvas.height) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, annotCanvas.width, annotCanvas.height); }
+            }
+            dimKey = '';
+            drawDim();
+        };
+
+        // ==================== 暗化层 + 箭头指向处的亮化（圆角方块，边界略模糊） ====================
+        const dimCanvas = $('dialogue_dim');
+        const DIM_ALPHA = 0.52;
+        const SPOT_BLUR = 10;
+        let dimKey = '';
+
+        const roundRectPath = (ctx, x, y, w, h, r) => {
+            const radius = Math.max(0, Math.min(r, w / 2, h / 2));
+            ctx.beginPath();
+            ctx.moveTo(x + radius, y);
+            ctx.arcTo(x + w, y, x + w, y + h, radius);
+            ctx.arcTo(x + w, y + h, x, y + h, radius);
+            ctx.arcTo(x, y + h, x, y, radius);
+            ctx.arcTo(x, y, x + w, y, radius);
+            ctx.closePath();
+        };
+
+        const drawDim = () => {
+            if (!dimCanvas || !dimCanvas.getContext) return;
+            const ctx = dimCanvas.getContext('2d');
+            if (!ctx) return;
+            const vw = window.innerWidth || document.documentElement.clientWidth;
+            const vh = window.innerHeight || document.documentElement.clientHeight;
+            const dpr = window.devicePixelRatio || 1;
+            const pixelW = Math.max(1, Math.round(vw * dpr));
+            const pixelH = Math.max(1, Math.round(vh * dpr));
+            const rect = activeArrow ? anchorRect(activeArrow.anchor) : null;
+            const key = `${pixelW}x${pixelH}|${rect ? `${Math.round(rect.left)},${Math.round(rect.top)},${Math.round(rect.width)},${Math.round(rect.height)}` : 'flat'}`;
+            if (key === dimKey) return;
+            dimKey = key;
+            if (dimCanvas.width !== pixelW || dimCanvas.height !== pixelH) { dimCanvas.width = pixelW; dimCanvas.height = pixelH; }
+            dimCanvas.style.width = `${vw}px`;
+            dimCanvas.style.height = `${vh}px`;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, vw, vh);
+            ctx.fillStyle = `rgba(0, 0, 0, ${DIM_ALPHA})`;
+            ctx.fillRect(0, 0, vw, vh);
+            if (!rect) return;
+            const padX = Math.max(10, rect.width * 0.08);
+            const padY = Math.max(10, rect.height * 0.16);
+            const x = rect.left - padX;
+            const y = rect.top - padY;
+            const w = rect.width + padX * 2;
+            const h = rect.height + padY * 2;
+            const radius = Math.max(6, Math.min(22, h * 0.3));
+            ctx.save();
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.filter = `blur(${SPOT_BLUR}px)`;
+            roundRectPath(ctx, x, y, w, h, radius);
+            ctx.fillStyle = '#000';
+            ctx.fill();
+            ctx.restore();
         };
 
         const applyMark = (node) => {
@@ -375,6 +442,8 @@
                 if (!node.cell) return;
                 activeCircle = { 'x': node.cell[0], 'y': node.cell[1], 'color': color };
             }
+            placeArrow();
+            drawDim();
             ensureMarkLoop();
         };
 
@@ -483,7 +552,9 @@
             $('game_info_plant_cd').textContent = state && state.ascend_status !== ASCEND_ENUM.NONE ? (state.ascend_status === ASCEND_ENUM.START ? 'CD=st' : 'CD=ed') : `CD=${state ? state.grow_count : 'cd'}`;
             const normalPlants = game ? game.board.data.filter((pos) => pos.stone === STONE_ENUM.NONE && pos.plant !== PLANT_ENUM.NONE).length : 0;
             $('game_info_plant_normal').textContent = `${normalPlants} NPlants`;
-            $('game_info_plant_left').textContent = `剩余刷草点：${game && Array.isArray(game.plant_points) ? game.plant_points.length : 0}`;
+            const pendingPoints = game && Array.isArray(game.plant_points) ? game.plant_points.length : 0;
+            const pendingSchedule = game && Array.isArray(game.plant_schedule) ? game.plant_schedule.filter((entry, index) => !(game.plant_fired && game.plant_fired.has(index))).length : 0;
+            $('game_info_plant_left').textContent = `剩余刷草点：${pendingPoints} / 计划：${pendingSchedule}`;
             $('game_p1_card').classList.toggle('is-defeated', blackHp <= 0);
             $('game_p2_card').classList.toggle('is-defeated', whiteHp <= 0);
             $('game_p1_info').classList.toggle('is-defeated', blackHp <= 0);
@@ -493,6 +564,7 @@
             $('game_p1_info').classList.toggle('turn-green', Boolean(playerTurn && selfPlayer === PLAYER_ENUM.BLACK));
             $('game_p2_card').classList.toggle('turn-blue', Boolean(playerTurn && selfPlayer === PLAYER_ENUM.WHITE));
             $('game_p2_info').classList.toggle('turn-blue', Boolean(playerTurn && selfPlayer === PLAYER_ENUM.WHITE));
+            if (ui) ui.set_turn_flash(Boolean(playerTurn) && !gameOver);
         };
 
         const stoneMeta = (pos) => ({
@@ -695,6 +767,7 @@
             const randAic = new RandAIC(0x4A534B31), randUnity = new RandUnity(0x4A534B32);
             game = new GameStory(new Board(9, 9), state, randAic, randUnity);
             game.plant_points = (config.points || []).map((point) => [point[0], point[1]]);
+            game.plant_schedule = (config.schedule || []).map((entry) => ({ 'turn': entry.turn, 'cells': (entry.cells || []).map((cell) => [cell[0], cell[1]]) }));
             game.first_player = state.turn_player;
             game.history_boards = [];
             const soundOptions = (() => { let savedOpt = {}; try { savedOpt = JSON.parse(localStorage.getItem('opt') || '{}') || {}; } catch (_) { /* 默认音量 */ } const read = (key, fallback) => Number.isFinite(Number(savedOpt[key])) ? Number(savedOpt[key]) : fallback; return { bgmv: read('bgmv', 1), stonev: read('stonev', 5), plantv: read('plantv', 5), matchv: read('matchv', 5), tickv: read('tickv', 5), annihilationv: read('annihilationv', 0), hitv: read('hitv', 0), orbitv: read('orbitv', 0), flyv: read('flyv', 0) }; })();
@@ -707,6 +780,32 @@
             RulesRuntime.initialize(game, game.first_player);
             game.board.turns = (saved.turns || []).map(archiveMoveToBoard);
             ui.init(); ui.draw_board(); redraw(); renderInfo();
+        };
+
+        // 解析阵营/血量配置（可选残局码），并写回 config
+        const resolveSides = (config) => {
+            importedArchive = false;
+            let archiveData = null;
+            if (config.archive) {
+                try { archiveData = window.EndgameExports.EndgameArchive.decode(config.archive); importedArchive = true; }
+                catch (error) { console.warn('残局码解析失败，改用空盘。', error); }
+            }
+            const selfSide = config.self || (archiveData ? archiveData.player : 'black');
+            const firstSide = config.first || (archiveData ? archiveData.first : 'black');
+            selfPlayer = selfSide === 'white' ? PLAYER_ENUM.WHITE : PLAYER_ENUM.BLACK;
+            aiPlayer = selfPlayer === PLAYER_ENUM.BLACK ? PLAYER_ENUM.WHITE : PLAYER_ENUM.BLACK;
+            hpMax = archiveData ? { black: Math.max(1, archiveData.hp.black), white: Math.max(1, archiveData.hp.white) } : { black: 6, white: 6 };
+            config.self = selfSide; config.first = firstSide;
+            return archiveData;
+        };
+
+        // 对话阶段即初始化棋盘：让对话文字/箭头出现时棋盘已在背景中（配合暗化）可见
+        const prepareDialogueBoard = () => {
+            const firstGame = (runtime.nodes || []).find((item) => item.type === 'game');
+            if (!firstGame || ui) return;
+            const config = firstGame.config || {};
+            currentConfig = config;
+            createGame(config, resolveSides(config));
         };
 
         const initAi = async () => {
@@ -749,18 +848,7 @@
         const startGame = async (node) => {
             const config = node.config || {};
             currentConfig = config;
-            importedArchive = false;
-            let archiveData = null;
-            if (config.archive) {
-                try { archiveData = window.EndgameExports.EndgameArchive.decode(config.archive); importedArchive = true; }
-                catch (error) { console.warn('残局码解析失败，改用空盘。', error); }
-            }
-            const selfSide = config.self || (archiveData ? archiveData.player : 'black');
-            const firstSide = config.first || (archiveData ? archiveData.first : 'black');
-            selfPlayer = selfSide === 'white' ? PLAYER_ENUM.WHITE : PLAYER_ENUM.BLACK;
-            aiPlayer = selfPlayer === PLAYER_ENUM.BLACK ? PLAYER_ENUM.WHITE : PLAYER_ENUM.BLACK;
-            hpMax = archiveData ? { black: Math.max(1, archiveData.hp.black), white: Math.max(1, archiveData.hp.white) } : { black: 6, white: 6 };
-            config.self = selfSide; config.first = firstSide;
+            const archiveData = resolveSides(config);
             mode = 'game';
             setDialogueVisible(false);
             $('ending').classList.add('d-none');
@@ -785,7 +873,7 @@
             if (!gameOver && generation === gameGeneration) setStatus(state.turn_player === selfPlayer ? '轮到你落子。' : '对手 AI 回合。', 'primary');
         };
 
-        window.addEventListener('resize', () => { if (ui && game && mode === 'game') redraw(); });
+        window.addEventListener('resize', () => { if (ui && game) redraw(); dimKey = ''; drawDim(); });
 
         (async () => {
             if (!window.get_token || !window.get_token()) { playerName = '你'; }
@@ -804,6 +892,7 @@
             document.title = `四子棋 剧情 - ${level.title}`;
             setStatus('对话框推进剧情，对局决定走向。', 'primary');
             mode = 'dialogue';
+            prepareDialogueBoard();
             setDialogueVisible(true);
             renderNode();
         })();
