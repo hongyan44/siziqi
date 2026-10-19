@@ -230,6 +230,7 @@
                         </sl-select>
                     </div>
 
+                    <!-- 保留先手/阵营手动选项；不再由签表强制锁定先手，双方配置不一致时由服务端校验 -->
                     <div class='d-flex flex-row gap-1'>
                         <sl-select id='select_server_first' value='rand' placeholder='先手决定' size='large' pill hoist>
                             <sl-option value='my'>我方是先手</sl-option>

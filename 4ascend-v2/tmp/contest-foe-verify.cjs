@@ -81,6 +81,45 @@ const main = () => {
     assert.equal(solo.ok, true, '我的组只有我一人时无法校验，应放行');
     assert.equal(solo.mode, 'skip', '无法校验时应为 skip 模式');
 
+    // 7) 晋级场景：旧组（已完赛）不得遮挡下一轮新抽签的配对，校验应以新组对手为准
+    const multi = {
+        nodes: [
+            {
+                id: 'node_main', bo: 3,
+                groups: [['甲', '乙']],
+                players: ['甲', '乙'],
+                player_uuids: { '甲': 'uuid-jia', '乙': 'uuid-yi' },
+                results: { '0': { wins: { 'uuid-jia': 2, 'uuid-yi': 0 } } }
+            },
+            {
+                id: 'node_round2', bo: 3,
+                groups: [['甲', '丙']],
+                players: ['甲', '丙'],
+                player_uuids: { '甲': 'uuid-jia', '丙': 'uuid-bing' }
+            }
+        ]
+    };
+
+    const advanced = locate_group(multi, '甲');
+    assert.equal(advanced.node.id, 'node_round2', '晋级后应定位到下一轮方块，而不是旧组');
+    assert.equal(advanced.expected_foe_name, '丙', '下一轮期望对手应为新抽签对手');
+
+    const newFoeOk = verify_foe_identity({ bracket: multi, my_name: '甲', my_uuid: 'uuid-jia', foe_name: '丙', foe_uuid: 'uuid-bing' });
+    assert.equal(newFoeOk.ok, true, '与下一轮抽签对手对战应通过校验');
+
+    const oldFoeBad = verify_foe_identity({ bracket: multi, my_name: '甲', my_uuid: 'uuid-jia', foe_name: '乙', foe_uuid: 'uuid-yi' });
+    assert.equal(oldFoeBad.ok, false, '与旧组对手对战必须拒绝（该组已完赛，选手已晋级）');
+    assert.equal(oldFoeBad.reason, 'foe-mismatch');
+
+    // 旧组仍在进行、只是提前报名了下一轮 -> 仍以旧组为准
+    const mixed = {
+        nodes: [
+            { ...multi.nodes[0], results: { '0': { wins: { 'uuid-jia': 1, 'uuid-yi': 0 } } } },
+            multi.nodes[1]
+        ]
+    };
+    assert.equal(locate_group(mixed, '甲').node.id, 'node_main', '旧组未完赛时应以旧组为准');
+
     console.log('contest-foe-verify: PASS');
 };
 

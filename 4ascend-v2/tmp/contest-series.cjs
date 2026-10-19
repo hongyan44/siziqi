@@ -2,15 +2,15 @@
  * 赛事 BO 系列（小分）纯逻辑回归。
  * 运行： node tmp/contest-series.cjs
  *
- * 背景：签表 node 增 bo（默认3，奇数）、rotate（先手轮换配置）、results（按组的小分）。
+ * 背景：签表 node 增 bo（默认3，奇数）、results（按组的小分）。
+ * 赛事对局保留手动先手/阵营选项，但不再由签表强制锁定先手（先手轮换逻辑已移除）。
  * 服务端按回放交叉校验后增量写入 results[group].games（每项 {replay_id, winner_uuid}）。
  *
  * 本测试覆盖：
  *   1) BO 归一化（偶数向上取奇、非法回退 3）；
  *   2) 目标胜局数（BO3->2, BO5->3）；
  *   3) 定位分组；
- *   4) 系列视图（小分/完成/下一局序号）；
- *   5) 先手轮换（配置开启时按序号奇偶轮换，关闭时随机）。
+ *   4) 系列视图（小分/完成/下一局序号）。
  */
 const fs = require('node:fs');
 const path = require('node:path');
@@ -32,7 +32,8 @@ function load(name) {
     return module.exports;
 }
 
-const { normalize_bo, series_target, locate_pair, locate_pair_by_uuid, series_view, first_hand } = load('contest-series.cjs');
+const series = load('contest-series.cjs');
+const { normalize_bo, series_target, locate_pair, locate_pair_by_uuid, series_view } = series;
 
 const main = () => {
     // 1) BO 归一化
@@ -77,6 +78,41 @@ const main = () => {
     const renamed = { nodes: [{ ...node, player_uuids: { '甲': 'uuid-a', '乙改名': 'uuid-b' }, groups: [['甲', '乙改名'], ['丙']] }] };
     assert.equal(locate_pair_by_uuid(renamed, 'uuid-b').my_name, '乙改名', '昵称变更后仍应按 uuid 定位');
 
+    // 3c) 多轮签表：晋级后旧组（已完赛）不得遮挡下一轮新抽签的配对
+    const round1 = {
+        id: 'node_main', bo: 3,
+        groups: [['甲', '乙'], ['丙', '丁']],
+        player_uuids: { '甲': 'uuid-a', '乙': 'uuid-b', '丙': 'uuid-c', '丁': 'uuid-d' },
+        results: { '0': { wins: { 'uuid-a': 2, 'uuid-b': 0 } } }
+    };
+    const round2 = {
+        id: 'node_round2', bo: 3,
+        groups: [['甲', '丙']],
+        player_uuids: { '甲': 'uuid-a', '丙': 'uuid-c' },
+        results: {}
+    };
+
+    // 旧组已完赛 + 已进入下一轮 -> 应定位下一轮
+    const advanced = locate_pair_by_uuid({ nodes: [round1, round2] }, 'uuid-a');
+    assert.equal(advanced.node.id, 'node_round2', '晋级后应定位到下一轮方块，而不是旧组');
+    assert.equal(advanced.group_index, 0);
+    assert.equal(advanced.foe_uuid, 'uuid-c', '下一轮对手应为新抽签的对手');
+
+    // 旧组仍在进行 + 已提前报名下一轮 -> 仍应定位旧组（逐轮推进，不得误判为下一轮）
+    const round1_playing = { ...round1, results: { '0': { wins: { 'uuid-a': 1, 'uuid-b': 0 } } } };
+    const stillPlaying = locate_pair_by_uuid({ nodes: [round1_playing, round2] }, 'uuid-a');
+    assert.equal(stillPlaying.node.id, 'node_main', '旧组未完赛时应优先当前正在进行的轮次');
+
+    // 全部完赛 -> 回退到最后一轮，供界面展示最近一次系列赛
+    const round2_done = { ...round2, results: { '0': { wins: { 'uuid-a': 2, 'uuid-c': 1 } } } };
+    const allDone = locate_pair_by_uuid({ nodes: [round1, round2_done] }, 'uuid-a');
+    assert.equal(allDone.node.id, 'node_round2', '全部完赛时应回退到最后一轮');
+
+    // 被淘汰（旧组完赛、未晋级）时仍能定位到自己最后一次系列赛
+    const eliminated = locate_pair_by_uuid({ nodes: [round1, round2] }, 'uuid-b');
+    assert.equal(eliminated.node.id, 'node_main');
+    assert.equal(eliminated.foe_uuid, 'uuid-a');
+
     // 4) 系列视图：1:1，未完成，下一局为第 3 局
     const view = series_view({ node, group_index: 0, my_uuid: 'uuid-a', foe_uuid: 'uuid-b' });
     assert.equal(view.bo, 3);
@@ -110,13 +146,18 @@ const main = () => {
     assert.equal(empty.completed, false);
     assert.equal(empty.next_index, 1);
 
-    // 5) 先手轮换
-    const pairSorted = ['uuid-a', 'uuid-b'].sort();
-    assert.equal(first_hand({ node, index: 1, my_uuid: pairSorted[0], foe_uuid: pairSorted[1] }), 'my', '第 1 局应由排序靠前者先手');
-    assert.equal(first_hand({ node, index: 2, my_uuid: pairSorted[0], foe_uuid: pairSorted[1] }), 'foe', '第 2 局应轮换');
-    assert.equal(first_hand({ node, index: 3, my_uuid: pairSorted[0], foe_uuid: pairSorted[1] }), 'my', '第 3 局再次轮换回排序靠前者');
-    assert.equal(first_hand({ node, index: 3, my_uuid: pairSorted[1], foe_uuid: pairSorted[0] }), 'foe', '第 3 局对另一方应为对方先手');
-    assert.equal(first_hand({ node: { rotate: 'off' }, index: 1, my_uuid: 'uuid-a', foe_uuid: 'uuid-b' }), 'rand', '未开启轮换应为随机');
+    // 5) 先手轮换已移除：先手不再被签表强制锁定，由双方手动选择或随机
+    assert.equal(typeof series.first_hand, 'undefined', 'first_hand 不应再导出');
+
+    // 6) 赛事对局保留先手/阵营手动选项，但不再强制锁定先手
+    const read = (p) => fs.readFileSync(path.resolve(__dirname, '..', p), 'utf8');
+    const match_src = read(path.join('js', 'main', 'match-game.cjs'));
+    assert.ok(!match_src.includes('first_hand'), 'match-game 不应再引用先手轮换');
+    assert.ok(!match_src.includes('apply_rotation'), 'match-game 不应再强制锁定先手');
+    const game_html = read(path.join('html', 'mod', 'match-game.html'));
+    assert.ok(game_html.includes('我方是先手') && game_html.includes('我方是黑方'), '赛事对局页应保留我方/对方先手与黑方选项');
+    const reg_html = read(path.join('html', 'mod', 'match-registration.html'));
+    assert.ok(!reg_html.includes('select_node_rotate'), '报名页不应再提供先手轮换锁定配置');
 
     console.log('contest-series: PASS');
 };

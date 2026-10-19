@@ -472,7 +472,7 @@ class Canvas {
     };
 
     /**
-     * @description: 在当前相位绘制最外缘蓝色呼吸光晕（0 = 无色，1 = 蓝色）。
+     * @description: 在当前相位绘制最外缘淡绿色呼吸光晕（0 = 无色，1 = 淡绿色）。
      * @return {void}
      */
     draw_turn_flash() {
@@ -483,7 +483,7 @@ class Canvas {
         // 无色相位不绘制任何内容，保留棋盘原本的深色外框
         if (this.turn_flash_phase <= 0) return;
         ctx.save();
-        const color = '#3b82f6'; // 蓝色光晕
+        const color = '#86efac'; // 淡绿色光晕
         ctx.globalAlpha = this.turn_flash_phase * 0.85;
         ctx.lineWidth = 4; // 保持细线
         ctx.strokeStyle = color;

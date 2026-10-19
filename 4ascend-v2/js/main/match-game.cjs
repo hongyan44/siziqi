@@ -75,7 +75,7 @@ const BaseZalgo = window.UtilsExports.BaseZalgo;
 const toast = new ShToast();
 
 const { verify_foe_identity } = require('./contest-verify.cjs');
-const { locate_pair_by_uuid, series_view, first_hand } = require('./contest-series.cjs');
+const { locate_pair_by_uuid, series_view } = require('./contest-series.cjs');
 
 
 // 赛事系列赛上下文（按 uuid 定位分组后填充）
@@ -339,24 +339,6 @@ const render_series_end = () => {
 };
 
 /**
- * @description: 按签表配置决定本局先手（管理员开启轮换时锁定，双方按 uuid 排序一致）
- * @return {void}
- */
-const apply_rotation = () => {
-    if (!contest_ctx || !contest_ctx.node) return;
-
-    const value = first_hand({
-        node: contest_ctx.node,
-        index: contest_ctx.next_index,
-        my_uuid: contest_ctx.my_uuid,
-        foe_uuid: contest_ctx.foe_uuid
-    });
-    select_server_first.value = value;
-    // 轮换由签表决定时禁用选择，避免双方先手不一致导致对局配置冲突
-    select_server_first.disabled = value !== 'rand';
-};
-
-/**
  * @description: 读取服务端签表并按 uuid 定位本组，刷新系列赛上下文
  * @return {Promise<boolean>} 是否定位到本组
  */
@@ -388,7 +370,6 @@ const sync_contest = async () => {
         };
         refresh_series_from_node(located.node);
         render_series();
-        apply_rotation();
         return true;
     } catch (error) {
         console.error(error);
@@ -422,7 +403,10 @@ const handle_contest_end = (payload) => {
 
         render_series();
         render_series_end();
-        apply_rotation();
+
+        // 本组 BO 已分出胜负：按最新签表重新定位，晋级后可直接确认下一轮的对手并开赛
+        const completed = contest_ctx.mine >= contest_ctx.target || contest_ctx.foe >= contest_ctx.target;
+        if (completed) await sync_contest();
     };
 
     end_report_chain = end_report_chain.then(task, task);

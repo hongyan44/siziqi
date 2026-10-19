@@ -4,8 +4,12 @@
  * @Copyright (c) 2026 by CsVeryLoveXieWenLi, All Rights Reserved.
  */
 
+const { group_is_completed, pick_current_round } = require('./contest-series.cjs');
+
 /**
  * @description: 在签表中定位包含指定昵称的分组，得到期望对手
+ *   选手晋级后会同时留在旧方块（已完赛）与新方块（下一轮抽签）里，这里与
+ *   locate_pair_by_uuid 采用同一套“当前轮次”规则，避免误用旧组的对手导致校验失败。
  * @param {object} bracket 签表数据（{ nodes: [...] }）
  * @param {string} my_name 我方昵称
  * @return {{node: object, expected_foe_name: string} | null}
@@ -13,18 +17,32 @@
 const locate_group = (bracket, my_name) => {
     if (!bracket || !Array.isArray(bracket.nodes) || !my_name) return null;
 
-    for (const node of bracket.nodes) {
-        if (!node || !Array.isArray(node.groups)) continue;
+    const candidates = [];
 
-        for (const group of node.groups) {
+    for (let node_index = 0; node_index < bracket.nodes.length; node_index++) {
+        const node = bracket.nodes[node_index];
+        if (!node || !Array.isArray(node.groups)) continue;
+        const player_uuids = node.player_uuids && typeof node.player_uuids === 'object' ? node.player_uuids : {};
+
+        for (let group_index = 0; group_index < node.groups.length; group_index++) {
+            const group = node.groups[group_index];
             if (!Array.isArray(group) || !group.includes(my_name)) continue;
 
             const expected_foe_name = group.find((name) => name !== my_name) || null;
-            return { node, expected_foe_name };
+            const my_uuid = player_uuids[my_name] || '';
+            const foe_uuid = expected_foe_name ? (player_uuids[expected_foe_name] || '') : '';
+
+            candidates.push({
+                node, node_index, group_index, expected_foe_name,
+                completed: group_is_completed(node, group_index, my_uuid, foe_uuid)
+            });
         }
     }
 
-    return null;
+    const best = pick_current_round(candidates);
+    if (!best) return null;
+
+    return { node: best.node, expected_foe_name: best.expected_foe_name };
 };
 
 /**

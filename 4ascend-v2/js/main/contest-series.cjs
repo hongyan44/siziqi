@@ -49,6 +49,48 @@ const locate_pair = (bracket, my_name) => {
 };
 
 /**
+ * @description: 判断某分组是否已分出胜负（任一方小分达到目标胜局）
+ * @param {object} node 签表节点
+ * @param {number} group_index 分组序号
+ * @param {string} uuid_a 一方唯一身份标识码
+ * @param {string} uuid_b 另一方唯一身份标识码
+ * @return {boolean}
+ */
+const group_is_completed = (node, group_index, uuid_a, uuid_b) => {
+    const target = series_target(node && node.bo);
+
+    const results = node && node.results && typeof node.results === 'object' ? node.results : {};
+    const entry = results[String(group_index)] || {};
+    const wins = entry.wins && typeof entry.wins === 'object' ? entry.wins : {};
+
+    const a = Number(wins[uuid_a]) || 0;
+    const b = Number(wins[uuid_b]) || 0;
+
+    return a >= target || b >= target;
+};
+
+/**
+ * @description: 从多轮候选里挑出“当前轮次”的配对
+ *   选手晋级后会同时留在旧方块（已完赛）与新方块（下一轮抽签）里；
+ *   若按顺序取第一个匹配，会永远定位到旧组，导致下一轮对手校验失败、开不了比赛。
+ *   规则：优先尚未完赛的配对，并按方块序号取「最早」的一轮（单败赛制必须逐轮推进，
+ *   所以当前正在打的就是还没完赛的最小轮次；即便选手提前报名了后面的方块，也不会误判）；
+ *   若全部都完赛，则取最后完赛的一轮，供界面展示最近一次系列赛。
+ * @param {Array<{node_index: number, group_index: number, completed: boolean}>} list
+ * @return {object|null}
+ */
+const pick_current_round = (list) => {
+    if (!Array.isArray(list) || !list.length) return null;
+
+    const active = list.filter((item) => !item.completed);
+    const pool = active.length
+        ? active.slice().sort((a, b) => (a.node_index - b.node_index) || (a.group_index - b.group_index))
+        : list.slice().sort((a, b) => (b.node_index - a.node_index) || (a.group_index - b.group_index));
+
+    return pool[0];
+};
+
+/**
  * @description: 在签表中按唯一身份标识码定位分组（比 locate_pair 更可靠，昵称可改）
  * @param {object} bracket 签表数据
  * @param {string} my_uuid 我方唯一身份标识码
@@ -56,6 +98,8 @@ const locate_pair = (bracket, my_name) => {
  */
 const locate_pair_by_uuid = (bracket, my_uuid) => {
     if (!bracket || !Array.isArray(bracket.nodes) || !my_uuid) return null;
+
+    const candidates = [];
 
     for (let node_index = 0; node_index < bracket.nodes.length; node_index++) {
         const node = bracket.nodes[node_index];
@@ -66,23 +110,26 @@ const locate_pair_by_uuid = (bracket, my_uuid) => {
             const group = node.groups[group_index];
             if (!Array.isArray(group)) continue;
 
-            let my_name = null;
-            let foe_name = null;
-            let foe_uuid = '';
-
-            for (const name of group) {
-                const uuid = player_uuids[name];
-                if (!uuid) continue;
-                if (uuid === my_uuid) my_name = name;
-                else if (!foe_uuid) { foe_uuid = uuid; foe_name = name; }
-            }
-
+            const my_name = group.find((name) => player_uuids[name] === my_uuid) || null;
             if (!my_name) continue;
-            return { node, node_index, group_index, my_name, foe_name, foe_uuid };
+
+            const foe_name = group.find((name) => name !== my_name) || null;
+            const foe_uuid = foe_name ? (player_uuids[foe_name] || '') : '';
+
+            candidates.push({
+                node, node_index, group_index, my_name, foe_name, foe_uuid,
+                completed: group_is_completed(node, group_index, my_uuid, foe_uuid)
+            });
         }
     }
 
-    return null;
+    const best = pick_current_round(candidates);
+    if (!best) return null;
+
+    return {
+        node: best.node, node_index: best.node_index, group_index: best.group_index,
+        my_name: best.my_name, foe_name: best.foe_name, foe_uuid: best.foe_uuid
+    };
 };
 
 /**
@@ -113,21 +160,4 @@ const series_view = ({ node, group_index, my_uuid, foe_uuid }) => {
     return { bo, target, games, mine, foe, completed, winner_uuid, next_index: mine + foe + 1 };
 };
 
-/**
- * @description: 按管理员配置决定本局我方先手
- * @param {object} args
- * @param {object} args.node 签表节点
- * @param {number} args.index 本局序号（从 1 开始）
- * @param {string} args.my_uuid 我方唯一身份标识码
- * @param {string} args.foe_uuid 对方唯一身份标识码
- * @return {'my' | 'foe' | 'rand'}
- */
-const first_hand = ({ node, index, my_uuid, foe_uuid }) => {
-    if (!node || node.rotate !== 'first') return 'rand';
-
-    const pair = [my_uuid, foe_uuid].sort();
-    const leader = Number(index) % 2 === 1 ? pair[0] : pair[1];
-    return leader === my_uuid ? 'my' : 'foe';
-};
-
-export { normalize_bo, series_target, locate_pair, locate_pair_by_uuid, series_view, first_hand };
+export { normalize_bo, series_target, locate_pair, locate_pair_by_uuid, series_view, group_is_completed, pick_current_round };
