@@ -494,18 +494,18 @@ const TYPES = ['say', 'choice', 'label', 'say', 'game', 'label', 'say', 'end', '
     console.log('PASS: 继续对局节点解析');
 }
 
-// 31) 步数对话：按玩家手数匹配（模拟播放页触发判定）
+// 31) 步数对话：按落子总手数匹配（模拟播放页触发判定）
 {
-    const config = StoryScript.parse('[A] x\n* 对局\n  步数对话=1:开场|3:中场\n:开场\n[A] 开场\n继续对局\n:中场\n[A] 中场\n继续对局\n结束').nodes.find((n) => n.type === 'game').config;
+    const config = StoryScript.parse('[A] x\n* 对局\n  步数对话=1:开场|2:中场|3:结尾\n:开场\n[A] 开场\n继续对局\n:中场\n[A] 中场\n继续对局\n:结尾\n[A] 结尾\n继续对局\n结束').nodes.find((n) => n.type === 'game').config;
     const triggered = new Set();
-    const pick = (count) => (config.dialogues || []).find((item) => item.step === count && !triggered.has(item.step));
-    assert.equal(pick(0), undefined, '第 0 手不触发');
-    assert.equal(pick(1).target, '开场', '第 1 手触发开场');
+    const pick = (plies) => (config.dialogues || []).find((item) => item.step === plies && !triggered.has(item.step));
+    assert.equal(pick(0), undefined, '尚未落子（总手数 0）不触发');
+    assert.equal(pick(1).target, '开场', '总手数 1（玩家第一步）触发开场');
     triggered.add(1);
     assert.equal(pick(1), undefined, '同一手不重复触发');
-    assert.equal(pick(2), undefined, '未配置的手数不触发');
-    assert.equal(pick(3).target, '中场', '第 3 手触发中场');
-    console.log('PASS: 步数对话按玩家手数匹配');
+    assert.equal(pick(2).target, '中场', '总手数 2（AI 应手）触发中场');
+    assert.equal(pick(3).target, '结尾', '总手数 3（玩家第二次）触发结尾');
+    console.log('PASS: 步数对话按落子总手数匹配');
 }
 
 console.log('story-script: ALL PASS');

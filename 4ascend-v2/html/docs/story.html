@@ -117,7 +117,7 @@
                             <div><code>* 对局 标题</code> 对局节点，后续缩进行为配置：</div>
                             <div><code>残局码=...</code> 初始盘面：粘贴残局页导出的残局码，棋盘将以该局面开局（同时继承其血量/回合数；可选，空则空盘 6/6 血）。残局码内若含作者定义的「引导落子点」，进入该对局后按序以红圈提示玩家落点。</div>
                             <div><code>结束残局=胜负|步数:12</code> 结束残局条件：<code>胜负</code> 表示分出胜负即结束（默认）；<code>步数:12</code> 表示进入本残局后第 12 手落子即结束，结果按平局处理（跳“平局”标签，未配置则继续往下）。</div>
-                            <div><code>步数对话=3:标签A|6:标签B</code> 步数触发对话：玩家第 N 手落子后暂停本局、跳转到该标签播放对话（玩家第一次落子=第 1 手），多条用 <code>|</code> 分隔。</div>
+                            <div><code>步数对话=3:标签A|6:标签B</code> 步数触发对话：第 N 手落子后暂停本局、跳转到该标签播放对话，多条用 <code>|</code> 分隔。手数按落子总手数计（玩家第一步=1，AI 应手=2，玩家第二次=3），可在任意步数触发。</div>
                             <div><code>刷草计划=3:4,4;5,4|9:2,2</code> 定时刷草：<code>回合:坐标;坐标</code> 表示“在第几回合、于哪些点刷几株草”，多条用 <code>|</code> 分隔；回合数即界面 Turns，坐标为 <code>x,y</code>（0-8）。被占用或已是二草的点会自动跳过。</div>
                             <div><code>我方=黑|白</code> 玩家执子；<code>先手=黑|白</code>；<code>胜利/失败/平局=标签</code> 对局结果跳转。</div>
                             <div><code>继续对局</code> 用于“步数对话”所跳转的对话末尾，表示回到当前对局继续下棋。</div>
@@ -334,7 +334,7 @@
                 if (row.key === '步数对话') return `
                 <select class='form-select form-select-sm' data-role='key' style='width: 132px;'>${configKeyOptionsHtml(row.key)}</select>
                 <input class='form-control form-control-sm' data-role='value' style='flex: 1 1 240px;' placeholder='如 3:标签名|6:另一个标签' value='${attr(row.value)}'>
-                <span class='editor-hint'>玩家第几手落子后暂停本局、播放该标签的对话（第一次落子=1）；对话末尾写「继续对局」回到棋盘</span>`;
+                <span class='editor-hint'>第几手落子后暂停本局、播放该标签的对话，手数按落子总手数计（玩家第一步=1，AI 应手=2，玩家第二次=3），任意步数均可；对话末尾写「继续对局」回到棋盘</span>`;
                 return `
                 <select class='form-select form-select-sm' data-role='key' style='width: 132px;'>${configKeyOptionsHtml(row.key)}</select>
                 <input class='form-control form-control-sm' data-role='value' style='flex: 1 1 240px;' placeholder='值（如 4,4;5,4 或 标签名）' value='${attr(row.value)}'>`;

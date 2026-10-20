@@ -206,8 +206,7 @@
         let bookedWhite = null;
         let moves = [];
         let endLimit = 0;
-        // 步数对话：按玩家落子计数（第一次落子=1），达到配置手数时暂停本局播放对话
-        let playerMoveCount = 0;
+        // 步数对话：按落子总手数计数（玩家第一步=1，AI 应手=2，玩家第二次=3），达到配置手数时暂停本局播放对话
         let triggeredSteps = new Set();
         let gameNodeIndex = 0;
         let pendingResume = null;
@@ -712,6 +711,10 @@
             document.documentElement.style.setProperty('--hp-color-p2', String(whiteHpPercent));
             $('game_p1_name').textContent = selfPlayer === PLAYER_ENUM.BLACK ? playerName : '对手 AI';
             $('game_p2_name').textContent = selfPlayer === PLAYER_ENUM.WHITE ? playerName : '对手 AI';
+            // 登录玩家已设置昵称颜色时，用自己的彩色昵称替换自己的名字
+            if (typeof window.name_color_apply_self === 'function') {
+                window.name_color_apply_self(selfPlayer === PLAYER_ENUM.BLACK ? $('game_p1_name') : $('game_p2_name'));
+            }
             $('game_p1_hp').textContent = `HP: ${blackHp}/${hpMax.black}`;
             $('game_p2_hp').textContent = `HP: ${whiteHp}/${hpMax.white}`;
             const ascendPower = (stone) => game ? game.board.data.filter((pos) => pos.stone === stone).reduce((sum, pos) => sum + 1 + (pos.plant === PLANT_ENUM.TWO ? 2 : pos.plant === PLANT_ENUM.ONE ? 1 : 0), 0) : 0;
@@ -858,12 +861,13 @@
             if (source === 'player') advanceGuide(move[0], move[1]);
             await syncAiStone(move[0], move[1], generation);
             moves.push({ move, source });
-            if (source === 'player') playerMoveCount++;
             await renderMove(move[0], move[1], source, generation);
             const ended = await settleRound(generation);
             if (ended || gameOver) return true;
             // 残局结束条件：本局落子数达到设定步数即结束（胜负优先，此处按平局处理）
             if (endLimit > 0 && moves.length >= endLimit) { await concludeGame(null); return true; }
+            // 步数对话：双方每次落子后都按当前总手数检查是否触发（支持任意步数）
+            await runStepDialogues();
             return false;
         };
 
@@ -881,10 +885,12 @@
             }
         };
 
-        // 步数对话：玩家第 N 手落子后暂停本局，跳转到配置的标签播放对话；“继续对局”回到棋盘
+        // 步数对话：第 N 手落子后暂停本局，跳转到配置的标签播放对话；“继续对局”回到棋盘
+        // 手数按落子总手数计：玩家第一步=1、AI 应手=2、玩家第二次=3，可配置在任意步数触发
         const runStepDialogues = async () => {
             const entries = (currentConfig && currentConfig.dialogues) || [];
-            const hit = entries.find((item) => item.step === playerMoveCount && !triggeredSteps.has(item.step));
+            const step = moves.length;
+            const hit = entries.find((item) => item.step === step && !triggeredSteps.has(item.step));
             if (!hit || !hit.target) return;
             if (!Object.prototype.hasOwnProperty.call(runtime.labels, hit.target) && hit.target !== '结束' && hit.target !== '剧终') return;
             triggeredSteps.add(hit.step);
@@ -909,7 +915,6 @@
                 if (selfPlayer === PLAYER_ENUM.BLACK && branch) currentBook = await branch.black_move([x, y], {});
                 const ended = await applyMove([x, y], 'player', generation);
                 if (ended || gameOver) return;
-                await runStepDialogues();
                 if (mode !== 'game' || gameOver || generation !== gameGeneration) return;
                 const white = currentBook && currentBook.white_move ? currentBook.white_move : null;
                 // 作者预案命中时白方严格按预案应手；偏离后 currentBook.white_move 已是普通 AI 结果。
@@ -1052,7 +1057,7 @@
             $('board_wrap').classList.remove('is-dialogue');
             const generation = ++gameGeneration;
             running = true; gameOver = false; moves = []; bookedWhite = null;
-            playerMoveCount = 0; triggeredSteps = new Set(); gameNodeIndex = runtime.index; pendingResume = null;
+            triggeredSteps = new Set(); gameNodeIndex = runtime.index; pendingResume = null;
             // 结束残局=步数:N -> 本局第 N 手落子后结束；胜负 或未配置 -> 分出胜负才结束
             endLimit = config.end_kind === 'steps' ? Math.max(0, Math.trunc(Number(config.end_steps) || 0)) : 0;
             pendingAscend[0].length = 0; pendingAscend[1].length = 0;

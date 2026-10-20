@@ -1367,6 +1367,7 @@ const run_once = async () => {
     // 游戏模式
     if (gl_cf_mode === 'normal') game = new GameNormal(board, state, rand_aic, rand_unity);
     else if (gl_cf_mode === 'blight') game = new GameBlight(board, state, rand_aic, rand_unity);
+    else if (gl_cf_mode === 'night') game = new GameNight(board, state, rand_aic, rand_unity);
     gl_game = game;
 
 
@@ -1409,6 +1410,7 @@ const run_once = async () => {
         // 游戏模式
         if (archive.mode === 0) game = new GameNormal(board, state, rand_aic, rand_unity);
         else if (archive.mode === 1) game = new GameBlight(board, state, rand_aic, rand_unity);
+        else if (archive.mode === 2) game = new GameNight(board, state, rand_aic, rand_unity);
         gl_game = game;
 
         // 先手
@@ -1477,6 +1479,8 @@ const run_once = async () => {
     game_p2_ascend.innerText = 'PR: 0+0';
     game_p2_stone.innerText = foe_icon;
     game_p2_clock.innerText = `CLK: ${gl_foe_clock}`;
+    // 双方昵称颜色（登录玩家用自己设置的颜色，对方用其设置的颜色）
+    window.name_color_apply_pair([{ uuid: my_uuid, node: game_p1_name }, { uuid: foe_uuid, node: game_p2_name }]);
 
     game_redraw();
 
@@ -1793,7 +1797,7 @@ const run_once = async () => {
                 white_uuid: my_color === PLAYER_ENUM.WHITE ? my_uuid : foe_uuid,
                 time: Math.floor(time / 1000),
                 duration: Math.max(0, Math.floor((await window.http_time_ms() - time) / 1000)),
-                mode: gl_cf_mode === 'blight' ? 1 : 0,
+                mode: gl_cf_mode === 'night' ? 2 : gl_cf_mode === 'blight' ? 1 : 0,
                 category: 'online',
                 first: first_index,
                 black_hp: state.hp[0],
@@ -1843,6 +1847,7 @@ const exportf = () => {
     let mode;
     if (gl_cf_mode === 'normal') mode = 0;
     else if (gl_cf_mode === 'blight') mode = 1;
+    else if (gl_cf_mode === 'night') mode = 2;
     else throw Error('exportf error');
 
     const black_clock = gl_my_index === 0 ? gl_my_clock : gl_foe_clock;

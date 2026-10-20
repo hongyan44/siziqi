@@ -102,30 +102,18 @@ let gl_game, gl_rand_aic, gl_rand_unity, gl_rand_other, gl_board, gl_state, gl_t
 let gl_cf_room, gl_cf_archive, gl_cf_health, gl_cf_initb, gl_cf_balance, gl_cf_mode, gl_cf_first, gl_cf_color, gl_cf_token, gl_cf_client;
 
 
-// 昵称颜色缓存（uuid -> 颜色描述：'' 无 / '#rrggbb' 纯色 / 'linear-gradient(...)' 渐变）
+// 昵称颜色缓存（uuid -> 颜色描述：'' 无 / '#rrggbb' 单色 / 'linear-gradient(...)' 彩色渐变 / 'rainbow' 流动彩虹）
 const view_name_color_cache = new Map();
 
 /**
- * @description: 将昵称颜色应用到节点（纯色直接着色，渐变使用文字裁剪）
+ * @description: 将昵称颜色应用到节点（渲染实现统一放在 must 模块的 window.name_color_apply）
  * @param {HTMLElement} node
  * @param {string} color
  * @return {void}
  */
 const apply_name_color = (node, color) => {
     if (!node) return;
-    if (typeof color === 'string' && color.indexOf('linear-gradient') === 0) {
-        node.style.background = color;
-        node.style.webkitBackgroundClip = 'text';
-        node.style.backgroundClip = 'text';
-        node.style.webkitTextFillColor = 'transparent';
-        node.style.color = 'transparent';
-    } else {
-        node.style.background = '';
-        node.style.webkitBackgroundClip = '';
-        node.style.backgroundClip = '';
-        node.style.webkitTextFillColor = '';
-        node.style.color = typeof color === 'string' ? color : '';
-    }
+    if (typeof window.name_color_apply === 'function') return window.name_color_apply(node, color);
 };
 
 

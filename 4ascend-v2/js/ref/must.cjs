@@ -226,6 +226,106 @@ window.get_token = () => {
 };
 
 
+// ===== 昵称颜色（单色 / 彩色渐变 / 流动彩虹）=====
+// 各模式棋盘页共用：把登录玩家设置的彩色昵称投射到「自己的名字」位置
+const name_color_rainbow_token = 'rainbow';
+const name_color_rainbow_gradient = 'linear-gradient(90deg,#ff2d2d,#ff9a2d,#ffe62d,#4ade4a,#2dd4d4,#3b82f6,#a855f7,#ff2d2d)';
+
+/**
+ * @description: 注入流动彩虹动画关键帧（同一页面只注入一次）
+ * @return {void}
+ */
+window.name_color_ensure_style = () => {
+    if (document.getElementById('style_name_rainbow')) return;
+    const style = document.createElement('style');
+    style.id = 'style_name_rainbow';
+    style.innerText = '@keyframes name-color-rainbow-flow{from{background-position:0% 50%;}to{background-position:200% 50%;}}';
+    document.head.appendChild(style);
+};
+
+/**
+ * @description: 给节点套用昵称颜色（单色直接着色；渐变/彩虹裁剪文字，彩虹额外缓慢流动）
+ * @param {HTMLElement} node
+ * @param {string} color
+ * @return {void}
+ */
+window.name_color_apply = (node, color) => {
+    if (!node) return;
+    const rainbow = color === name_color_rainbow_token;
+    const gradient = typeof color === 'string' && color.indexOf('linear-gradient') === 0;
+    if (rainbow || gradient) {
+        if (rainbow) window.name_color_ensure_style();
+        node.style.background = rainbow ? name_color_rainbow_gradient : color;
+        node.style.backgroundSize = rainbow ? '200% 100%' : '';
+        node.style.animation = rainbow ? 'name-color-rainbow-flow 8s linear infinite' : '';
+        node.style.webkitBackgroundClip = 'text';
+        node.style.backgroundClip = 'text';
+        node.style.webkitTextFillColor = 'transparent';
+        node.style.color = 'transparent';
+    } else {
+        node.style.background = '';
+        node.style.backgroundSize = '';
+        node.style.animation = '';
+        node.style.webkitBackgroundClip = '';
+        node.style.backgroundClip = '';
+        node.style.webkitTextFillColor = '';
+        node.style.color = typeof color === 'string' ? color : '';
+    }
+};
+
+// 登录玩家昵称颜色：同一页面只拉取一次
+let name_color_self_task = null;
+
+/**
+ * @description: 取登录玩家的昵称与昵称颜色（未登录返回 null）
+ * @return {Promise<{name: string, color: string} | null>}
+ */
+window.name_color_self = () => {
+    if (name_color_self_task) return name_color_self_task;
+    const token = window.get_token();
+    if (!token) return Promise.resolve(null);
+    name_color_self_task = Promise.resolve()
+        .then(() => window.http_user_info(token))
+        .then((info) => (info && info.name_color) ? { name: info.name || '', color: info.name_color } : null)
+        .catch(() => null);
+    return name_color_self_task;
+};
+
+/**
+ * @description: 把登录玩家设置的彩色昵称投射到自己的名字位置（未登录或未设置颜色时保持默认）
+ * @param {HTMLElement} node
+ * @return {Promise<void>}
+ */
+window.name_color_apply_self = async (node) => {
+    if (!node) return;
+    try {
+        const self = await window.name_color_self();
+        if (!self || !self.color) return;
+        if (self.name) node.innerText = self.name;
+        window.name_color_apply(node, self.color);
+    } catch (_) {
+        // 昵称颜色渲染失败不应影响主流程
+    }
+};
+
+/**
+ * @description: 批量给对战双方的昵称位置套用各自颜色（uuid 查颜色）
+ * @param {Array<{uuid: string, node: HTMLElement}>} pairs
+ * @return {Promise<void>}
+ */
+window.name_color_apply_pair = async (pairs) => {
+    const list = (pairs || []).filter((item) => item && item.uuid && item.node);
+    if (!list.length || typeof window.http_user_colors !== 'function') return;
+    try {
+        const colors = await window.http_user_colors(list.map((item) => item.uuid));
+        const map = new Map((colors || []).map((item) => [item.uuid, item.color || '']));
+        list.forEach((item) => window.name_color_apply(item.node, map.get(item.uuid) || ''));
+    } catch (_) {
+        // 昵称颜色渲染失败不应影响对局主流程
+    }
+};
+
+
 // 拼写检查、自动纠正、自动建议、自动大写
 // 全部关闭，全部取消
 (() => {

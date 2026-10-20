@@ -194,7 +194,7 @@
                 localStorage.setItem(LEVEL_STORAGE_KEY, JSON.stringify(records));
             } catch (_) { /* 本机进度记录失败不影响对局 */ }
         };
-        const { EndgameArchive, create_guide } = window.EndgameExports;
+        const { EndgameArchive, create_guide, create_ai_preset } = window.EndgameExports;
         const { GameNormal, GameBlight, GameNight, Board, State, RulesRuntime, PLAYER_ENUM, STONE_ENUM, PLANT_ENUM, ASCEND_ENUM, OVER_ENUM, RandAIC, RandUnity } = window.FAscendExports;
         const GameCanvas = window.GameExports.Canvas;
         const indexOf = (x, y) => y * 9 + x;
@@ -216,6 +216,8 @@
         let sound = null;
         let aiReady = false;
         let branch = null;
+        // AI 预设：作者定义的白方无条件落子队列；只要未走完，白方就按它依序落子。
+        let aiPreset = null;
         let moves = [];
         let blackMoveCount = 0;
         let running = false;
@@ -630,7 +632,8 @@
         const playWhite = async (branchResult, generation = challengeGeneration) => {
             if (challengeOver || generation !== challengeGeneration) return;
             try {
-                const isBookMove = Boolean(branchResult && branchResult.matched);
+                const presetActive = Boolean(aiPreset && aiPreset.active());
+                const isBookMove = !presetActive && Boolean(branchResult && branchResult.matched);
                 // 作者写好的白方正着拥有最高优先级：黑方一旦命中正着，白方必须严格
                 // 按预案应手，不再调用战术 AI。否则斩杀 / 防自杀 / 应打(扩核弹) 等
                 // 战术分支会改写预案落点，打断残局正解线，玩家全程走对也无法破解。
@@ -639,13 +642,32 @@
                 // 跳过战术搜索不会让 Worker 棋局失同步。
                 let move = null;
                 let tacticalMove = false;
-                if (isBookMove) {
+                let source = '';
+                if (presetActive) {
+                    // AI 预设优先级最高：只要预设未走完，白方就无条件按预设依序落子，
+                    // 与黑方是否命中正着无关。预设点已被占用而无法落子时，仅该步改由
+                    // AI 思考，消耗掉这一步后其余步仍严格按预设推进。
+                    const preset = aiPreset.next();
+                    aiPreset.advance();
+                    if (preset && legal(preset[0], preset[1])) {
+                        move = preset;
+                        source = 'AI预设应手';
+                        setStatus('白方按 AI 预设落子。', 'info');
+                    } else {
+                        source = 'AI预设·AI思考';
+                        setStatus('AI 预设点不可落子，本步改由 AI 思考，其余步仍按预设。', 'warning');
+                        move = await aiThink();
+                        tacticalMove = Boolean(lastAiDecision && lastAiDecision.tactical);
+                    }
+                } else if (isBookMove) {
                     move = branchResult.white_move;
+                    source = '正着应手';
                     setStatus('白方按残局正着应手。', 'info');
                 } else {
                     setStatus('白方 AI（战术矫正 + 4zero）正在计算...', 'info');
                     move = await aiThink();
                     tacticalMove = Boolean(lastAiDecision && lastAiDecision.tactical);
+                    source = tacticalMove ? `战术AI · ${lastAiDecision.reason || '矫正'}` : '战术AI';
                 }
                 if (!move || !legal(move[0], move[1])) {
                     setStatus('白方 AI 未找到合法落点，请重置后重试。', 'danger');
@@ -655,7 +677,7 @@
                 recordModelHistory();
                 if (!game.ed_tr_1(move[0], move[1])) { game.history_boards.pop(); setStatus('白方 AI 返回了非法落点，请重置后重试。', 'danger'); return; }
                 await syncAiStone(move[0], move[1], generation);
-                moves.push({ move, side: '白方', source: isBookMove ? '正着应手' : (tacticalMove ? `战术AI · ${lastAiDecision.reason || '矫正'}` : '战术AI') });
+                moves.push({ move, side: '白方', source });
                 await renderMove(move[0], move[1], 'AI', generation);
                 const ended = await settleRound(generation);
                 // 暂缓：不再因“走完全部正着”直接结束残局，改为继续对局（正着走完后白方转入普通 AI）。
@@ -669,7 +691,10 @@
                 //     showAlert('残局破解成功！');
                 //     showResult(PLAYER_ENUM.BLACK, challengeElapsed, '正着全部完成');
                 // }
-                if (!ended && !challengeOver) setStatus(!deviated && branchResult && branchResult.matched ? '正着命中，继续挑战。' : '已脱离正着，后续由 4zero MCTS 接管。', !deviated && branchResult && branchResult.matched ? 'success' : 'warning');
+                if (!ended && !challengeOver) {
+                    if (presetActive) setStatus('AI 预设继续应手。', 'success');
+                    else setStatus(!deviated && branchResult && branchResult.matched ? '正着命中，继续挑战。' : '已脱离正着，后续由 4zero MCTS 接管。', !deviated && branchResult && branchResult.matched ? 'success' : 'warning');
+                }
             } catch (error) {
                 console.error('残局挑战白方回合失败。', error);
                 setStatus('白方回合执行失败，请重置后重试。', 'danger');
@@ -848,6 +873,8 @@
                 const move = await aiThink();
                 return move;
             });
+            // AI 预设独立于正着分支：只要作者写了预设，白方每一步都优先按预设落子。
+            aiPreset = create_ai_preset((challengeData.ai_preset || []).map(archiveMoveToBoard));
             renderInfo();
             setStatus('正在准备 4zero MCTS...', 'primary');
             await initAi();
@@ -888,6 +915,10 @@
         (async () => {
             await loadDailyChallenge();
             resetChallenge();
+            // 登录玩家已设置昵称颜色时，用自己的彩色昵称替换默认名字
+            if (typeof window.name_color_apply_self === 'function') {
+                window.name_color_apply_self(document.getElementById('game_p1_name'));
+            }
         })();
     </script>
 </body>

@@ -66,8 +66,7 @@ const button_user_unlock = document.getElementById('button_user_unlock');
 const button_user_permission_guide = document.getElementById('button_user_permission_guide');
 const block_user_color = document.getElementById('block_user_color');
 const block_user_color_gradient = document.getElementById('block_user_color_gradient');
-const div_user_color_gradients = document.getElementById('div_user_color_gradients');
-const switch_user_color_gradient = document.getElementById('switch_user_color_gradient');
+const block_user_color_rainbow = document.getElementById('block_user_color_rainbow');
 const span_user_color_preview = document.getElementById('span_user_color_preview');
 const button_user_color_clear = document.getElementById('button_user_color_clear');
 const button_user_color_save = document.getElementById('button_user_color_save');
@@ -353,46 +352,35 @@ const render_user_level = (level) => {
     span_user_level.dataset.level = safe_level;
     const roles = {
         1: '权限：普通用户（浏览与对战）',
-        2: '权限：可投稿残局（每日残局 / 残局闯关）',
-        3: '权限：可审核残局投稿 · 可设置昵称颜色（纯色）',
-        4: '权限：残局管理 + 在线玩家好友 + 彩色昵称',
+        2: '权限：可投稿残局（每日残局 / 残局闯关）· 可设置昵称颜色（单色）',
+        3: '权限：可审核残局投稿 · 可设置昵称颜色（彩色渐变）',
+        4: '权限：残局管理 + 在线玩家好友 + 流动彩虹昵称',
     };
     if (span_user_role) span_user_role.innerText = roles[safe_level];
-    // 昵称颜色设置仅等级 3 及以上可见；彩色渐变仅等级 4 可见
-    block_user_color.classList.toggle('d-none', safe_level < 3);
-    block_user_color_gradient.classList.toggle('d-none', safe_level !== 4);
+    // 昵称颜色设置等级 2 及以上可见；彩色渐变等级 3 及以上可见；流动彩虹仅等级 4 可见
+    block_user_color.classList.toggle('d-none', safe_level < 2);
+    block_user_color_gradient.classList.toggle('d-none', safe_level < 3);
+    block_user_color_rainbow.classList.toggle('d-none', safe_level !== 4);
 };
 
-// 当前昵称颜色选择：'' 表示未选择，纯色为 '#rrggbb'，渐变为 'linear-gradient(...)'
+// 当前昵称颜色选择：'' 表示未选择，单色为 '#rrggbb'，彩色渐变为 'linear-gradient(...)'，流动彩虹为 'rainbow'
 let user_color_selection = '';
 let user_color_name = '';
 
 /**
- * @description: 将昵称颜色应用到节点（纯色直接着色，渐变使用文字裁剪）
+ * @description: 将昵称颜色应用到节点（渲染实现统一放在 must 模块的 window.name_color_apply）
  * @param {HTMLElement} node
  * @param {string} color
  * @return {void}
  */
 const apply_name_color = (node, color) => {
     if (!node) return;
-    if (typeof color === 'string' && color.indexOf('linear-gradient') === 0) {
-        node.style.background = color;
-        node.style.webkitBackgroundClip = 'text';
-        node.style.backgroundClip = 'text';
-        node.style.webkitTextFillColor = 'transparent';
-        node.style.color = 'transparent';
-    } else {
-        node.style.background = '';
-        node.style.webkitBackgroundClip = '';
-        node.style.backgroundClip = '';
-        node.style.webkitTextFillColor = '';
-        node.style.color = typeof color === 'string' ? color : '';
-    }
+    if (typeof window.name_color_apply === 'function') return window.name_color_apply(node, color);
 };
 
 // 高亮当前选中的色块
 const render_user_color_swatches = () => {
-    ['#div_user_color_solids .color-swatch', '#div_user_color_gradients .color-swatch'].forEach((selector) => {
+    ['#div_user_color_solids .color-swatch', '#div_user_color_gradients .color-swatch', '#div_user_color_rainbows .color-swatch'].forEach((selector) => {
         document.querySelectorAll(selector).forEach((node) => {
             node.style.boxShadow = user_color_selection === node.dataset.color
                 ? '0 0 0 2px var(--sl-color-primary-600)' : 'none';
@@ -405,15 +393,6 @@ const render_user_color = () => {
     span_user_color_preview.innerText = user_color_name || '昵称';
     apply_name_color(span_user_color_preview, user_color_selection);
     render_user_color_swatches();
-};
-
-// 依据当前选择同步渐变开关与色块展示（仅等级 4 可见时生效）
-const sync_user_color_gradient = () => {
-    const level4 = !block_user_color_gradient.classList.contains('d-none');
-    const is_gradient = level4 && user_color_selection.indexOf('linear-gradient') === 0;
-    switch_user_color_gradient.checked = is_gradient;
-    div_user_color_gradients.classList.toggle('d-none', !is_gradient);
-    div_user_color_gradients.classList.toggle('d-flex', is_gradient);
 };
 
 // 密码以摘要存储，前端只能展示“是否已设置”的状态
@@ -440,7 +419,6 @@ const user_info = async (token) => {
         user_color_name = name || '';
         user_color_selection = info.name_color || '';
         render_user_color();
-        sync_user_color_gradient();
 
     } catch (_) {
         toast.error('请求错误！');
@@ -471,7 +449,6 @@ const user_set_color = async (token, color) => {
         if (!status) return toast.error(color ? '保存昵称颜色失败！' : '清除昵称颜色失败！');
         user_color_selection = color;
         render_user_color();
-        sync_user_color_gradient();
         toast.success(color ? '昵称颜色已保存！' : '已清除昵称颜色！');
     } catch (_) {
         toast.error('请求错误！');
@@ -666,30 +643,11 @@ button_user_permission_guide.addEventListener('click', () => {
     dialog_permission_guide.show();
 });
 
-// 昵称颜色：选择色块（纯色 / 渐变）
+// 昵称颜色：选择色块（单色 / 彩色渐变 / 流动彩虹）
 block_user_color.addEventListener('click', (event) => {
     const swatch = event.target.closest ? event.target.closest('.color-swatch') : null;
     if (!swatch) return;
-    const color = swatch.dataset.color || '';
-    user_color_selection = color;
-    // 选择纯色时关闭渐变展示
-    if (color.indexOf('linear-gradient') !== 0) {
-        switch_user_color_gradient.checked = false;
-        div_user_color_gradients.classList.add('d-none');
-        div_user_color_gradients.classList.remove('d-flex');
-    } else {
-        div_user_color_gradients.classList.remove('d-none');
-        div_user_color_gradients.classList.add('d-flex');
-    }
-    render_user_color();
-});
-
-// 昵称颜色：彩色渐变开关（仅等级 4）
-switch_user_color_gradient.addEventListener('sl-change', () => {
-    const on = switch_user_color_gradient.checked;
-    div_user_color_gradients.classList.toggle('d-none', !on);
-    div_user_color_gradients.classList.toggle('d-flex', on);
-    if (!on && user_color_selection.indexOf('linear-gradient') === 0) user_color_selection = '';
+    user_color_selection = swatch.dataset.color || '';
     render_user_color();
 });
 
@@ -806,7 +764,6 @@ dialog_user.addEventListener('sl-after-hide', (event) => {
     user_color_name = '';
     user_color_selection = '';
     render_user_color();
-    sync_user_color_gradient();
     user_ident = '';
 });
 

@@ -597,8 +597,9 @@
                 </div>
 
                 <div id='block_user_color' class='border-top pt-3 mt-1 d-none'>
-                    <div class='text-secondary small mb-2'>设置对战昵称颜色（等级 3 及以上）</div>
+                    <div class='text-secondary small mb-2'>设置对战昵称颜色（等级 2 及以上）</div>
 
+                    <div class='text-secondary small mb-1'>单色（等级 2 及以上）</div>
                     <div id='div_user_color_solids' class='d-flex flex-wrap align-items-center gap-2'>
                         <span class='color-swatch' data-color='#2563eb'
                             style='width: 1.7rem; height: 1.7rem; border-radius: 50%; cursor: pointer; display: inline-block; background-color: #2563eb;'></span>
@@ -615,8 +616,8 @@
                     </div>
 
                     <div id='block_user_color_gradient' class='d-none mt-3'>
-                        <sl-switch id='switch_user_color_gradient'>彩色渐变（等级 4）</sl-switch>
-                        <div id='div_user_color_gradients' class='d-none flex-wrap align-items-center gap-2 mt-2'>
+                        <div class='text-secondary small mb-1'>彩色渐变（等级 3 及以上）</div>
+                        <div id='div_user_color_gradients' class='d-flex flex-wrap align-items-center gap-2'>
                             <span class='color-swatch' data-color='linear-gradient(90deg,#f97316,#ef4444)'
                                 style='width: 3.6rem; height: 1.7rem; border-radius: 99px; cursor: pointer; display: inline-block; background: linear-gradient(90deg,#f97316,#ef4444);'></span>
                             <span class='color-swatch' data-color='linear-gradient(90deg,#2563eb,#7c3aed)'
@@ -625,6 +626,14 @@
                                 style='width: 3.6rem; height: 1.7rem; border-radius: 99px; cursor: pointer; display: inline-block; background: linear-gradient(90deg,#16a34a,#06b6d4,#2563eb);'></span>
                             <span class='color-swatch' data-color='linear-gradient(90deg,#f43f5e,#8b5cf6,#0ea5e9)'
                                 style='width: 3.6rem; height: 1.7rem; border-radius: 99px; cursor: pointer; display: inline-block; background: linear-gradient(90deg,#f43f5e,#8b5cf6,#0ea5e9);'></span>
+                        </div>
+                    </div>
+
+                    <div id='block_user_color_rainbow' class='d-none mt-3'>
+                        <div class='text-secondary small mb-1'>流动彩虹（等级 4）</div>
+                        <div id='div_user_color_rainbows' class='d-flex flex-wrap align-items-center gap-2'>
+                            <span class='color-swatch' data-color='rainbow'
+                                style='width: 3.6rem; height: 1.7rem; border-radius: 99px; cursor: pointer; display: inline-block; background: linear-gradient(90deg,#ff2d2d,#ff9a2d,#ffe62d,#4ade4a,#2dd4d4,#3b82f6,#a855f7,#ff2d2d);'></span>
                         </div>
                     </div>
 
@@ -662,7 +671,7 @@
                     <sl-badge variant='primary' pill>权限等级 2</sl-badge>
                     <span class='fw-bold'>进阶用户</span>
                 </div>
-                <div class='text-secondary small'>包含 1 级全部权限；可投稿残局码到「每日残局」与「残局闯关」。</div>
+                <div class='text-secondary small'>包含 1 级全部权限；可投稿残局码到「每日残局」与「残局闯关」；可在对战中设置自己名字的颜色（单色）。</div>
             </div>
 
             <div class='p-3 rounded border bg-light'>
@@ -670,7 +679,7 @@
                     <sl-badge variant='success' pill>权限等级 3</sl-badge>
                     <span class='fw-bold'>高级用户</span>
                 </div>
-                <div class='text-secondary small'>包含 2 级全部权限；可审核通过残局投稿（不可删除残局、不可覆盖已有残局）；可在对战中设置自己名字的颜色（纯色）。</div>
+                <div class='text-secondary small'>包含 2 级全部权限；可审核通过残局投稿（不可删除残局、不可覆盖已有残局）；可在对战中设置自己名字的颜色（彩色渐变）。</div>
             </div>
 
             <div class='p-3 rounded border bg-light'>
@@ -678,7 +687,7 @@
                     <sl-badge variant='warning' pill>权限等级 4</sl-badge>
                     <span class='fw-bold'>管理员</span>
                 </div>
-                <div class='text-secondary small'>包含 3 级全部权限；可新增/修改/删除/覆盖残局；可查看全部在线玩家并添加好友（好友系统显示「管理员」标识）；可在对战中设置自己名字的颜色（彩色渐变）。</div>
+                <div class='text-secondary small'>包含 3 级全部权限；可新增/修改/删除/覆盖残局；可查看全部在线玩家并添加好友（好友系统显示「管理员」标识）；可在对战中设置自己名字的颜色（流动彩虹）。</div>
             </div>
         </div>
 

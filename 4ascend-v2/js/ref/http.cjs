@@ -196,7 +196,7 @@ window.http_user_update = async (token, name, avatar) => {
 };
 
 /**
- * @description: 设置对战昵称颜色（等级 ≥ 3 可设置纯色；等级 4 额外允许渐变彩色；传空字符串清除）
+ * @description: 设置对战昵称颜色（等级 ≥ 2 可用单色；等级 ≥ 3 可用彩色渐变；等级 4 可用流动彩虹 'rainbow'；传空字符串清除）
  * @param {string} token
  * @param {string} color
  * @return {Promise<boolean>}

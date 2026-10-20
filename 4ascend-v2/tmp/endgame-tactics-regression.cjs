@@ -98,7 +98,7 @@ function putLine(game, color, cells) {
     console.log('PASS: build disabled, returns null for MCTS fallback');
 }
 
-// 5) 人机 ??? 的战术兜底只在斩杀线开启；HP=4 不应触发
+// 5) 战术类的斩杀线判定与兜底（现仅供残局链路复用；人机对局已不再接入）
 {
     const safeGame = makeGame({ hp: [4, 6], turn: R.WHITE });
     putLine(safeGame, S.BLACK, [[0, 4]]);
@@ -120,15 +120,13 @@ function putLine(game, color, cells) {
     assert.match(challenge, /战术矫正/);
     assert.match(worker, /EndgameTactics/);
     assert.match(worker, /endgameTactics\.chooseMove/);
-    assert.match(worker, /ENDGAME_TACTICS_THINK/);
-    // ??? 人机：仅 synchronizeRandom + KillZone 时启用 safetyNet，且先跑 MCTS。
-    assert.match(worker, /knownRandom && EndgameTactics\.isKillZone\(game\)/);
-    assert.match(worker, /endgameTactics\.safetyNet\(game\)/);
-    assert.match(worker, /async ZERO_THINK[\s\S]*await search\.search[\s\S]*safetyNet/);
-    // 第一步白方也必须先跑 aiThink；仅斩杀/防自杀可覆盖正着。
-    assert.match(challenge, /const decision = await aiThink\(\);/);
-    assert.match(challenge, /criticalReasons/);
-    assert.match(challenge, /isCriticalTactical/);
+    assert.match(worker, /ENDGAME_THINK/);
+    // 人机对局已移除战术辅助：ZERO_THINK 不得再接入 safetyNet / KillZone 兜底。
+    assert.doesNotMatch(worker, /endgameTactics\.safetyNet/);
+    assert.doesNotMatch(worker, /EndgameTactics\.isKillZone/);
+    assert.doesNotMatch(worker, /tacticalOverride/);
+    // 残局闯关：白方命中原著正着时严格按预案应手，不再走战术 AI。
+    assert.match(challenge, /const isBookMove = /);
     assert.match(challenge, /else if \(isBookMove\) \{\s*move = branchResult\.white_move;/);
     assert.doesNotMatch(challenge, /const move = \(branchResult && branchResult\.white_move\) \? branchResult\.white_move : await aiThink\(\);/);
     console.log('PASS: challenge/worker wiring');

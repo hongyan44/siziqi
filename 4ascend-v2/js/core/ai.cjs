@@ -922,6 +922,8 @@ const run = async () => {
 
     game_p1_name.innerText = my_name;
     game_p2_name.innerText = foe_name;
+    // 登录玩家已设置昵称颜色时，用自己的彩色昵称替换默认名字
+    window.name_color_apply_self(game_p1_name);
 
     // 决定随机数种子
     rand_aic = new RandAIC(seed_aic);
@@ -1062,6 +1064,8 @@ const run = async () => {
     game_p2_hp.innerText = `HP: ${state.hp[foe_index]}/${hp}`;
     game_p2_ascend.innerText = 'PR: 0+0';
     game_p2_stone.innerText = foe_icon;
+    // 登录玩家已设置昵称颜色时，用自己的彩色昵称替换默认名字
+    window.name_color_apply_self(game_p1_name);
 
     game_redraw();
     time = Date.now();

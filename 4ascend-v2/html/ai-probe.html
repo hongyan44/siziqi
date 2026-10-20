@@ -219,7 +219,7 @@
         el('preset_tactical').addEventListener('click', loadTactical);
         el('clear_log').addEventListener('click', () => { el('log').innerHTML = ''; });
         el('turn').addEventListener('change', () => el('board_status').textContent = Number(el('turn').value) ? '白方回合' : '黑方回合');
-        (async () => { try { worker = Comlink.wrap(new Worker('/js/worker/ai.min.js?v=ai-probe-20260912')); await worker.AI_INIT(); ready = true; el('engine_status').textContent = 'ZERO 已连接'; el('engine_status').classList.add('text-bg-success'); loadDaily(); } catch (error) { el('engine_status').textContent = '引擎加载失败'; setResult(`初始化失败：${error.message || error}`); } })();
+        (async () => { try { worker = Comlink.wrap(new Worker('/js/worker/ai.min.js?v=ai-probe-20261020-no-tactics')); await worker.AI_INIT(); ready = true; el('engine_status').textContent = 'ZERO 已连接'; el('engine_status').classList.add('text-bg-success'); loadDaily(); } catch (error) { el('engine_status').textContent = '引擎加载失败'; setResult(`初始化失败：${error.message || error}`); } })();
         render();
         scanHint();
     </script>

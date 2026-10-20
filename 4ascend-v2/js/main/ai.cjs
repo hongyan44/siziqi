@@ -144,7 +144,7 @@ const ai_level = (name, opt) => {
         else if (opt === '3') return 225;
         else if (opt === '4') return 585;
         else if (opt === '5') return 888;
-        else if (opt === '6') return 888;
+        else if (opt === '6') return 1000;
     } else if (name === '4ascend-hce') {
         if (opt === '1') return 1200;
         else if (opt === '2') return 3400;

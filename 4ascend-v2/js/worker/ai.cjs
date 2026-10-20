@@ -154,9 +154,8 @@ Comlink.expose({
     async ZERO_THINK(simulations, synchronizeRandom = false) {
         await ensureInitialized();
         const game = requireGame();
-        // synchronizeRandom=true 仅对应人机挑战 ???（opt=6）。
-        // 战术机制只在该难度启用，且绝不替代 MCTS 常规选点：
-        // 先完整跑树搜索，再在任意一方 HP<=3 的斩杀线残局中做关键兜底覆盖。
+        // synchronizeRandom=true 仅对应人机挑战 ???（opt=6）：MCTS 直接使用本局真实随机流。
+        // 对局中不再叠加任何残局战术辅助（战术仅保留在残局挑战 / 残局思考链路）。
         const knownRandom = Boolean(synchronizeRandom);
         const hidden = knownRandom ? null : hiddenRandomSearchGame(game);
         const searchGame = knownRandom ? game : hidden.searchGame;
@@ -167,35 +166,20 @@ Comlink.expose({
         lastSearch = await search.search(searchGame, simulations);
         lastSearch.randomMode = knownRandom ? 'known' : 'hidden';
         lastSearch.searchSeeds = hidden ? hidden.seeds : null;
-        lastSearch.tacticalOverride = false;
         lastSearch.handicapOverride = false;
 
         let action = lastSearch.action;
-        if (knownRandom && EndgameTactics.isKillZone(game)) {
-            const forced = endgameTactics.safetyNet(game);
-            if (forced && Number.isInteger(forced.action) && forced.action !== action) {
-                action = forced.action;
-                lastSearch.action = action;
-                lastSearch.tacticalOverride = true;
-                lastSearch.tacticalReason = forced.reason;
-                lastSearch.tacticalDetail = forced.detail || null;
-                lastSearch.engine = forced.engine || 'endgame-tactics';
-            }
-        }
 
         // 难度取用弱化：仅简单 / 普通生效，且只替换落点、不改变选子结果。
-        // 战术兜底（??? 难度）优先，其命中时不再做弱化。
-        if (!lastSearch.tacticalOverride) {
-            const adjusted = aiHandicap.adjust(game, action, aiLevelOption);
-            if (adjusted && adjusted.action !== action) {
-                action = adjusted.action;
-                lastSearch.action = action;
-                lastSearch.handicapOverride = true;
-                lastSearch.handicapLevel = adjusted.level;
-                lastSearch.handicapReason = adjusted.reason;
-                lastSearch.handicapOriginal = adjusted.original;
-                lastSearch.handicapDetail = adjusted.detail || null;
-            }
+        const adjusted = aiHandicap.adjust(game, action, aiLevelOption);
+        if (adjusted && adjusted.action !== action) {
+            action = adjusted.action;
+            lastSearch.action = action;
+            lastSearch.handicapOverride = true;
+            lastSearch.handicapLevel = adjusted.level;
+            lastSearch.handicapReason = adjusted.reason;
+            lastSearch.handicapOriginal = adjusted.original;
+            lastSearch.handicapDetail = adjusted.detail || null;
         }
 
         const result = RulesRuntime.applyMove(game, action);

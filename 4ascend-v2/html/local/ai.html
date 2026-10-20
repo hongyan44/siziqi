@@ -124,7 +124,7 @@
 
             await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
-            window.ai_worker = Comlink.wrap(new Worker('/js/worker/ai.min.js?v=20260906-plant-ai'));
+            window.ai_worker = Comlink.wrap(new Worker('/js/worker/ai.min.js?v=20261020-no-tactics'));
             window.ai_worker.AI_INIT();
 
             const elapsed = Date.now() - st;

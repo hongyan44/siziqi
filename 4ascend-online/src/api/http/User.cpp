@@ -119,6 +119,11 @@ bool is_gradient_color(std::string_view value) noexcept {
     }
     return stops == 2 || stops == 3;
 }
+
+// 流动彩虹：固定标记 rainbow（4 级专属，具体动画由渲染层实现）
+bool is_rainbow_color(std::string_view value) noexcept {
+    return value == "rainbow";
+}
 } // namespace
 
 // 用户注册（邮箱或手机号 + 验证码 + 账号 + 密码，注册后不自动登录）
@@ -367,7 +372,7 @@ void user_update(cinatra::coro_http_request& request, cinatra::coro_http_respons
     response.set_status_and_content(cinatra::status_type::ok, buffer);
 };
 
-// 设置昵称颜色（3 级可用纯色，4 级额外可用渐变；空串表示清除）
+// 设置昵称颜色（2 级可用纯色，3 级额外可用彩色渐变，4 级额外可用流动彩虹；空串表示清除）
 void user_set_color(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
     auto body = api_body(request.get_body());
     if (!body) return;
@@ -379,15 +384,18 @@ void user_set_color(cinatra::coro_http_request& request, cinatra::coro_http_resp
     std::string uuid;
     int level = 0;
     if (!Manager::Token::token2uuid(token, uuid) || !Manager::User::exist_user(uuid) || !Manager::User::get_level(uuid, level)
-        || level < 3)
+        || level < 2)
         return api_http_error("user_set_color", response); // cp
 
     const auto color = rjson.contains("color") && rjson["color"].is_string() ? rjson["color"].as<std::string>() : std::string();
     if (color.size() > 128) return api_http_error("user_set_color", response); // cp
 
-    // 空串=清除；纯色 3 级可用；渐变仅 4 级可用，且需严格匹配语法。
-    if (!color.empty() && !is_solid_color(color) && !(level >= 4 && is_gradient_color(color)))
-        return api_http_error("user_set_color", response); // cp
+    // 空串=清除；纯色 2 级可用；彩色渐变 3 级可用；流动彩虹仅 4 级可用，且均需严格匹配语法。
+    const bool valid = color.empty()
+        || is_solid_color(color)
+        || (level >= 3 && is_gradient_color(color))
+        || (level >= 4 && is_rainbow_color(color));
+    if (!valid) return api_http_error("user_set_color", response); // cp
 
     if (!Manager::User::set_name_color(uuid, color)) return api_http_error("user_set_color", response); // cp
 
@@ -396,7 +404,7 @@ void user_set_color(cinatra::coro_http_request& request, cinatra::coro_http_resp
     response.set_status_and_content(cinatra::status_type::ok, buffer);
 };
 
-// 批量查询昵称颜色（公开接口，无需登录；仅返回 3 级及以上用户的颜色）
+// 批量查询昵称颜色（公开接口，无需登录；仅返回 2 级及以上用户的颜色）
 void user_colors(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
     auto body = api_body(request.get_body());
     if (!body) return;
@@ -419,7 +427,7 @@ void user_colors(cinatra::coro_http_request& request, cinatra::coro_http_respons
         if (!Manager::User::get_level(uuid, level)) continue;
 
         std::string color;
-        if (level >= 3) Manager::User::get_name_color(uuid, color);
+        if (level >= 2) Manager::User::get_name_color(uuid, color);
 
         jsoncons::json entry = jsoncons::json::object();
         entry["uuid"]  = uuid;

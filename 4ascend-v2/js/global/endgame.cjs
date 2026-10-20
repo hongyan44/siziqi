@@ -9,13 +9,14 @@ const { RandAIC, RandUnity } = require('./fascend/rand.cjs');
 
 const BOARD_SIZE = 9;
 const BOARD_CELLS = BOARD_SIZE * BOARD_SIZE;
-// 当前写入版本；引导落子点自 V4 起追加，刷草计划自 V3 起追加。
-const ARCHIVE_VERSION = 4;
+// 当前写入版本；AI 预设自 V5 起追加，引导落子点自 V4 起追加，刷草计划自 V3 起追加。
+const ARCHIVE_VERSION = 5;
+const AI_PRESET_ARCHIVE_VERSION = 5;
 const GUIDE_ARCHIVE_VERSION = 4;
 const PLANT_ARCHIVE_VERSION = 3;
 const SNAPSHOT_ARCHIVE_VERSION = 2;
 const LEGACY_ARCHIVE_VERSION = 1;
-const SUPPORTED_ARCHIVE_VERSIONS = [ARCHIVE_VERSION, PLANT_ARCHIVE_VERSION, SNAPSHOT_ARCHIVE_VERSION, LEGACY_ARCHIVE_VERSION];
+const SUPPORTED_ARCHIVE_VERSIONS = [AI_PRESET_ARCHIVE_VERSION, GUIDE_ARCHIVE_VERSION, PLANT_ARCHIVE_VERSION, SNAPSHOT_ARCHIVE_VERSION, LEGACY_ARCHIVE_VERSION];
 const MAGIC = [0x45, 0x47, 0x4B]; // EGK: EndGame Keyframe
 const FALLBACK_AI = '4ascend-zero';
 
@@ -181,11 +182,12 @@ const normalize_turns = (turns) => (turns || []).slice(-255).map((move, index) =
 
 class EndgameArchive {
     /**
-     * V4 stores a complete turn-boundary snapshot: transient stone/state
+     * V5 stores a complete turn-boundary snapshot: transient stone/state
      * codes, both RNG streams, model history, move history, the authored
-     * solution line, the author-defined scheduled-plant plan, and the
-     * author-defined ordered guide-move markers.
-     * V1/V2/V3 decoding remains supported for published puzzles.
+     * solution line, the author-defined scheduled-plant plan, the
+     * author-defined ordered guide-move markers, and the author-defined
+     * AI-preset move sequence.
+     * V1~V4 decoding remains supported for published puzzles.
      */
     static save(data) {
         if (!data || typeof data !== 'object') throw new TypeError('残局数据无效');
@@ -196,6 +198,8 @@ class EndgameArchive {
         if (blackBook.length !== whiteTurns.length) throw new RangeError('黑方正着与白方预案手数必须一致');
         const plantSchedule = normalize_plant_schedule(data.plantSchedule || data.plant_schedule);
         const guideMoves = normalize_moves(data.guideMoves || data.guide_moves || [], '引导落子点');
+        // V5：作者定义的白方 AI 预设落子顺序；只要存在，白方 AI 就无条件按它落子。
+        const aiPreset = normalize_moves(data.aiPreset || data.ai_preset || [], 'AI预设');
 
         const hp = data.hp || {};
         const snapshotHp = Array.isArray(snapshot.hp) ? snapshot.hp : [];
@@ -286,6 +290,10 @@ class EndgameArchive {
         // V4 追加作者定义的引导落子点顺序（V1/V2/V3 无此段，读取时按版本区分）。
         writer.write(guideMoves.length, 8);
         guideMoves.forEach((move) => { writer.write(move[0], 4); writer.write(move[1], 4); });
+
+        // V5 追加作者定义的 AI 预设落子顺序（V1~V4 无此段，读取时按版本区分）。
+        writer.write(aiPreset.length, 8);
+        aiPreset.forEach((move) => { writer.write(move[0], 4); writer.write(move[1], 4); });
 
         writer.align();
         const body = writer.toUint8Array();
@@ -404,6 +412,12 @@ class EndgameArchive {
             const guideCount = reader.read(8);
             for (let i = 0; i < guideCount; i++) guideMoves.push([reader.read(4), reader.read(4)]);
         }
+        // V5 起追加 AI 预设落子顺序；V1~V4 没有该段，保持向后兼容。
+        const aiPreset = [];
+        if (version >= AI_PRESET_ARCHIVE_VERSION) {
+            const aiCount = reader.read(8);
+            for (let i = 0; i < aiCount; i++) aiPreset.push([reader.read(4), reader.read(4)]);
+        }
         reader.align();
         const checksumOffset = reader.offset / 8;
         if (checksumOffset + 2 !== data.length) throw new Error('残局数据存在截断或多余字节');
@@ -425,6 +439,7 @@ class EndgameArchive {
             white_turns: whiteTurns,
             plant_schedule: plantSchedule,
             guide_moves: guideMoves,
+            ai_preset: aiPreset,
             snapshot,
             fallback: { mode: 'normal', ai: FALLBACK_AI, level: fallbackLevel, trigger: 'black-deviation' },
         };
@@ -516,4 +531,24 @@ const create_guide = (moves) => {
     return { active, current, advance, reset, 'snapshot': () => ({ index, cancelled, total: list.length, current: current() }) };
 };
 
-window.EndgameExports = { EndgameArchive, create_branch, create_guide, create_normal_ai_adapter, normalize_move };
+/**
+ * @description 创建 AI 预设落子控制器。
+ * 作者定义的 AI 预设是白方（AI）必须依序执行的落子队列：只要预设未走完，
+ * 白方就无条件按预设落子（与黑方是否命中正着无关）；预设点若不可落子，
+ * 该步由 AI 思考替代并消耗掉这一步，下一回合继续按预设的下一步走。
+ * 预设走完后由页面回退到普通模式（正着分支 / 战术 AI）。
+ * @param {[number, number][]} moves AI 预设落子点顺序（棋盘坐标）
+ * @return {{active: () => boolean, next: () => [number, number] | null, advance: () => number, reset: () => void, snapshot: () => object}}
+ */
+const create_ai_preset = (moves) => {
+    const list = (moves || []).map(normalize_move).filter(Boolean);
+    let index = 0;
+    const active = () => index < list.length;
+    const next = () => (active() ? list[index] : null);
+    // 无论该步是否可落子，都消耗当前这一步，保证预设顺序只推进不重复。
+    const advance = () => { if (active()) index++; return index; };
+    const reset = () => { index = 0; };
+    return { active, next, advance, reset, 'snapshot': () => ({ index, total: list.length, current: next() }) };
+};
+
+window.EndgameExports = { EndgameArchive, create_branch, create_guide, create_ai_preset, create_normal_ai_adapter, normalize_move };

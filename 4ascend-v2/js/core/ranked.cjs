@@ -1437,6 +1437,8 @@ const run = async () => {
     game_p2_ascend.innerText = 'PR: 0+0';
     game_p2_stone.innerText = foe_icon;
     game_p2_clock.innerText = `CLK: ${gl_foe_clock}`;
+    // 双方昵称颜色（登录玩家用自己设置的颜色，对方用其设置的颜色）
+    window.name_color_apply_pair([{ uuid: my_uuid, node: game_p1_name }, { uuid: foe_uuid, node: game_p2_name }]);
 
     game_redraw();
 

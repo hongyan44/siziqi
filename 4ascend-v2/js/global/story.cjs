@@ -148,7 +148,7 @@ const scheduleToText = (schedule) => (schedule || []).map((entry) => `${entry.tu
 
 /**
  * @description: 解析步数对话：3:标签A|6:标签B
- * 每条形如 第几手:标签，多条用 | 分隔；第几手按玩家落子计数（玩家第一次落子=第 1 手）。
+ * 每条形如 第几手:标签，多条用 | 分隔；第几手按落子总手数计数（玩家第一步=1、AI 应手=2、玩家第二次=3），可在任意步数触发。
  * @param {string} value
  * @return {{step: number, target: string}[]}
  */
