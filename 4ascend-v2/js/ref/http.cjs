@@ -436,6 +436,44 @@ window.http_docs_update = async (token, key, data) => {
 
 
 /**
+ * @description: 查询剧情角色与表情（公开接口，图片为 data URL）
+ * @return {Promise<{characters: {id: number, name: string, rep: string, expressions: {id: number, name: string, image: string}[]}[]} | void>}
+ */
+window.http_story_character_query = async () => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/character_query`, {});
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+/**
+ * @description: 新增剧情角色（仅管理员，图片为 data URL，只增不删）
+ * @param {string} token
+ * @param {string} name 角色名
+ * @param {string} image 代表图 data URL
+ * @return {Promise<{id: number} | void>}
+ */
+window.http_story_character_add = async (token, name, image) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/character_update`, { token, action: 'character', name, image }, 60000);
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+/**
+ * @description: 为角色新增表情（仅管理员，图片为 data URL，只增不删）
+ * @param {string} token
+ * @param {number} character_id
+ * @param {string} name 表情名
+ * @param {string} image 表情图 data URL
+ * @return {Promise<{id: number} | void>}
+ */
+window.http_story_expression_add = async (token, character_id, name, image) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/character_update`, { token, action: 'expression', character_id, name, image }, 60000);
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+
+/**
  * @description: 好友心跳（更新在线时间，返回待处理申请数与最新对战邀请）
  * @param {string} token
  * @return {Promise<{requests: number, invite: object | null} | void>}

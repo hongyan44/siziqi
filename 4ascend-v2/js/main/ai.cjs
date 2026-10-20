@@ -138,6 +138,7 @@ const ai_test = async (name, opt, synchronizeRandom = false) => {
  */
 const ai_level = (name, opt) => {
     if (name === '4ascend-zero') {
+        if (opt === '0') return 30;
         if (opt === '1') return 55;
         else if (opt === '2') return 115;
         else if (opt === '3') return 225;

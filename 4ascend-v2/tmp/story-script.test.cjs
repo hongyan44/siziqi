@@ -300,4 +300,212 @@ const TYPES = ['say', 'choice', 'label', 'say', 'game', 'label', 'say', 'end', '
     console.log('PASS: GameStory 定时刷草');
 }
 
+// 21) 台词扩展：[角色|表情] 解析（向后兼容 [角色]）
+{
+    const parsed = StoryScript.parse('[导员ZERO|微笑] 早上好。\n[导员ZERO] 普通台词。\n[|生气] 无角色名。\n结束');
+    assert.deepEqual(parsed.errors, [], '角色表情台词不应产生解析错误');
+    const says = parsed.nodes.filter((n) => n.type === 'say');
+    assert.deepEqual(
+        { speaker: says[0].speaker, expression: says[0].expression, text: says[0].text },
+        { speaker: '导员ZERO', expression: '微笑', text: '早上好。' }
+    );
+    assert.equal(says[1].expression, '', '未写表情时 expression 应为空（旧剧本不受影响）');
+    assert.equal(says[1].speaker, '导员ZERO');
+    assert.equal(says[2].speaker, '', '空角色名应保持为空');
+    assert.equal(says[2].expression, '生气', '角色名可留空，表情仍生效');
+    console.log('PASS: [角色|表情] 台词解析');
+}
+
+// 22) 台词扩展：还原（stringify）只在有表情时输出 |
+{
+    const out = StoryScript.stringify(StoryScript.parse('[导员ZERO|微笑] 早上好。\n[导员ZERO] 普通台词。\n结束'));
+    assert.ok(out.includes('[导员ZERO|微笑] 早上好。'), `带表情应还原出 |：${out}`);
+    assert.ok(out.includes('[导员ZERO] 普通台词。'), '无表情不应多出 |');
+    assert.deepEqual(StoryScript.validate(out), [], '还原后应校验通过');
+    console.log('PASS: 角色表情台词还原');
+}
+
+// 23) 条件分支：% IF / % ELSE 解析
+{
+    const src = [
+        '[A] 打完这局。',
+        '* 对局 第一场',
+        '% IF 胜利 -> 赢',
+        '% IF lose -> 输',
+        '% ELSE -> 平',
+        ':赢', '[A] 赢了', '结束',
+        ':输', '[A] 输了', '结束',
+        ':平', '[A] 平了', '结束',
+    ].join('\n');
+    const parsed = StoryScript.parse(src);
+    assert.deepEqual(parsed.errors, [], '条件分支不应产生解析错误');
+    const conds = parsed.nodes.filter((n) => n.type === 'cond');
+    assert.equal(conds.length, 3);
+    assert.deepEqual(conds[0], { type: 'cond', kind: 'if', condition: 'win', target: '赢' });
+    assert.deepEqual(conds[1], { type: 'cond', kind: 'if', condition: 'lose', target: '输' });
+    assert.deepEqual(conds[2], { type: 'cond', kind: 'else', condition: null, target: '平' }, 'ELSE 无判定条件');
+    assert.deepEqual(StoryScript.validate(src), []);
+    console.log('PASS: 条件分支解析');
+}
+
+// 24) 条件分支：校验与还原
+{
+    const badTarget = '[A] hi\n% IF 胜利 -> 不存在\n结束';
+    assert.ok(StoryScript.validate(badTarget).some((e) => e.includes('不存在')), '条件分支目标不存在应报错');
+    const badCond = '[A] hi\n% IF 大胜 -> 结束';
+    assert.ok(StoryScript.validate(badCond).some((e) => e.includes('条件无效')), '未知条件应报错');
+    const badArrow = '[A] hi\n% IF 胜利\n结束';
+    assert.ok(StoryScript.validate(badArrow).some((e) => e.includes('缺少')), '缺少 -> 标签应报错');
+
+    const src = '[A] hi\n% IF 胜利 -> 赢\n% ELSE -> 输\n:赢\n[A] 赢\n结束\n:输\n[A] 输\n结束';
+    const out = StoryScript.stringify(StoryScript.parse(src));
+    assert.ok(out.includes('% IF 胜利 -> 赢'), `IF 应还原：${out}`);
+    assert.ok(out.includes('% ELSE -> 输'), `ELSE 应还原：${out}`);
+    assert.deepEqual(StoryScript.validate(out), [], '还原后应校验通过');
+    console.log('PASS: 条件分支校验与还原');
+}
+
+// 25) 运行时：对局结果写入 last_outcome，供条件分支判定
+{
+    const src = [
+        '[A] 开打。',
+        '* 对局 第一场',
+        '  我方=黑',
+        '  胜利=赢', '  失败=输', '  平局=平',
+        ':赢', '[A] 赢了', '结束',
+        ':输', '[A] 输了', '结束',
+        ':平', '[A] 平了', '结束',
+    ].join('\n');
+    const rt = new StoryRuntime(StoryScript.parse(src));
+    assert.equal(rt.last_outcome, null, '初始应无对局结果上下文');
+    assert.equal(rt.advance().type, 'game');
+    assert.equal(rt.finish_game('lose').text, '输了');
+    assert.equal(rt.last_outcome, 'lose', '对局结束应记录结果供条件分支使用');
+    console.log('PASS: 对局结果写入条件上下文');
+}
+
+// 26) 运行时：step_cond 命中跳转 / 未命中前进 / ELSE 兜底
+{
+    const src = [
+        '[A] 开打。',
+        '* 对局 第一场',
+        '  我方=黑',
+        '% IF 胜利 -> 赢',
+        '% ELSE -> 输',
+        ':赢', '[A] 赢了', '结束',
+        ':输', '[A] 输了', '结束',
+    ].join('\n');
+
+    // 命中：先手推进到 IF 节点，结果为胜利时跳转胜利分支
+    const hit = new StoryRuntime(StoryScript.parse(src));
+    assert.equal(hit.advance().type, 'game');
+    assert.equal(hit.advance().type, 'cond');
+    hit.last_outcome = 'win';
+    assert.equal(hit.step_cond(hit.current()).text, '赢了', '命中 IF 胜利 应跳转');
+
+    // 未命中：结果为失败时跳过 IF，继续走到 ELSE 并跳转失败分支
+    const miss = new StoryRuntime(StoryScript.parse(src));
+    assert.equal(miss.advance().type, 'game');
+    assert.equal(miss.advance().type, 'cond');
+    miss.last_outcome = 'lose';
+    assert.equal(miss.step_cond(miss.current()).kind, 'else', '未命中 IF 应前进到 ELSE');
+    assert.equal(miss.step_cond(miss.current()).text, '输了', 'ELSE 应兜底跳转');
+
+    // 无结果（未打过对局）时 IF 不命中，由 ELSE 兜底
+    const none = new StoryRuntime(StoryScript.parse(src));
+    none.advance(); none.advance();
+    assert.equal(none.step_cond(none.current()).kind, 'else', '无对局结果时 IF 不命中');
+    assert.equal(none.step_cond(none.current()).text, '输了');
+    console.log('PASS: step_cond 条件跳转');
+}
+
+// 27) 结束残局：解析归一化（步数:N / 胜负 / 未配置）
+{
+    const gameOf = (text) => StoryScript.parse(text).nodes.find((n) => n.type === 'game');
+
+    const steps = StoryScript.parse('[A] x\n* 残局\n  结束残局=步数:12\n结束');
+    assert.deepEqual(steps.errors, [], '结束残局不应产生解析错误');
+    assert.equal(gameOf('[A] x\n* 残局\n  结束残局=步数:12\n结束').config.end_kind, 'steps');
+    assert.equal(gameOf('[A] x\n* 残局\n  结束残局=步数:12\n结束').config.end_steps, 12);
+    assert.equal(gameOf('[A] x\n* 残局\n  结束残局=步数:12\n结束').config.end_text, '步数:12');
+    assert.equal(gameOf('[A] x\n* 残局\n  结束残局=步数：8\n结束').config.end_steps, 8, '全角冒号也接受');
+
+    assert.equal(gameOf('[A] x\n* 残局\n  结束残局=胜负\n结束').config.end_kind, 'outcome');
+    assert.equal(gameOf('[A] x\n* 残局\n  结束残局=胜负\n结束').config.end_steps, 0);
+    assert.equal(gameOf('[A] x\n* 残局\n  我方=黑\n结束').config.end_kind, '', '未配置时无结束条件（等价胜负）');
+    console.log('PASS: 结束残局解析');
+}
+
+// 28) 结束残局：校验与还原
+{
+    assert.deepEqual(StoryScript.validate('[A] x\n* 残局\n  结束残局=胜负\n结束'), []);
+    assert.deepEqual(StoryScript.validate('[A] x\n* 残局\n  结束残局=步数:12\n结束'), []);
+    assert.ok(
+        StoryScript.validate('[A] x\n* 残局\n  结束残局=随便\n结束').some((e) => e.includes('结束残局')),
+        '非法结束残局应报错'
+    );
+
+    const out = StoryScript.stringify(StoryScript.parse('[A] x\n* 残局\n  残局码=AB12\n  结束残局=步数:12\n:赢\n[A] 赢\n结束'));
+    assert.ok(out.includes('结束残局=步数:12'), `结束残局应还原：${out}`);
+    assert.ok(out.indexOf('残局码=AB12') < out.indexOf('结束残局=步数:12'), '结束残局应紧随残局码');
+    assert.deepEqual(StoryScript.validate(out), [], '还原后应校验通过');
+    console.log('PASS: 结束残局校验与还原');
+}
+
+// 29) 步数对话：解析 / 校验 / 还原
+{
+    const src = '[A] x\n* 对局\n  步数对话=3:中场|6:结尾\n:中场\n[A] 中场\n继续对局\n:结尾\n[A] 结尾\n结束';
+    const parsed = StoryScript.parse(src);
+    assert.deepEqual(parsed.errors, [], '步数对话不应产生解析错误');
+    const game = parsed.nodes.find((n) => n.type === 'game');
+    assert.deepEqual(game.config.dialogues, [{ step: 3, target: '中场' }, { step: 6, target: '结尾' }], '步数对话应解析为 手数+标签');
+    assert.equal(game.config.dialogues_text, '3:中场|6:结尾');
+    assert.equal(StoryScript.parse('[A] x\n* 对局\n  步数对话=2：中场\n:中场\n[A] 中场\n结束').nodes.find((n) => n.type === 'game').config.dialogues[0].step, 2, '全角冒号也接受');
+
+    const out = StoryScript.stringify(parsed);
+    assert.ok(out.includes('步数对话=3:中场|6:结尾'), `步数对话应还原：${out}`);
+    const ordered = StoryScript.stringify(StoryScript.parse('[A] x\n* 对局\n  残局码=AB\n  结束残局=胜负\n  步数对话=3:中场\n:中场\n[A] 中场\n继续对局\n结束'));
+    assert.ok(ordered.indexOf('结束残局=胜负') < ordered.indexOf('步数对话=3:中场'), '步数对话应排在结束残局之后');
+    assert.deepEqual(StoryScript.validate(src), [], '应校验通过');
+    assert.deepEqual(StoryScript.validate(out), [], '还原后应校验通过');
+
+    assert.ok(
+        StoryScript.validate('[A] x\n* 对局\n  步数对话=abc:中场\n:中场\n[A] x\n结束').some((e) => e.includes('步数对话')),
+        '格式无效应报错'
+    );
+    assert.ok(
+        StoryScript.validate('[A] x\n* 对局\n  步数对话=3:不存在\n结束').some((e) => e.includes('不存在')),
+        '目标标签不存在应报错'
+    );
+    console.log('PASS: 步数对话解析/校验/还原');
+}
+
+// 30) 继续对局：节点解析与运行时前进
+{
+    const parsed = StoryScript.parse('[A] hi\n继续对局\n[A] 之后\n结束');
+    assert.deepEqual(parsed.errors, [], '继续对局不应产生解析错误');
+    assert.deepEqual(parsed.nodes.map((n) => n.type), ['say', 'resume', 'say', 'end']);
+    const out = StoryScript.stringify(parsed);
+    assert.ok(out.includes('继续对局'), '继续对局应还原');
+
+    const rt = new StoryRuntime(parsed);
+    assert.equal(rt.advance().type, 'resume', '继续对局应为 resume 节点');
+    assert.equal(rt.advance().text, '之后', 'resume 之后应能继续推进');
+    console.log('PASS: 继续对局节点解析');
+}
+
+// 31) 步数对话：按玩家手数匹配（模拟播放页触发判定）
+{
+    const config = StoryScript.parse('[A] x\n* 对局\n  步数对话=1:开场|3:中场\n:开场\n[A] 开场\n继续对局\n:中场\n[A] 中场\n继续对局\n结束').nodes.find((n) => n.type === 'game').config;
+    const triggered = new Set();
+    const pick = (count) => (config.dialogues || []).find((item) => item.step === count && !triggered.has(item.step));
+    assert.equal(pick(0), undefined, '第 0 手不触发');
+    assert.equal(pick(1).target, '开场', '第 1 手触发开场');
+    triggered.add(1);
+    assert.equal(pick(1), undefined, '同一手不重复触发');
+    assert.equal(pick(2), undefined, '未配置的手数不触发');
+    assert.equal(pick(3).target, '中场', '第 3 手触发中场');
+    console.log('PASS: 步数对话按玩家手数匹配');
+}
+
 console.log('story-script: ALL PASS');

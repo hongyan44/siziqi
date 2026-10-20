@@ -59,12 +59,13 @@ window.sleep_task = async (buttons, loading, task) => {
  * @description: 页面请求
  * @param {string} url
  * @param {Object} params
+ * @param {number} [timeout] 超时毫秒数，默认 5000（大图上传等场景可放宽）
  * @return {Promise<Object>}
  */
-window.fetch_task = async (url, params) => {
+window.fetch_task = async (url, params, timeout = 5000) => {
     const controller = new AbortController();
     const signal = controller.signal;
-    const timer = setTimeout(() => controller.abort(), 5000); // 毫秒
+    const timer = setTimeout(() => controller.abort(), timeout); // 毫秒
 
     try {
         params = Array.from(msgpack_lite.encode(params));

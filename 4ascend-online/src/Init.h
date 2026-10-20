@@ -9,6 +9,7 @@
 #include "api/http/Friend.h"
 #include "api/http/Puzzle.h"
 #include "api/http/Replay.h"
+#include "api/http/Story.h"
 #include "api/http/Time.h"
 #include "api/http/User.h"
 
@@ -23,6 +24,7 @@
 #include "manager/Replay.h"
 #include "manager/Ranked.h"
 #include "manager/Sms.h"
+#include "manager/Story.h"
 #include "manager/User.h"
 
 #include "libs/only/Flie.h"
@@ -56,6 +58,7 @@ inline void init() {
     Manager::Puzzle::init();
     Manager::Contest::init();
     Manager::Docs::init();
+    Manager::Story::init();
     Manager::Friend::init();
     // Manager::Token::init();
 
@@ -76,6 +79,7 @@ inline void init() {
         Manager::Puzzle::close();
         Manager::Contest::close();
         Manager::Docs::close();
+        Manager::Story::close();
         Manager::Friend::close();
         // Manager::Token::close();
 
@@ -149,6 +153,7 @@ inline void api(cinatra::coro_http_server& server) {
     Api::Http::Replay::load(server);
     Api::Http::Contest::load(server);
     Api::Http::Docs::load(server);
+    Api::Http::Story::load(server);
     Api::Http::Time::load(server);
 
 

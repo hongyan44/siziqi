@@ -10,6 +10,7 @@ const { STONE_ENUM, PLANT_ENUM, PLAYER_ENUM } = require('./enum.cjs');
  * 只改写“取用”环节，不参与“选子”：MCTS 的搜索、先验与打分完全保持原样，
  * 仅在引擎返回落点之后、真正落子之前，按难度把落点替换成更弱的选择。
  *
+ * - 入门（opt=0）：最低难度，同时叠加简单与普通两条规则（先占草改堵，未命中再卖血改打）。
  * - 简单（opt=1）：引擎若选了占草点，且盘面上存在玩家单独打点，则改为堵点。
  * - 普通（opt=2）：引擎若选了卖血点，则改为自己的打点；没有打点时才允许卖血。
  *
@@ -34,10 +35,11 @@ class AiHandicap {
     /**
      * 难度选项 → 取用弱化档位。
      * @param {string | number | null | undefined} option
-     * @return {'easy' | 'normal' | null}
+     * @return {'dumb' | 'easy' | 'normal' | null}
      */
     static levelOf(option) {
         const value = String(option === null || option === undefined ? '' : option);
+        if (value === '0') return 'dumb';
         if (value === '1') return 'easy';
         if (value === '2') return 'normal';
         return null;
@@ -60,9 +62,9 @@ class AiHandicap {
         if (!legal.includes(action)) return null;
 
         const info = this.describe(game, action);
-        return level === 'easy'
-            ? this.weakenEasy(game, action, info, legal)
-            : this.weakenNormal(game, action, info, legal);
+        if (level === 'easy') return this.weakenEasy(game, action, info, legal);
+        if (level === 'dumb') return this.weakenDumb(game, action, info, legal);
+        return this.weakenNormal(game, action, info, legal);
     }
 
     /**
@@ -144,6 +146,22 @@ class AiHandicap {
             || (b.selfPower.M - a.selfPower.M)
             || (a.action - b.action)
         )[0];
+    }
+
+    /**
+     * 入门难度（最低）：同时叠加简单与普通两条弱化规则。
+     * 先按简单规则处理占草点（改为堵玩家打点），未命中时再按普通规则处理卖血点（改自己打点）。
+     * @param {any} game
+     * @param {number} action
+     * @param {ReturnType<AiHandicap['describe']>} info
+     * @param {number[]} legal
+     */
+    weakenDumb(game, action, info, legal) {
+        const rewritten = this.weakenEasy(game, action, info, legal)
+            || this.weakenNormal(game, action, info, legal);
+        if (!rewritten) return null;
+        rewritten.level = 'dumb';
+        return rewritten;
     }
 
     /**

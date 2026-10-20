@@ -7,9 +7,16 @@
 const BOARD_SIZE = 9;
 
 // 对局节点允许的配置键
-const GAME_KEYS = ['残局码', '刷草点', '刷草计划', '我方', '先手', '胜利', '失败', '平局'];
+const GAME_KEYS = ['残局码', '结束残局', '步数对话', '刷草点', '刷草计划', '我方', '先手', '胜利', '失败', '平局'];
 // 保留目标：直接结束剧情
 const END_TARGETS = ['结束', '剧终'];
+// 返回对局：中途触发的对话播完后回到当前对局继续下棋
+const RESUME_KEYWORDS = ['继续对局', '返回对局'];
+
+// 条件分支：% IF 条件 -> 标签 / % ELSE -> 标签
+// 条件取自"最近一次对局的结果"
+const COND_MAP = { '胜利': 'win', 'win': 'win', '失败': 'lose', 'lose': 'lose', '平局': 'draw', 'draw': 'draw' };
+const COND_TEXT = { 'win': '胜利', 'lose': '失败', 'draw': '平局' };
 
 const SIDE_BLACK = 'black';
 const SIDE_WHITE = 'white';
@@ -101,8 +108,16 @@ const normalizeGameConfig = (raw) => {
     const scheduleText = String(source['刷草计划'] == null ? '' : source['刷草计划']);
     const selfText = String(source['我方'] == null ? '' : source['我方']).trim();
     const firstText = String(source['先手'] == null ? '' : source['先手']).trim();
+    const endText = String(source['结束残局'] == null ? '' : source['结束残局']).trim();
+    const dialogueText = String(source['步数对话'] == null ? '' : source['步数对话']);
+    const endSteps = /^步数\s*[:：]\s*(\d+)$/.exec(endText);
     return {
         'archive': String(source['残局码'] == null ? '' : source['残局码']).trim(),
+        'end_text': endText,
+        'end_kind': endSteps ? 'steps' : endText === '胜负' ? 'outcome' : '',
+        'end_steps': endSteps ? Math.max(1, Number(endSteps[1])) : 0,
+        'dialogues': parseDialogues(dialogueText),
+        'dialogues_text': dialogueText,
         'points': parsePoints(pointsText),
         'points_text': pointsText,
         'schedule': parseSchedule(scheduleText),
@@ -130,6 +145,31 @@ const pointsToText = (points) => (points || []).map((point) => `${point[0]},${po
  * @return {string}
  */
 const scheduleToText = (schedule) => (schedule || []).map((entry) => `${entry.turn}:${pointsToText(entry.cells)}`).join('|');
+
+/**
+ * @description: 解析步数对话：3:标签A|6:标签B
+ * 每条形如 第几手:标签，多条用 | 分隔；第几手按玩家落子计数（玩家第一次落子=第 1 手）。
+ * @param {string} value
+ * @return {{step: number, target: string}[]}
+ */
+const parseDialogues = (value) => {
+    const result = [];
+    String(value == null ? '' : value).split('|').forEach((chunk) => {
+        const match = /^(\d+)\s*[:：]\s*(.+?)\s*$/.exec(chunk.trim());
+        if (!match) return;
+        const step = Number.parseInt(match[1], 10);
+        if (!Number.isInteger(step) || step < 1) return;
+        result.push({ 'step': step, 'target': match[2] });
+    });
+    return result;
+};
+
+/**
+ * @description: 把步数对话数组还原成文本
+ * @param {{step: number, target: string}[]} dialogues
+ * @return {string}
+ */
+const dialoguesToText = (dialogues) => (dialogues || []).map((entry) => `${entry.step}:${entry.target}`).join('|');
 
 
 class StoryScript {
@@ -163,10 +203,34 @@ class StoryScript {
                 return;
             }
 
-            // 对话框：[说话人] 台词
+            // 对话框：[说话人] 台词 / [角色|表情] 台词
             const say = text_.match(/^\[([^\]]*)\]\s*(.*)$/);
             if (say) {
-                nodes.push({ 'type': 'say', 'speaker': say[1].trim(), 'text': say[2].trim() });
+                const raw = say[1].trim();
+                const split = raw.indexOf('|');
+                const speaker = split < 0 ? raw : raw.slice(0, split).trim();
+                const expression = split < 0 ? '' : raw.slice(split + 1).trim();
+                nodes.push({ 'type': 'say', 'speaker': speaker, 'expression': expression, 'text': say[2].trim() });
+                pending = null;
+                return;
+            }
+
+            // 条件分支：% IF 胜利 -> 标签 / % ELSE -> 标签
+            if (text_.startsWith('%')) {
+                const body = text_.slice(1).trim();
+                const arrow = body.indexOf('->');
+                if (arrow < 0) { errors.push(`第 ${lineIndex + 1} 行条件分支缺少“-> 标签”：${text_}`); return; }
+                const head = body.slice(0, arrow).trim();
+                const target = body.slice(arrow + 2).trim();
+                if (/^else$/i.test(head)) {
+                    nodes.push({ 'type': 'cond', 'kind': 'else', 'condition': null, 'target': target });
+                    pending = null;
+                    return;
+                }
+                const stripped = head.replace(/^if\s*/i, '').trim();
+                const condition = COND_MAP[stripped] || COND_MAP[stripped.toLowerCase()] || null;
+                if (!condition) { errors.push(`第 ${lineIndex + 1} 行条件无效：${text_}（可用 胜利 / 失败 / 平局）`); return; }
+                nodes.push({ 'type': 'cond', 'kind': 'if', 'condition': condition, 'target': target });
                 pending = null;
                 return;
             }
@@ -223,6 +287,13 @@ class StoryScript {
                 return;
             }
 
+            // 继续对局：步数对话播完后回到当前对局
+            if (RESUME_KEYWORDS.includes(text_)) {
+                nodes.push({ 'type': 'resume' });
+                pending = null;
+                return;
+            }
+
             errors.push(`第 ${lineIndex + 1} 行无法识别：${text_}`);
         });
 
@@ -258,6 +329,9 @@ class StoryScript {
                 });
             } else if (node.type === 'jump') {
                 if (!hasTarget(node.target)) result.push(`跳转指向了不存在的标签：${node.target}`);
+            } else if (node.type === 'cond') {
+                if (!node.target) result.push(`第 ${index + 1} 个条件分支缺少跳转标签。`);
+                else if (!hasTarget(node.target)) result.push(`条件分支指向了不存在的标签：${node.target}`);
             } else if (node.type === 'game') {
                 const config = node.config;
                 if (config.self_text && config.self === null) result.push(`对局“${node.title}”的“我方”不是黑/白：${config.self_text}`);
@@ -267,6 +341,11 @@ class StoryScript {
                 });
                 if (config.points_text && config.points.length === 0) result.push(`对局“${node.title}”的刷草点格式无效：${config.points_text}`);
                 if (config.schedule_text && config.schedule.length === 0) result.push(`对局“${node.title}”的刷草计划格式无效：${config.schedule_text}（应形如 3:4,4;5,4|9:2,2）`);
+                if (config.end_text && !config.end_kind) result.push(`对局“${node.title}”的“结束残局”格式无效：${config.end_text}（应为 胜负 或 步数:12）`);
+                if (config.dialogues_text && !config.dialogues.length) result.push(`对局“${node.title}”的“步数对话”格式无效：${config.dialogues_text}（应形如 3:标签|6:标签）`);
+                (config.dialogues || []).forEach((item) => {
+                    if (!hasTarget(item.target)) result.push(`对局“${node.title}”的步数对话指向了不存在的标签：${item.target}`);
+                });
             } else if (node.type === 'mark') {
                 if (node.kind === 'arrow') {
                     const anchor = String(node.target || '').trim();
@@ -290,7 +369,7 @@ class StoryScript {
         const nodes = (parsed && parsed.nodes) || [];
         const lines = [];
         nodes.forEach((node) => {
-            if (node.type === 'say') lines.push(`[${node.speaker}] ${node.text}`);
+            if (node.type === 'say') lines.push(node.expression ? `[${node.speaker}|${node.expression}] ${node.text}` : `[${node.speaker}] ${node.text}`);
             else if (node.type === 'choice') {
                 lines.push(`? ${node.prompt}`);
                 (node.options || []).forEach((item) => lines.push(`- ${item.text} -> ${item.target}`));
@@ -298,6 +377,8 @@ class StoryScript {
                 const config = node.config || normalizeGameConfig(node.config_raw || {});
                 lines.push(`* ${node.title}`);
                 if (config.archive) lines.push(`  残局码=${config.archive}`);
+                if (config.end_text) lines.push(`  结束残局=${config.end_text}`);
+                if (config.dialogues.length) lines.push(`  步数对话=${dialoguesToText(config.dialogues)}`);
                 if (config.points.length) lines.push(`  刷草点=${pointsToText(config.points)}`);
                 if (config.schedule.length) lines.push(`  刷草计划=${scheduleToText(config.schedule)}`);
                 if (config.self) lines.push(`  我方=${config.self === SIDE_BLACK ? '黑' : '白'}`);
@@ -307,7 +388,11 @@ class StoryScript {
                 if (config.draw) lines.push(`  平局=${config.draw}`);
             } else if (node.type === 'label') lines.push(`:${node.name}`);
             else if (node.type === 'jump') lines.push(`-> ${node.target}`);
-            else if (node.type === 'end') lines.push('结束');
+            else if (node.type === 'cond') {
+                if (node.kind === 'else') lines.push(`% ELSE -> ${node.target}`);
+                else lines.push(`% IF ${COND_TEXT[node.condition] || node.condition} -> ${node.target}`);
+            } else if (node.type === 'end') lines.push('结束');
+            else if (node.type === 'resume') lines.push('继续对局');
             else if (node.type === 'mark') {
                 const tail = node.color ? ` 色=${node.color}` : '';
                 if (node.kind === 'clear') lines.push('@ 清除');
@@ -330,6 +415,8 @@ class StoryRuntime {
         this.nodes = (parsed && parsed.nodes) || [];
         this.labels = (parsed && parsed.labels) || {};
         this.index = 0;
+        // 最近一次对局的结果（'win' | 'lose' | 'draw'），供条件分支判定
+        this.last_outcome = null;
         this.skip_labels();
     }
 
@@ -413,8 +500,20 @@ class StoryRuntime {
      * @return {object}
      */
     finish_game(outcome) {
+        this.last_outcome = outcome;
         const target = this.resolve_game(outcome);
         return target ? this.goto(target) : this.advance();
+    }
+
+    /**
+     * @description: 条件分支（% IF / % ELSE）判定：命中则跳转，未命中则前进到下一个节点
+     * @param {object} node
+     * @return {object}
+     */
+    step_cond(node) {
+        if (!node) return this.current();
+        if (node.kind === 'else' || (node.kind === 'if' && this.last_outcome === node.condition)) return this.goto(node.target);
+        return this.advance();
     }
 }
 
@@ -511,6 +610,6 @@ const DEFAULT_CATALOG = {
     ],
 };
 
-globalThis.StoryExports = { StoryScript, StoryRuntime, DEFAULT_CATALOG, BOARD_SIZE, MARK_ANCHORS };
+globalThis.StoryExports = { StoryScript, StoryRuntime, DEFAULT_CATALOG, BOARD_SIZE, MARK_ANCHORS, COND_TEXT, COND_MAP };
 
-export { StoryScript, StoryRuntime, DEFAULT_CATALOG, MARK_ANCHORS };
+export { StoryScript, StoryRuntime, DEFAULT_CATALOG, MARK_ANCHORS, COND_TEXT, COND_MAP };

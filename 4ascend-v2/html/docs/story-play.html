@@ -53,11 +53,14 @@
         #game_p1_name, #game_p1_hp, #game_p2_name, #game_p2_hp { transition: color .5s ease; }
         .dialogue-panel { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1100; padding: .75rem; transition: transform .3s ease, opacity .3s ease; }
         .dialogue-panel.is-hidden { transform: translateY(120%); opacity: 0; pointer-events: none; }
-        .dialogue-inner { max-width: 900px; margin-inline: auto; background: rgba(23, 26, 33, .94); color: #f5f6f8; border-radius: .8rem; box-shadow: 0 -6px 26px rgba(0, 0, 0, .35); padding: 1rem 1.1rem 1.1rem; cursor: pointer; }
+        .dialogue-inner { max-width: 900px; margin-inline: auto; background: rgba(23, 26, 33, .94); color: #f5f6f8; border-radius: .8rem; box-shadow: 0 -6px 26px rgba(0, 0, 0, .35); padding: 1rem 1.1rem 1.1rem; cursor: pointer; display: flex; align-items: center; gap: 1rem; }
         .met-cursor-pointer .dialogue-inner { cursor: pointer; }
-        .dialogue-head { display: flex; align-items: center; gap: .6rem; margin-bottom: .55rem; }
-        .dialogue-avatar { width: 38px; height: 38px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: #3498db; color: #fff; font-size: 1.2rem; flex: 0 0 auto; }
-        .dialogue-speaker { font-weight: 700; font-size: 1.02rem; color: #8fd0ff; }
+        .dialogue-face { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: .4rem; }
+        .dialogue-face-frame { position: relative; display: flex; align-items: center; justify-content: center; border: 2px solid #000; border-radius: .4rem; background: #0b0d11; overflow: hidden; }
+        .dialogue-face-frame img { display: block; width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; }
+        .dialogue-face-frame sl-icon { font-size: 1.6rem; color: #57616e; }
+        .dialogue-speaker { font-weight: 700; font-size: .95rem; line-height: 1.25; color: #8fd0ff; text-align: center; max-width: 100%; word-break: break-all; }
+        .dialogue-body { flex: 1 1 auto; min-width: 0; }
         .dialogue-text { font-size: clamp(1rem, 2.4vw, 1.18rem); line-height: 1.85; min-height: 4.2em; white-space: pre-wrap; }
         .dialogue-options { display: flex; flex-direction: column; gap: .5rem; margin-top: .85rem; }
         .dialogue-option { text-align: left; border: 1px solid rgba(143, 208, 255, .5); background: rgba(52, 152, 219, .16); color: #eaf6ff; border-radius: .5rem; padding: .55rem .8rem; font-size: 1rem; transition: background .15s ease, border-color .15s ease; }
@@ -68,6 +71,7 @@
         .result-overlay-icon { font-size: 4.4rem; color: #ffd166; }
         .result-overlay.is-win .result-overlay-icon { color: #62d84e; }
         .result-overlay.is-lose .result-overlay-icon { color: #ff6b6b; }
+        .result-overlay.is-draw .result-overlay-icon { color: #8fd0ff; }
         .result-overlay-text { font-size: 2rem; font-weight: 800; margin-top: .6rem; letter-spacing: .06em; }
         .ending-panel { position: fixed; inset: 0; z-index: 1200; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(12, 14, 18, .9); color: #fff; gap: 1rem; }
         .ending-title { font-size: 2.6rem; font-weight: 800; letter-spacing: .3em; }
@@ -152,13 +156,18 @@
 
     <div id='dialogue' class='dialogue-panel is-hidden'>
         <div class='dialogue-inner'>
-            <div class='dialogue-head'>
-                <div class='dialogue-avatar'><sl-icon name='person-fill'></sl-icon></div>
+            <div id='dialogue_face' class='dialogue-face'>
+                <div id='dialogue_face_frame' class='dialogue-face-frame'>
+                    <img id='dialogue_face_img' alt='角色表情' class='d-none'>
+                    <sl-icon id='dialogue_face_holder' name='person-fill'></sl-icon>
+                </div>
                 <div id='dialogue_speaker' class='dialogue-speaker'>旁白</div>
             </div>
-            <div id='dialogue_text' class='dialogue-text'></div>
-            <div id='dialogue_options' class='dialogue-options d-none'></div>
-            <div id='dialogue_next' class='dialogue-next'>点击继续 ▼</div>
+            <div class='dialogue-body'>
+                <div id='dialogue_text' class='dialogue-text'></div>
+                <div id='dialogue_options' class='dialogue-options d-none'></div>
+                <div id='dialogue_next' class='dialogue-next'>点击继续 ▼</div>
+            </div>
         </div>
     </div>
 
@@ -195,6 +204,12 @@
         let branch = null;
         let bookedWhite = null;
         let moves = [];
+        let endLimit = 0;
+        // 步数对话：按玩家落子计数（第一次落子=1），达到配置手数时暂停本局播放对话
+        let playerMoveCount = 0;
+        let triggeredSteps = new Set();
+        let gameNodeIndex = 0;
+        let pendingResume = null;
         let running = false;
         let gameOver = false;
         let gameGeneration = 0;
@@ -220,6 +235,7 @@
             typingIndex = typingChars.length;
             $('dialogue_text').textContent = typingChars.join('');
             $('dialogue_next').classList.remove('d-none');
+            layoutFace();
             return true;
         };
         const typeText = (text) => {
@@ -231,10 +247,75 @@
             typingTimer = setInterval(() => {
                 typingIndex++;
                 $('dialogue_text').textContent = typingChars.slice(0, typingIndex).join('');
+                layoutFace();
                 if (typingIndex >= typingChars.length) { clearInterval(typingTimer); typingTimer = null; $('dialogue_next').classList.remove('d-none'); }
             }, 22);
         };
         const applyPlaceholders = (text) => String(text == null ? '' : text).split('<玩家名称>').join(playerName);
+
+        // ==================== 角色表情框（对话框最左侧固定） ====================
+        const FACE_RATIO = 1.5; // 宽 : 高 = 1 : 1.5（竖版）
+        const characterIndex = new Map();
+
+        // 拉取角色与表情数据（管理员上传），建立 角色名 -> {代表图, 表情名->图} 索引
+        const loadCharacters = async () => {
+            characterIndex.clear();
+            try {
+                const data = window.http_story_character_query ? await window.http_story_character_query() : null;
+                const list = data && Array.isArray(data.characters) ? data.characters : [];
+                list.forEach((item) => {
+                    if (!item || !item.name) return;
+                    const expressions = new Map();
+                    (Array.isArray(item.expressions) ? item.expressions : []).forEach((expression) => {
+                        if (expression && expression.name) expressions.set(String(expression.name), String(expression.image || ''));
+                    });
+                    characterIndex.set(String(item.name), { 'rep': String(item.rep || ''), 'expressions': expressions });
+                });
+            } catch (error) {
+                console.warn('剧情角色数据加载失败，表情框将显示占位图。', error);
+            }
+        };
+
+        // 取图：优先命中指定表情，其次回退角色代表图
+        const faceImage = (speaker, expression) => {
+            const character = characterIndex.get(String(speaker == null ? '' : speaker));
+            if (!character) return '';
+            const image = expression ? character.expressions.get(String(expression)) : '';
+            return image || character.rep || '';
+        };
+
+        // 表情框高 = 黑框高的 3/4，垂直居中；宽 = 高 / 1.5。测量前先清空尺寸，避免文本换行与框尺寸互相影响
+        const layoutFace = () => {
+            const inner = document.querySelector('#dialogue .dialogue-inner');
+            const frame = $('dialogue_face_frame');
+            if (!inner || !frame) return;
+            frame.style.height = '';
+            frame.style.width = '';
+            const innerHeight = inner.getBoundingClientRect().height;
+            if (!innerHeight) return;
+            const height = Math.max(48, Math.round(innerHeight * 0.75));
+            const width = Math.max(32, Math.round(height / FACE_RATIO));
+            frame.style.height = `${height}px`;
+            frame.style.width = `${width}px`;
+        };
+
+        // 刷新表情框：角色名放在表情框下方，无图时回退占位图标
+        const renderFace = (speaker, expression) => {
+            $('dialogue_speaker').textContent = speaker || '旁白';
+            const image = faceImage(speaker, expression);
+            const img = $('dialogue_face_img');
+            const holder = $('dialogue_face_holder');
+            if (image) {
+                if (img.getAttribute('src') !== image) img.src = image;
+                img.classList.remove('d-none');
+                holder.classList.add('d-none');
+            } else {
+                img.removeAttribute('src');
+                img.classList.add('d-none');
+                holder.classList.remove('d-none');
+            }
+            layoutFace();
+        };
 
         // ==================== 剧情标注（红色动态箭头 / 旋转虚线圈） ====================
         const MARK_SIZE = 36;
@@ -451,14 +532,14 @@
             const node = runtime.current();
             if (!node || node.type === 'end' || runtime.is_end()) { endStory(); return; }
             if (node.type === 'say') {
-                $('dialogue_speaker').textContent = node.speaker || '旁白';
+                renderFace(node.speaker, node.expression);
                 $('dialogue_options').classList.add('d-none');
                 $('dialogue_options').innerHTML = '';
                 typeText(applyPlaceholders(node.text));
                 return;
             }
             if (node.type === 'choice') {
-                $('dialogue_speaker').textContent = '请选择';
+                renderFace('请选择', '');
                 typeText(applyPlaceholders(node.prompt));
                 const options = $('dialogue_options');
                 options.innerHTML = '';
@@ -473,8 +554,20 @@
                 return;
             }
             if (node.type === 'jump') { runtime.goto(node.target); renderNode(); return; }
+            if (node.type === 'cond') { runtime.step_cond(node); renderNode(); return; }
             if (node.type === 'mark') { applyMark(node); runtime.advance(); renderNode(); return; }
             if (node.type === 'game') { startGame(node); return; }
+            if (node.type === 'resume') {
+                const done = pendingResume;
+                if (done) {
+                    pendingResume = null;
+                    runtime.index = gameNodeIndex;
+                    mode = 'game';
+                    setDialogueVisible(false);
+                    done();
+                } else { runtime.advance(); renderNode(); }
+                return;
+            }
             runtime.advance(); renderNode();
         };
 
@@ -491,8 +584,10 @@
 
         const endStory = () => {
             mode = 'end';
+            gameOver = true;
             clearMarks();
             setDialogueVisible(false);
+            if (pendingResume) { const done = pendingResume; pendingResume = null; done(); }
             const tip = $('ending_tip');
             tip.textContent = `${runtime && runtime.nodes ? runtime.nodes.length : 0} 个节点已播放完毕。`;
             $('ending').classList.remove('d-none');
@@ -686,8 +781,13 @@
             if (!game.ed_tr_1(move[0], move[1])) { game.history_boards.pop(); return false; }
             await syncAiStone(move[0], move[1], generation);
             moves.push({ move, source });
+            if (source === 'player') playerMoveCount++;
             await renderMove(move[0], move[1], source, generation);
-            return await settleRound(generation);
+            const ended = await settleRound(generation);
+            if (ended || gameOver) return true;
+            // 残局结束条件：本局落子数达到设定步数即结束（胜负优先，此处按平局处理）
+            if (endLimit > 0 && moves.length >= endLimit) { await concludeGame(null); return true; }
+            return false;
         };
 
         const runAiTurns = async (generation) => {
@@ -704,6 +804,22 @@
             }
         };
 
+        // 步数对话：玩家第 N 手落子后暂停本局，跳转到配置的标签播放对话；“继续对局”回到棋盘
+        const runStepDialogues = async () => {
+            const entries = (currentConfig && currentConfig.dialogues) || [];
+            const hit = entries.find((item) => item.step === playerMoveCount && !triggeredSteps.has(item.step));
+            if (!hit || !hit.target) return;
+            if (!Object.prototype.hasOwnProperty.call(runtime.labels, hit.target) && hit.target !== '结束' && hit.target !== '剧终') return;
+            triggeredSteps.add(hit.step);
+            await new Promise((resolve) => {
+                pendingResume = resolve;
+                mode = 'dialogue';
+                setDialogueVisible(true);
+                runtime.goto(hit.target);
+                renderNode();
+            });
+        };
+
         const playerTurn = async (x, y) => {
             if (mode !== 'game' || running || gameOver || !state || state.turn_player !== selfPlayer) return;
             if (!aiReady) { setStatus('对手 AI 仍在准备，请稍候。', 'warning'); return; }
@@ -716,6 +832,8 @@
                 if (selfPlayer === PLAYER_ENUM.BLACK && branch) currentBook = await branch.black_move([x, y], {});
                 const ended = await applyMove([x, y], 'player', generation);
                 if (ended || gameOver) return;
+                await runStepDialogues();
+                if (mode !== 'game' || gameOver || generation !== gameGeneration) return;
                 const white = currentBook && currentBook.white_move ? currentBook.white_move : null;
                 // 作者预案命中时白方严格按预案应手；偏离后 currentBook.white_move 已是普通 AI 结果。
                 bookedWhite = white ? { white_move: white } : null;
@@ -828,12 +946,13 @@
         const concludeGame = async (winner) => {
             if (gameOver) return;
             gameOver = true;
-            const outcome = winner === selfPlayer ? 'win' : 'lose';
+            // winner 为 null 表示残局达到结束步数而中止，按平局处理
+            const outcome = winner === null || winner === undefined ? 'draw' : winner === selfPlayer ? 'win' : 'lose';
             renderInfo();
             const overlay = $('result_overlay');
             overlay.className = `result-overlay is-${outcome}`;
-            $('result_overlay_icon').name = outcome === 'win' ? 'trophy' : 'x-octagon';
-            $('result_overlay_text').textContent = outcome === 'win' ? '胜利！' : '失败…';
+            $('result_overlay_icon').name = outcome === 'win' ? 'trophy' : outcome === 'lose' ? 'x-octagon' : 'hourglass-split';
+            $('result_overlay_text').textContent = outcome === 'win' ? '胜利！' : outcome === 'lose' ? '失败…' : '平局';
             overlay.classList.remove('d-none');
             await sleep(1500);
             overlay.classList.add('d-none');
@@ -855,6 +974,9 @@
             $('board_wrap').classList.remove('is-dialogue');
             const generation = ++gameGeneration;
             running = true; gameOver = false; moves = []; bookedWhite = null;
+            playerMoveCount = 0; triggeredSteps = new Set(); gameNodeIndex = runtime.index; pendingResume = null;
+            // 结束残局=步数:N -> 本局第 N 手落子后结束；胜负 或未配置 -> 分出胜负才结束
+            endLimit = config.end_kind === 'steps' ? Math.max(0, Math.trunc(Number(config.end_steps) || 0)) : 0;
             pendingAscend[0].length = 0; pendingAscend[1].length = 0;
             if (aiWorkerThread) aiWorkerThread.terminate();
             aiWorkerThread = null; aiWorker = null; aiReady = false;
@@ -873,7 +995,7 @@
             if (!gameOver && generation === gameGeneration) setStatus(state.turn_player === selfPlayer ? '轮到你落子。' : '对手 AI 回合。', 'primary');
         };
 
-        window.addEventListener('resize', () => { if (ui && game) redraw(); dimKey = ''; drawDim(); });
+        window.addEventListener('resize', () => { if (ui && game) redraw(); dimKey = ''; drawDim(); layoutFace(); });
 
         (async () => {
             if (!window.get_token || !window.get_token()) { playerName = '你'; }
@@ -886,6 +1008,7 @@
             const levels = Array.isArray(catalog.levels) ? catalog.levels.slice().sort((a, b) => Number(a.level) - Number(b.level)) : [];
             const level = levels.find((item) => Number(item.level) === targetLevel) || levels[0];
             if (!level) { setStatus('未找到剧情关卡。', 'danger'); return; }
+            await loadCharacters();
             const parsed = StoryScript.parse(level.script);
             runtime = new StoryRuntime(parsed);
             $('story_subtitle').textContent = `第 ${level.level} 关 · ${level.title}`;

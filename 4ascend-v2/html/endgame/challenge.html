@@ -130,6 +130,7 @@
                             <canvas id='canvas_view_turn' class='pe-none'></canvas>
                             <canvas id='canvas_view_ascend' class='pe-none'></canvas>
                             <canvas id='canvas_view_move' class='pe-none'></canvas>
+                            <canvas id='canvas_guide' class='pe-none'></canvas>
                         </div>
                     </div>
                 </div>
@@ -178,6 +179,7 @@
     <sl-alert id='challenge_alert' variant='success' duration='2600' closable><sl-icon slot='icon' name='check2-circle'></sl-icon><span id='challenge_alert_text'>挑战已完成</span></sl-alert>
     <script>
         const boardCanvas = document.getElementById('canvas_board');
+        const guideCanvas = document.getElementById('canvas_guide');
         const params = new URLSearchParams(location.search);
         const isCodeChallenge = params.get('mode') === 'code';
         const archiveCode = params.get('code') || '';
@@ -192,7 +194,7 @@
                 localStorage.setItem(LEVEL_STORAGE_KEY, JSON.stringify(records));
             } catch (_) { /* 本机进度记录失败不影响对局 */ }
         };
-        const { EndgameArchive } = window.EndgameExports;
+        const { EndgameArchive, create_guide } = window.EndgameExports;
         const { GameNormal, GameBlight, GameNight, Board, State, RulesRuntime, PLAYER_ENUM, STONE_ENUM, PLANT_ENUM, ASCEND_ENUM, OVER_ENUM, RandAIC, RandUnity } = window.FAscendExports;
         const GameCanvas = window.GameExports.Canvas;
         const indexOf = (x, y) => y * 9 + x;
@@ -225,6 +227,10 @@
         let timerHandle = null;
         let challengeElapsed = 0;
         let lastAiDecision = null;
+        // 引导落子：按作者顺序依次提示玩家落点；未命中当前引导点则取消后续全部引导。
+        let guide = null;
+        let guideFrame = 0;
+        let guidePhase = 0;
         const ENDGAME_SIMULATIONS = 888;
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const cloneCells = (items) => items.map((item) => ({ stone: item.stone || 'none', plant: Number(item.plant) || 0 }));
@@ -369,6 +375,75 @@
                 else if (pos.plant === PLANT_ENUM.TWO) ui.draw_2plant(pos.x, pos.y);
             });
             if (state.turn_count > 0) ui.draw_stone_turn(state.turn_pos[0], state.turn_pos[1], '#FFD700', 5);
+        };
+
+        // ==================== 引导落子（红色虚线旋转圈） ====================
+        // 参考剧情模式的标注实现：全屏/覆盖画布上用 setLineDash + lineDashOffset 画出旋转虚线圈。
+        const GUIDE_COLOR = '#ff2d2d';
+        const hasActiveGuide = () => Boolean(guide && guide.active());
+        const drawGuide = () => {
+            if (!guideCanvas || !guideCanvas.getContext) return;
+            const ctx = guideCanvas.getContext('2d');
+            if (!ctx) return;
+            const rect = boardCanvas.getBoundingClientRect();
+            const cssW = rect.width || (ui && ui.size) || 0;
+            const cssH = rect.height || (ui && ui.size) || 0;
+            const dpr = window.devicePixelRatio || 1;
+            const pixelW = Math.max(1, Math.round(cssW * dpr));
+            const pixelH = Math.max(1, Math.round(cssH * dpr));
+            if (guideCanvas.width !== pixelW || guideCanvas.height !== pixelH) {
+                guideCanvas.width = pixelW;
+                guideCanvas.height = pixelH;
+                guideCanvas.style.width = `${cssW}px`;
+                guideCanvas.style.height = `${cssH}px`;
+            }
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, cssW, cssH);
+            if (!hasActiveGuide() || !ui || !ui.spacing || !ui.size || !cssW) return;
+            const target = guide.current();
+            const scale = cssW / ui.size;
+            const cx = (ui.offset + target[0] * ui.spacing) * scale;
+            const cy = (ui.offset + target[1] * ui.spacing) * scale;
+            const radius = ui.spacing * ((ui.stone_radius || 0.41) + 0.16) * scale;
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+            ctx.setLineDash([Math.max(6, radius * 0.38), Math.max(5, radius * 0.26)]);
+            ctx.lineDashOffset = -guidePhase;
+            ctx.strokeStyle = GUIDE_COLOR;
+            ctx.lineWidth = Math.max(3, radius * 0.16);
+            ctx.shadowColor = GUIDE_COLOR;
+            ctx.shadowBlur = Math.max(4, radius * 0.32);
+            ctx.stroke();
+            ctx.closePath();
+            ctx.restore();
+        };
+        const guideTick = () => {
+            if (!hasActiveGuide()) { guideFrame = 0; drawGuide(); return; }
+            guidePhase = (guidePhase + 1.6) % 720;
+            drawGuide();
+            guideFrame = requestAnimationFrame(guideTick);
+        };
+        const refreshGuide = () => {
+            if (!hasActiveGuide()) {
+                if (guideFrame) { cancelAnimationFrame(guideFrame); guideFrame = 0; }
+                drawGuide();
+                return;
+            }
+            if (!guideFrame) guideFrame = requestAnimationFrame(guideTick);
+        };
+        // 玩家落在当前引导点则推进到下一个；否则取消后续全部引导。
+        const advanceGuide = (x, y) => {
+            if (!hasActiveGuide()) return;
+            const result = guide.advance(x, y);
+            if (result.cancelled) setStatus('未按引导落子，后续引导已取消。', 'warning');
+            else if (result.done) setStatus('已按引导完成全部落子提示。', 'success');
+            refreshGuide();
+        };
+        const resetGuide = () => {
+            guide = create_guide((challengeData.guide_moves || []).map(archiveMoveToBoard));
+            guidePhase = 0;
+            refreshGuide();
         };
 
         const syncArchiveToBoard = () => {
@@ -623,6 +698,7 @@
                     setStatus('已偏离正着，4zero MCTS 已接管，后续不再校验正着。', 'warning');
                 }
                 moves.push({ move: [x, y], side: '黑方', source: deviated ? '4zero MCTS 模式' : '正着' });
+                advanceGuide(x, y);
                 await renderMove(x, y, 'PLAYER', generation);
                 const ended = await settleRound(generation);
                 if (!ended && !challengeOver) await playWhite(branchResult, generation);
@@ -765,6 +841,7 @@
             aiWorker = null;
             aiReady = false;
             createGame();
+            resetGuide();
             const boardBlackBook = (challengeData.black_book || []).map(archiveMoveToBoard);
             const boardWhiteTurns = (challengeData.white_turns || []).map(archiveMoveToBoard);
             branch = window.EndgameExports.create_branch(boardBlackBook, boardWhiteTurns, async () => {
@@ -807,7 +884,7 @@
         document.getElementById('challenge_result_back').addEventListener('click', () => {
             window.location.href = '/pages/endgame/index.html';
         });
-        window.addEventListener('resize', () => { if (ui && game) redraw(); });
+        window.addEventListener('resize', () => { if (ui && game) redraw(); refreshGuide(); });
         (async () => {
             await loadDailyChallenge();
             resetChallenge();

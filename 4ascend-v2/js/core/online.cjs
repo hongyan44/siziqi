@@ -112,6 +112,8 @@ let gl_rematch_my = false;
 let gl_rematch_foe = false;
 let gl_rematch_starting = false;
 let gl_end_active = false;
+// 对方已离开对局：结算界面无法再重赛
+let gl_rematch_foe_left = false;
 
 
 
@@ -753,6 +755,7 @@ const game_leave = async () => {
     while (true) {
         await window.sleep(4888);
 
+        // 对方是否已标记离开
         let result;
         gl_cf_client.start_resend(GameMessage.room_foele(gl_cf_room, gl_cf_token), 1000, 2000);
         for await (const event of gl_cf_client) if (event.type === 'message' && event.data.op === 'room_foele') {
@@ -760,10 +763,25 @@ const game_leave = async () => {
             break;
         }
         gl_cf_client.stop_resend(2000);
-        if (!result) continue;
+        const lef = Boolean(result);
+
+        // 对方心跳：超过 60 秒未上报同样视为离开（关闭页面 / 断线）
+        let exp = 0;
+        gl_cf_client.start_resend(GameMessage.room_foeex(gl_cf_room, gl_cf_token), 1000, 2000);
+        for await (const event of gl_cf_client) if (event.type === 'message' && event.data.op === 'room_foeex') {
+            exp = Number(event.data.result) || 0;
+            break;
+        }
+        gl_cf_client.stop_resend(2000);
+        const now = await window.http_time_ms();
+        const gone = exp > 0 && exp < now - 60 * 1000;
+
+        // 都没离开则继续检测
+        if (!lef && !gone) continue;
 
         gl_leave = true;
         gl_opponent_left = true;
+        rematch_foe_left();
         gl_cf_client.notify('$', null);
         gl_ui.notify_click('$', null);
     }
@@ -789,7 +807,10 @@ const rematch_set_label = (text) => {
  * @return {void}
  */
 const rematch_update_ui = () => {
-    if (gl_rematch_my) {
+    if (gl_rematch_foe_left) {
+        rematch_set_label('对方已离开');
+        button_end_restart.disabled = true;
+    } else if (gl_rematch_my) {
         rematch_set_label('等待对方接受');
         button_end_restart.disabled = true;
     } else if (gl_rematch_foe) {
@@ -802,6 +823,17 @@ const rematch_update_ui = () => {
 };
 
 /**
+ * @description: 对方已离开对局：停止重赛广播并同步结算界面按钮
+ * @return {void}
+ */
+const rematch_foe_left = () => {
+    gl_rematch_foe_left = true;
+    // 对方已离开，无需再广播重赛请求
+    gl_cf_client.stop_resend(910);
+    if (gl_end_active) rematch_update_ui();
+};
+
+/**
  * @description: 重置重赛共识状态
  * @return {void}
  */
@@ -809,6 +841,7 @@ const rematch_reset = () => {
     gl_rematch_my = false;
     gl_rematch_foe = false;
     gl_rematch_starting = false;
+    gl_rematch_foe_left = false;
     gl_end_active = false;
     rematch_update_ui();
 };
@@ -855,6 +888,7 @@ const rematch_try_start = async () => {
  */
 const rematch_agree = () => {
     if (!gl_end_active) return;
+    if (gl_rematch_foe_left) return;
     if (gl_rematch_my) return;
     gl_rematch_my = true;
 
@@ -874,11 +908,25 @@ const rematch_agree = () => {
  */
 const rematch_on_foe = (result) => {
     if (!gl_end_active) return;
+    if (gl_rematch_foe_left) return;
     if (!result || result.agree !== true) return;
     if (gl_rematch_foe) return;
     gl_rematch_foe = true;
     rematch_update_ui();
     rematch_try_start();
+};
+
+/**
+ * @description: 收到对方的退出通知（逃跑）：立刻判定“对方已离开”并结束本局
+ * @return {void}
+ */
+const rematch_on_foe_leave = () => {
+    if (gl_opponent_left) return;
+    gl_leave = true;
+    gl_opponent_left = true;
+    rematch_foe_left();
+    gl_cf_client.notify('$', null);
+    gl_ui.notify_click('$', null);
 };
 
 /**
@@ -892,6 +940,11 @@ const rematch_listen = async (client) => {
         if (event.type !== 'message' || event.data.op !== 'sync_player2player') continue;
 
         const result = event.data.result;
+        // 对方退出对局（逃跑）：立刻判定对方已离开，不必等轮询
+        if (result && result.type === 'game_leave') {
+            rematch_on_foe_leave();
+            continue;
+        }
         if (!result || result.type !== 'game_rematch') continue;
         rematch_on_foe(result);
     }
@@ -994,6 +1047,8 @@ const rematch_listen = async (client) => {
             break;
         }
         gl_cf_client.stop_resend(2001);
+        // 立刻通知对方我方已退出对局：对方结算界面的重赛按钮立即变为“对方已离开”
+        gl_cf_client.send(GameMessage.sync_player2player(gl_cf_room, gl_cf_token, { 'type': 'game_leave' }));
         toast.success('逃跑成功！');
         location.replace('/');
     });
@@ -1723,6 +1778,9 @@ const run_once = async () => {
     gl_end_active = true;
     dialog_end.classList.remove('d-none');
     dialog_end.show();
+    // 对方已离开对局（含本局中途逃跑/掉线）：重赛按钮显示“对方已离开”
+    gl_rematch_foe_left = Boolean(gl_opponent_left);
+    rematch_update_ui();
 
     // 仅在本地确认胜负后上传完整回放；双方都会上传，服务端按 hash 幂等去重（返回同一回放 ID）。
     let replay_id = 0;

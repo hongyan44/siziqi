@@ -49,6 +49,7 @@ const put = (game, color, cells, plant) => cells.forEach(([x, y]) => {
 });
 
 // 难度档位映射
+assert.equal(AiHandicap.levelOf('0'), 'dumb');
 assert.equal(AiHandicap.levelOf('1'), 'easy');
 assert.equal(AiHandicap.levelOf('2'), 'normal');
 assert.equal(AiHandicap.levelOf('3'), null);
@@ -56,7 +57,47 @@ assert.equal(AiHandicap.levelOf('4'), null);
 assert.equal(AiHandicap.levelOf('5'), null);
 assert.equal(AiHandicap.levelOf('6'), null);
 assert.equal(AiHandicap.levelOf(null), null);
-console.log('PASS: 仅简单/普通进入取用弱化，熟练及以上不参与');
+console.log('PASS: 入门/简单/普通进入取用弱化，熟练及以上不参与');
+
+// 0) 入门：同时叠加两条规则——占草点优先改堵
+{
+    const game = makeGame({ turn: R.BLACK });
+    put(game, S.WHITE, [[1, 4], [2, 4], [3, 4]]);
+    put(game, S.BLACK, [[0, 4]]);
+    game.board.set_plant(7, 7, P.ONE);
+
+    const result = handicap.adjust(game, xy(7, 7), '0');
+    assert.ok(result, '入门难度应改写占草落点');
+    assert.equal(result.level, 'dumb', '档位应标记为 dumb');
+    assert.equal(result.reason, 'easy-block-player-ascend');
+    assert.equal(result.action, xy(4, 4), '应改到玩家打点 (4,4)');
+    console.log('PASS: 入门难度叠加简单规则，占草点改堵玩家打点');
+}
+
+// 0b) 入门：非占草落点命中卖血 → 改自己打点
+{
+    const game = makeGame({ turn: R.BLACK });
+    put(game, S.WHITE_ASCEND, [[3, 4], [4, 4], [5, 4], [6, 4]]);
+    put(game, S.BLACK, [[6, 6], [6, 7], [6, 8]]);
+
+    const result = handicap.adjust(game, xy(4, 4), '0');
+    assert.ok(result, '入门难度应改写卖血落点');
+    assert.equal(result.level, 'dumb', '档位应标记为 dumb');
+    assert.equal(result.reason, 'normal-no-sell-blood');
+    const chosen = handicap.describe(game, result.action);
+    assert.equal(chosen.formsAscend, true, '改后的落点必须是自己的打点');
+    console.log('PASS: 入门难度叠加普通规则，卖血点改自身打点');
+}
+
+// 0c) 入门：既非占草也非卖血 → 不改写
+{
+    const game = makeGame({ turn: R.BLACK });
+    put(game, S.WHITE, [[1, 4], [2, 4], [3, 4]]);
+    put(game, S.BLACK, [[0, 4]]);
+    game.board.set_plant(7, 7, P.ONE);
+    assert.equal(handicap.adjust(game, xy(0, 0), '0'), null, '入门难度对普通落点不应改写');
+    console.log('PASS: 入门难度仅在命中占草/卖血时改写');
+}
 
 // 1) 简单：引擎取占草点 → 改堵玩家打点
 {

@@ -44,6 +44,13 @@ ok('setup 启动重赛监听', /rematch_listen\(gl_cf_client\);/.test(online_src
 ok('监听 game_rematch 消息', /result\.type !== 'game_rematch'/.test(online_src));
 ok('match-game 串行化上报链路', /end_report_chain = end_report_chain\.then\(task, task\);/.test(match_src));
 ok('match-game 已移除 contest_refresh_first', /contest_refresh_first/.test(match_src) === false);
+ok('结算按钮支持“对方已离开”文案', /rematch_set_label\('对方已离开'\)/.test(online_src));
+ok('对方离开时停止重赛广播', /const rematch_foe_left = \(\) => \{[\s\S]*?stop_resend\(910\)/.test(online_src));
+ok('结算画面渲染对方离开状态', /gl_rematch_foe_left = Boolean\(gl_opponent_left\);\s*\n\s*rematch_update_ui\(\);/.test(online_src));
+ok('game_leave 结合心跳判离线', /room_foeex/.test(online_src) && /const gone = exp > 0 && exp < now - 60 \* 1000;/.test(online_src));
+ok('心跳离开阈值为 60 秒（非 25 秒）', /now - 60 \* 1000/.test(online_src) && /now - 25 \* 1000/.test(online_src) === false);
+ok('逃跑时立刻通知对方退出', /type': 'game_leave'/.test(online_src));
+ok('监听并处理对方退出通知', /const rematch_on_foe_leave = \(\) => \{/.test(online_src) && /rematch_on_foe_leave\(\);/.test(online_src));
 
 // ---------- 2. 抽取真实重赛共识块 ----------
 const block_match = online_src.match(/\/\/ >>> rematch-handshake-begin([\s\S]*?)\/\/ <<< rematch-handshake-end/);
@@ -55,7 +62,9 @@ const make_harness = (src, initial = {}) => {
         run_calls: 0,
         hide_calls: 0,
         resent: [],
-        label: '重赛'
+        label: '重赛',
+        notified: [],
+        clicked: []
     };
 
     const label_node = { nodeType: 3, get textContent() { return state.label; }, set textContent(v) { state.label = v; } };
@@ -63,18 +72,24 @@ const make_harness = (src, initial = {}) => {
     const dialog_end = { hide: () => { state.hide_calls += 1; } };
     const client = {
         stop_resend: (id) => { state.resent.push(['stop', id]); },
-        start_resend: (msg, duration, id) => { state.resent.push(['start', id, msg]); }
+        start_resend: (msg, duration, id) => { state.resent.push(['start', id, msg]); },
+        send: (msg) => { state.resent.push(['send', 0, msg]); },
+        notify: (type, data) => { state.notified.push([type, data]); }
     };
+    const gl_ui = { notify_click: (type, data) => { state.clicked.push([type, data]); } };
     const GameMessage = { sync_player2player: (room, token, data) => ({ room, token, data }) };
     const run = () => { state.run_calls += 1; };
 
     const factory = new Function(
-        'button_end_restart', 'dialog_end', 'gl_cf_client', 'GameMessage', 'gl_cf_room', 'gl_cf_token', 'run',
+        'button_end_restart', 'dialog_end', 'gl_cf_client', 'GameMessage', 'gl_cf_room', 'gl_cf_token', 'run', 'gl_ui',
         [
             'let gl_rematch_my = false;',
             'let gl_rematch_foe = false;',
             'let gl_rematch_starting = false;',
             'let gl_end_active = false;',
+            'let gl_rematch_foe_left = false;',
+            'let gl_leave = false;',
+            'let gl_opponent_left = false;',
             'let gl_run_promise = Promise.resolve();',
             'let gl_first_index = 0;',
             'let gl_my_index = 0;',
@@ -82,12 +97,15 @@ const make_harness = (src, initial = {}) => {
             'let gl_cf_color = "rand";',
             src,
             'return {',
-            '    rematch_agree, rematch_on_foe, rematch_reset, rematch_next_config, rematch_update_ui,',
-            '    get: () => ({ my: gl_rematch_my, foe: gl_rematch_foe, starting: gl_rematch_starting, end: gl_end_active, first: gl_cf_first, color: gl_cf_color }),',
+            '    rematch_agree, rematch_on_foe, rematch_reset, rematch_next_config, rematch_update_ui, rematch_foe_left, rematch_on_foe_leave,',
+            '    get: () => ({ my: gl_rematch_my, foe: gl_rematch_foe, starting: gl_rematch_starting, end: gl_end_active, left: gl_rematch_foe_left, first: gl_cf_first, color: gl_cf_color, leave: gl_leave, opponent_left: gl_opponent_left }),',
             '    set: (o) => {',
             '        if ("end" in o) gl_end_active = o.end;',
             '        if ("my" in o) gl_rematch_my = o.my;',
             '        if ("foe" in o) gl_rematch_foe = o.foe;',
+            '        if ("left" in o) gl_rematch_foe_left = o.left;',
+            '        if ("leave" in o) gl_leave = o.leave;',
+            '        if ("opponent_left" in o) gl_opponent_left = o.opponent_left;',
             '        if ("first_index" in o) gl_first_index = o.first_index;',
             '        if ("my_index" in o) gl_my_index = o.my_index;',
             '        if ("run_promise" in o) gl_run_promise = o.run_promise;',
@@ -97,7 +115,7 @@ const make_harness = (src, initial = {}) => {
         ].join('\n')
     );
 
-    const api = factory(button_end_restart, dialog_end, client, GameMessage, 'room1', 'token1', run);
+    const api = factory(button_end_restart, dialog_end, client, GameMessage, 'room1', 'token1', run, gl_ui);
     api.set(initial);
     return { state, api, button_end_restart };
 };
@@ -177,6 +195,65 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
         ok('重置清空双方同意', s.my === false && s.foe === false);
         ok('重置恢复按钮文案', h.state.label === '重赛', h.state.label);
         ok('重置关闭共识窗口', s.end === false);
+    }
+    {
+        // 对方已离开：按钮显示“对方已离开”并禁用，且无法再发起/接受重赛
+        const h = make_harness(block_src, { end: true });
+        h.api.rematch_foe_left();
+        const s = h.api.get();
+        ok('标记对方已离开', s.left === true);
+        ok('按钮文案变为对方已离开', h.state.label === '对方已离开', h.state.label);
+        ok('对方已离开按钮禁用', h.button_end_restart.disabled === true);
+        ok('停止重赛广播（resend id=910）', h.state.resent.some((r) => r[0] === 'stop' && r[1] === 910));
+        h.api.rematch_agree();
+        ok('对方已离开时点击重赛无效', h.api.get().my === false && h.state.run_calls === 0);
+        h.api.rematch_on_foe({ type: 'game_rematch', agree: true });
+        ok('对方已离开时忽略重赛请求', h.api.get().foe === false && h.state.run_calls === 0);
+    }
+    {
+        // 已进入“等待对方接受”后再收到对方离开：文案被覆盖，且不重赛
+        const h = make_harness(block_src, { end: true });
+        h.api.rematch_agree();
+        h.api.rematch_foe_left();
+        ok('离开后覆盖等待重赛文案', h.state.label === '对方已离开', h.state.label);
+        h.api.rematch_reset();
+        ok('重置清除对方离开标记', h.api.get().left === false);
+        ok('重置恢复重赛文案', h.state.label === '重赛', h.state.label);
+    }
+    {
+        // 非结算期标记离开：不更新按钮，但标记保留（等待结算画面渲染）
+        const h = make_harness(block_src);
+        h.api.rematch_foe_left();
+        ok('未结算时不改按钮文案', h.state.label === '重赛', h.state.label);
+        ok('离开标记仍被保留', h.api.get().left === true);
+    }
+    {
+        // 收到对方退出通知（逃跑）：立刻判定对方已离开，无需等待轮询
+        const h = make_harness(block_src, { end: true });
+        h.api.rematch_on_foe_leave();
+        const s = h.api.get();
+        ok('收到退出通知立刻置自身失败标记', s.leave === true);
+        ok('收到退出通知立刻置对方离开标记', s.opponent_left === true);
+        ok('收到退出通知立刻置重赛离开标记', s.left === true);
+        ok('收到退出通知立刻改按钮文案', h.state.label === '对方已离开', h.state.label);
+        ok('收到退出通知立刻禁用按钮', h.button_end_restart.disabled === true);
+        ok('收到退出通知通知客户端结束', h.state.notified.some((n) => n[0] === '$'));
+        ok('收到退出通知唤醒 UI 结束结算', h.state.clicked.some((n) => n[0] === '$'));
+        // 重复通知不重复处理
+        const cnt = h.state.notified.length;
+        h.api.rematch_on_foe_leave();
+        ok('重复退出通知幂等', h.state.notified.length === cnt);
+    }
+    {
+        // 我方“等待对方接受”期间收到对方退出通知：文案立刻被覆盖
+        const h = make_harness(block_src, { end: true });
+        h.api.rematch_agree();
+        ok('先进入等待对方接受', h.state.label === '等待对方接受', h.state.label);
+        h.api.rematch_on_foe_leave();
+        ok('等待中收到退出立刻改文案', h.state.label === '对方已离开', h.state.label);
+        ok('等待中收到退出后不再开新局', h.state.run_calls === 0);
+        h.api.rematch_on_foe({ type: 'game_rematch', agree: true });
+        ok('退出后忽略对方重赛请求', h.state.run_calls === 0);
     }
     {
         // 重入保护：开局流程未完成时重复触发只开一局

@@ -9,9 +9,13 @@ const { RandAIC, RandUnity } = require('./fascend/rand.cjs');
 
 const BOARD_SIZE = 9;
 const BOARD_CELLS = BOARD_SIZE * BOARD_SIZE;
-const ARCHIVE_VERSION = 3;
+// 当前写入版本；引导落子点自 V4 起追加，刷草计划自 V3 起追加。
+const ARCHIVE_VERSION = 4;
+const GUIDE_ARCHIVE_VERSION = 4;
+const PLANT_ARCHIVE_VERSION = 3;
 const SNAPSHOT_ARCHIVE_VERSION = 2;
 const LEGACY_ARCHIVE_VERSION = 1;
+const SUPPORTED_ARCHIVE_VERSIONS = [ARCHIVE_VERSION, PLANT_ARCHIVE_VERSION, SNAPSHOT_ARCHIVE_VERSION, LEGACY_ARCHIVE_VERSION];
 const MAGIC = [0x45, 0x47, 0x4B]; // EGK: EndGame Keyframe
 const FALLBACK_AI = '4ascend-zero';
 
@@ -177,10 +181,11 @@ const normalize_turns = (turns) => (turns || []).slice(-255).map((move, index) =
 
 class EndgameArchive {
     /**
-     * V3 stores a complete turn-boundary snapshot: transient stone/state
+     * V4 stores a complete turn-boundary snapshot: transient stone/state
      * codes, both RNG streams, model history, move history, the authored
-     * solution line, and the author-defined scheduled-plant plan.
-     * V1/V2 decoding remains supported for published puzzles.
+     * solution line, the author-defined scheduled-plant plan, and the
+     * author-defined ordered guide-move markers.
+     * V1/V2/V3 decoding remains supported for published puzzles.
      */
     static save(data) {
         if (!data || typeof data !== 'object') throw new TypeError('残局数据无效');
@@ -190,6 +195,7 @@ class EndgameArchive {
         const whiteTurns = normalize_moves(data.whiteTurns || data.white_turns || [], '白方预案');
         if (blackBook.length !== whiteTurns.length) throw new RangeError('黑方正着与白方预案手数必须一致');
         const plantSchedule = normalize_plant_schedule(data.plantSchedule || data.plant_schedule);
+        const guideMoves = normalize_moves(data.guideMoves || data.guide_moves || [], '引导落子点');
 
         const hp = data.hp || {};
         const snapshotHp = Array.isArray(snapshot.hp) ? snapshot.hp : [];
@@ -277,6 +283,10 @@ class EndgameArchive {
             entry.cells.forEach((cell) => { writer.write(cell[0], 4); writer.write(cell[1], 4); });
         });
 
+        // V4 追加作者定义的引导落子点顺序（V1/V2/V3 无此段，读取时按版本区分）。
+        writer.write(guideMoves.length, 8);
+        guideMoves.forEach((move) => { writer.write(move[0], 4); writer.write(move[1], 4); });
+
         writer.align();
         const body = writer.toUint8Array();
         const result = new Uint8Array(body.length + 2);
@@ -294,7 +304,7 @@ class EndgameArchive {
         const magic = [reader.read(8), reader.read(8), reader.read(8)];
         if (magic.some((byte, index) => byte !== MAGIC[index])) throw new Error('不是有效的残局关卡数据');
         const version = reader.read(8);
-        if (version !== ARCHIVE_VERSION && version !== SNAPSHOT_ARCHIVE_VERSION && version !== LEGACY_ARCHIVE_VERSION) {
+        if (!SUPPORTED_ARCHIVE_VERSIONS.includes(version)) {
             throw new Error(`不支持的残局关卡版本: ${version}`);
         }
         const flags = reader.read(8);
@@ -378,7 +388,7 @@ class EndgameArchive {
         }
         // V3 起追加定时刷草计划；V1/V2 没有该段，保持向后兼容。
         const plantSchedule = [];
-        if (version >= ARCHIVE_VERSION) {
+        if (version >= PLANT_ARCHIVE_VERSION) {
             const scheduleCount = reader.read(8);
             for (let i = 0; i < scheduleCount; i++) {
                 const turn = reader.read(16);
@@ -387,6 +397,12 @@ class EndgameArchive {
                 for (let j = 0; j < cellCount; j++) scheduleCells.push([reader.read(4), reader.read(4)]);
                 plantSchedule.push({ turn, cells: scheduleCells });
             }
+        }
+        // V4 起追加引导落子点顺序；V1/V2/V3 没有该段，保持向后兼容。
+        const guideMoves = [];
+        if (version >= GUIDE_ARCHIVE_VERSION) {
+            const guideCount = reader.read(8);
+            for (let i = 0; i < guideCount; i++) guideMoves.push([reader.read(4), reader.read(4)]);
         }
         reader.align();
         const checksumOffset = reader.offset / 8;
@@ -408,6 +424,7 @@ class EndgameArchive {
             black_book: blackBook,
             white_turns: whiteTurns,
             plant_schedule: plantSchedule,
+            guide_moves: guideMoves,
             snapshot,
             fallback: { mode: 'normal', ai: FALLBACK_AI, level: fallbackLevel, trigger: 'black-deviation' },
         };
@@ -472,4 +489,31 @@ const create_normal_ai_adapter = (think) => {
     return async (context) => normalize_move(await think(context));
 };
 
-window.EndgameExports = { EndgameArchive, create_branch, create_normal_ai_adapter, normalize_move };
+
+/**
+ * @description 创建引导落子控制器。
+ * 作者定义的引导点是玩家（黑方）的依序落子提示：玩家命中当前引导点则推进到下一个；
+ * 一旦落在非当前引导点上，立即取消后续全部引导（不再提示）。
+ * @param {[number, number][]} moves 引导落子点顺序（棋盘坐标）
+ * @return {{active: () => boolean, current: () => [number, number] | null, advance: (x: number, y: number) => {active: boolean, matched: boolean, done: boolean, cancelled: boolean}, reset: () => void, snapshot: () => object}}
+ */
+const create_guide = (moves) => {
+    const list = (moves || []).map(normalize_move).filter(Boolean);
+    let index = 0;
+    let cancelled = false;
+    const active = () => !cancelled && index < list.length;
+    const exhausted = () => !cancelled && index >= list.length;
+    const current = () => (active() ? list[index] : null);
+    const advance = (x, y) => {
+        if (!active()) return { 'active': false, 'matched': false, 'done': exhausted(), 'cancelled': cancelled };
+        const expected = list[index];
+        const matched = expected[0] === x && expected[1] === y;
+        if (matched) index++;
+        else cancelled = true;
+        return { 'active': active(), 'matched': matched, 'done': exhausted(), 'cancelled': cancelled };
+    };
+    const reset = () => { index = 0; cancelled = false; };
+    return { active, current, advance, reset, 'snapshot': () => ({ index, cancelled, total: list.length, current: current() }) };
+};
+
+window.EndgameExports = { EndgameArchive, create_branch, create_guide, create_normal_ai_adapter, normalize_move };
