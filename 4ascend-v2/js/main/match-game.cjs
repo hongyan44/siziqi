@@ -75,7 +75,7 @@ const BaseZalgo = window.UtilsExports.BaseZalgo;
 const toast = new ShToast();
 
 const { verify_foe_identity } = require('./contest-verify.cjs');
-const { locate_pair_by_uuid, series_view } = require('./contest-series.cjs');
+const { locate_pair_by_uuid, series_view, next_first_hand } = require('./contest-series.cjs');
 
 
 // 赛事系列赛上下文（按 uuid 定位分组后填充）
@@ -300,6 +300,9 @@ const refresh_series_from_node = (node) => {
     contest_ctx.mine = view.mine;
     contest_ctx.foe = view.foe;
     contest_ctx.next_index = view.next_index;
+    // 先手轮换所需：签表配置与已完赛记录（含每局先手方）
+    contest_ctx.rotate = node.rotate;
+    contest_ctx.games = view.games;
 };
 
 /**
@@ -339,6 +342,27 @@ const render_series_end = () => {
 };
 
 /**
+ * @description: 按“先手轮换”配置推导本局先手，并预置到先手选择框
+ *   第 1 局随机；第 2 局起与上一局实际先手交换（依据签表记录，双方一致）。
+ *   结果只与局号和记录有关，因此无论从表单重新加入还是点重赛开新局都一致。
+ *   仅预置默认值，不锁定选择框。
+ * @return {void}
+ */
+const apply_next_first = () => {
+    if (!contest_ctx) return;
+
+    const value = next_first_hand({
+        rotate: contest_ctx.rotate,
+        index: contest_ctx.next_index,
+        my_uuid: contest_ctx.my_uuid,
+        foe_uuid: contest_ctx.foe_uuid,
+        games: contest_ctx.games
+    });
+
+    select_server_first.value = value;
+};
+
+/**
  * @description: 读取服务端签表并按 uuid 定位本组，刷新系列赛上下文
  * @return {Promise<boolean>} 是否定位到本组
  */
@@ -370,6 +394,8 @@ const sync_contest = async () => {
         };
         refresh_series_from_node(located.node);
         render_series();
+        // 依局号与签表记录预置本局先手（第 1 局随机，之后逐局交换）
+        apply_next_first();
         return true;
     } catch (error) {
         console.error(error);
@@ -400,9 +426,13 @@ const handle_contest_end = (payload) => {
         contest_ctx.mine = Number(result.wins && result.wins[contest_ctx.my_uuid]) || 0;
         contest_ctx.foe = Number(result.wins && result.wins[contest_ctx.foe_uuid]) || 0;
         contest_ctx.next_index = contest_ctx.mine + contest_ctx.foe + 1;
+        // 用回放交叉校验后的最新记录刷新先手轮换依据（含本局先手方）
+        if (Array.isArray(result.games)) contest_ctx.games = result.games;
 
         render_series();
         render_series_end();
+        // 依局号与记录预置下一局先手（与重赛按钮的交换结果一致）
+        apply_next_first();
 
         // 本组 BO 已分出胜负：按最新签表重新定位，晋级后可直接确认下一轮的对手并开赛
         const completed = contest_ctx.mine >= contest_ctx.target || contest_ctx.foe >= contest_ctx.target;

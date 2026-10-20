@@ -87,6 +87,38 @@ size_t name_length(std::string_view value) noexcept {
 bool is_name(std::string_view value) noexcept {
     return !value.empty() && name_length(value) <= 16;
 }
+
+// 纯色：# 加恰好 6 位十六进制（大小写均可）
+bool is_solid_color(std::string_view value) noexcept {
+    if (value.size() != 7 || value[0] != '#') return false;
+    for (size_t index = 1; index < 7; ++index) {
+        const char c = value[index];
+        const bool hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+        if (!hex) return false;
+    }
+    return true;
+}
+
+// 渐变：linear-gradient(90deg,#rrggbb,#rrggbb[, #rrggbb])，禁止空格，仅 2 或 3 个色标
+bool is_gradient_color(std::string_view value) noexcept {
+    static constexpr std::string_view PREFIX = "linear-gradient(90deg,";
+    if (value.size() <= PREFIX.size() + 1) return false;
+    if (value.compare(0, PREFIX.size(), PREFIX) != 0) return false;
+    if (value.back() != ')') return false;
+
+    const auto body = value.substr(PREFIX.size(), value.size() - PREFIX.size() - 1);
+    int stops = 0;
+    size_t start = 0;
+    while (true) {
+        const auto comma = body.find(',', start);
+        const auto end   = comma == std::string_view::npos ? body.size() : comma;
+        if (!is_solid_color(body.substr(start, end - start))) return false;
+        stops += 1;
+        if (comma == std::string_view::npos) break;
+        start = comma + 1;
+    }
+    return stops == 2 || stops == 3;
+}
 } // namespace
 
 // 用户注册（邮箱或手机号 + 验证码 + 账号 + 密码，注册后不自动登录）
@@ -262,6 +294,10 @@ void user_info(cinatra::coro_http_request& request, cinatra::coro_http_response&
     info["level"] = level;
     // 密码以 HMAC 摘要存储，无法还原明文，这里只暴露“是否已设置”，供前端展示密码状态。
     info["has_pass"] = has_pass;
+    // 昵称颜色：老数据行可能没有该列值，读取失败时回退为空串，不阻断信息返回。
+    std::string name_color;
+    Manager::User::get_name_color(uuid, name_color);
+    info["name_color"] = name_color;
     // 好友专属短 ID：缺失时补发，供「账号信息」展示与好友搜索。
     std::string friend_id;
     if (!Manager::User::ensure_friend_id(uuid, friend_id)) return api_http_error("user_info", response);
@@ -328,6 +364,72 @@ void user_update(cinatra::coro_http_request& request, cinatra::coro_http_respons
 
     std::string buffer;
     api_end("user_update", true, jsoncons::json::null(), buffer);
+    response.set_status_and_content(cinatra::status_type::ok, buffer);
+};
+
+// 设置昵称颜色（3 级可用纯色，4 级额外可用渐变；空串表示清除）
+void user_set_color(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
+    auto body = api_body(request.get_body());
+    if (!body) return;
+    auto rjson = body.value();
+
+    auto bin = rjson["token"].as<jsoncons::byte_string_view>();
+    std::string token(bin.begin(), bin.end());
+
+    std::string uuid;
+    int level = 0;
+    if (!Manager::Token::token2uuid(token, uuid) || !Manager::User::exist_user(uuid) || !Manager::User::get_level(uuid, level)
+        || level < 3)
+        return api_http_error("user_set_color", response); // cp
+
+    const auto color = rjson.contains("color") && rjson["color"].is_string() ? rjson["color"].as<std::string>() : std::string();
+    if (color.size() > 128) return api_http_error("user_set_color", response); // cp
+
+    // 空串=清除；纯色 3 级可用；渐变仅 4 级可用，且需严格匹配语法。
+    if (!color.empty() && !is_solid_color(color) && !(level >= 4 && is_gradient_color(color)))
+        return api_http_error("user_set_color", response); // cp
+
+    if (!Manager::User::set_name_color(uuid, color)) return api_http_error("user_set_color", response); // cp
+
+    std::string buffer;
+    api_end("user_set_color", true, jsoncons::json::null(), buffer);
+    response.set_status_and_content(cinatra::status_type::ok, buffer);
+};
+
+// 批量查询昵称颜色（公开接口，无需登录；仅返回 3 级及以上用户的颜色）
+void user_colors(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
+    auto body = api_body(request.get_body());
+    if (!body) return;
+    auto rjson = body.value();
+
+    if (!rjson.contains("uuids") || !rjson["uuids"].is_array()) return api_http_error("user_colors", response); // cp
+
+    const auto& uuids = rjson["uuids"];
+    jsoncons::json result = jsoncons::json::array();
+    size_t index = 0;
+    for (const auto& item : uuids.array_range()) {
+        // 最多处理 32 个标识，避免超大请求拖慢响应。
+        if (index++ >= 32) break;
+        if (!item.is_string()) continue;
+
+        const auto uuid = item.as<std::string>();
+        if (uuid.empty() || !Manager::User::exist_user(uuid)) continue;
+
+        int level = 0;
+        if (!Manager::User::get_level(uuid, level)) continue;
+
+        std::string color;
+        if (level >= 3) Manager::User::get_name_color(uuid, color);
+
+        jsoncons::json entry = jsoncons::json::object();
+        entry["uuid"]  = uuid;
+        entry["color"] = color;
+        entry["level"] = level;
+        result.push_back(std::move(entry));
+    }
+
+    std::string buffer;
+    api_end("user_colors", true, result, buffer);
     response.set_status_and_content(cinatra::status_type::ok, buffer);
 };
 
@@ -453,6 +555,8 @@ void load(cinatra::coro_http_server& server) noexcept {
     server.set_http_handler<cinatra::POST>("/user/rtoken", user_rtoken);
     server.set_http_handler<cinatra::POST>("/user/info", user_info);
     server.set_http_handler<cinatra::POST>("/user/update", user_update);
+    server.set_http_handler<cinatra::POST>("/user/set_color", user_set_color);
+    server.set_http_handler<cinatra::POST>("/user/colors", user_colors);
     server.set_http_handler<cinatra::POST>("/user/set_pass", user_set_pass);
     server.set_http_handler<cinatra::POST>("/user/set_account", user_set_account);
     server.set_http_handler<cinatra::POST>("/user/unlock_level", user_unlock_level);

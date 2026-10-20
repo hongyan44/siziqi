@@ -2,15 +2,18 @@
  * 赛事 BO 系列（小分）纯逻辑回归。
  * 运行： node tmp/contest-series.cjs
  *
- * 背景：签表 node 增 bo（默认3，奇数）、results（按组的小分）。
- * 赛事对局保留手动先手/阵营选项，但不再由签表强制锁定先手（先手轮换逻辑已移除）。
- * 服务端按回放交叉校验后增量写入 results[group].games（每项 {replay_id, winner_uuid}）。
+ * 背景：签表 node 增 bo（默认3，奇数）、rotate（先手轮换）、results（按组的小分）。
+ * 赛事对局保留手动先手/阵营选项；当签表配置为先手轮换（rotate='first'）时，
+ * 第 1 局真随机、第 2 局起逐局交换先后手，该结果只与局号和签表记录有关，
+ * 因此与「是否点重赛按钮」无关（重赛本身也是交换先后手）。
+ * 服务端按回放交叉校验后增量写入 results[group].games（每项 {replay_id, winner_uuid, first_uuid}）。
  *
  * 本测试覆盖：
  *   1) BO 归一化（偶数向上取奇、非法回退 3）；
  *   2) 目标胜局数（BO3->2, BO5->3）；
  *   3) 定位分组；
- *   4) 系列视图（小分/完成/下一局序号）。
+ *   4) 系列视图（小分/完成/下一局序号）；
+ *   5) 先手轮换推导（next_first_hand）。
  */
 const fs = require('node:fs');
 const path = require('node:path');
@@ -33,7 +36,7 @@ function load(name) {
 }
 
 const series = load('contest-series.cjs');
-const { normalize_bo, series_target, locate_pair, locate_pair_by_uuid, series_view } = series;
+const { normalize_bo, series_target, locate_pair, locate_pair_by_uuid, series_view, next_first_hand } = series;
 
 const main = () => {
     // 1) BO 归一化
@@ -146,18 +149,64 @@ const main = () => {
     assert.equal(empty.completed, false);
     assert.equal(empty.next_index, 1);
 
-    // 5) 先手轮换已移除：先手不再被签表强制锁定，由双方手动选择或随机
-    assert.equal(typeof series.first_hand, 'undefined', 'first_hand 不应再导出');
+    // 5) 先手轮换（next_first_hand）：第 1 局真随机，第 2 局起与上一局实际先手交换
+    assert.equal(typeof series.first_hand, 'undefined', '旧的 first_hand（强制锁定）不应再导出');
+    assert.equal(typeof next_first_hand, 'function', 'next_first_hand 应导出');
 
-    // 6) 赛事对局保留先手/阵营手动选项，但不再强制锁定先手
+    // 不轮换时恒为随机
+    assert.equal(next_first_hand({ rotate: 'off', index: 2, my_uuid: 'uuid-a', foe_uuid: 'uuid-b', games: [] }), 'rand');
+    assert.equal(next_first_hand({ rotate: undefined, index: 2, my_uuid: 'uuid-a', foe_uuid: 'uuid-b', games: [] }), 'rand');
+
+    // 第 1 局：真随机（双方都得到 rand，由客户端协商）
+    assert.equal(next_first_hand({ rotate: 'first', index: 1, my_uuid: 'uuid-a', foe_uuid: 'uuid-b', games: [] }), 'rand');
+    assert.equal(next_first_hand({ rotate: 'first', index: 0, my_uuid: 'uuid-a', foe_uuid: 'uuid-b', games: [] }), 'rand', '非法局号应回退随机');
+
+    // 第 2 局：与上一局实际先手交换（上一局 A 先手 -> 本局 B 先手）
+    const g2 = [{ replay_id: 1, winner_uuid: 'uuid-a', first_uuid: 'uuid-a' }];
+    assert.equal(next_first_hand({ rotate: 'first', index: 2, my_uuid: 'uuid-a', foe_uuid: 'uuid-b', games: g2 }), 'foe');
+    assert.equal(next_first_hand({ rotate: 'first', index: 2, my_uuid: 'uuid-b', foe_uuid: 'uuid-a', games: g2 }), 'my', '双方推导必须互补');
+
+    // 第 3 局：继续交替（第 2 局 B 先手 -> 第 3 局 A 先手）
+    const g3 = [...g2, { replay_id: 2, winner_uuid: 'uuid-b', first_uuid: 'uuid-b' }];
+    assert.equal(next_first_hand({ rotate: 'first', index: 3, my_uuid: 'uuid-a', foe_uuid: 'uuid-b', games: g3 }), 'my');
+    assert.equal(next_first_hand({ rotate: 'first', index: 3, my_uuid: 'uuid-b', foe_uuid: 'uuid-a', games: g3 }), 'foe', '双方推导必须互补');
+
+    // 第 4 局：再次交替
+    const g4 = [...g3, { replay_id: 3, winner_uuid: 'uuid-a', first_uuid: 'uuid-a' }];
+    assert.equal(next_first_hand({ rotate: 'first', index: 4, my_uuid: 'uuid-a', foe_uuid: 'uuid-b', games: g4 }), 'foe');
+    assert.equal(next_first_hand({ rotate: 'first', index: 4, my_uuid: 'uuid-b', foe_uuid: 'uuid-a', games: g4 }), 'my');
+
+    // 未传 games 时从 node.results[group_index] 读取
+    const node_rot = { bo: 3, rotate: 'first', results: { '0': { games: g2 } } };
+    assert.equal(next_first_hand({ rotate: 'first', index: 2, my_uuid: 'uuid-a', foe_uuid: 'uuid-b', node: node_rot, group_index: 0 }), 'foe');
+    const no_rec_a = next_first_hand({ rotate: 'first', index: 2, my_uuid: 'uuid-a', foe_uuid: 'uuid-b', node: { bo: 3, rotate: 'first' }, group_index: 0 });
+    const no_rec_b = next_first_hand({ rotate: 'first', index: 2, my_uuid: 'uuid-b', foe_uuid: 'uuid-a', node: { bo: 3, rotate: 'first' }, group_index: 0 });
+    assert.ok(no_rec_a !== no_rec_b, '无记录时双方推导仍须互补（回退到 uuid 排序 + 局号奇偶）');
+
+    // 旧记录无 first_uuid 时回退到“uuid 排序 + 局号奇偶”，双方结果一致
+    const legacy = [{ replay_id: 1, winner_uuid: 'uuid-a' }];
+    const la = next_first_hand({ rotate: 'first', index: 2, my_uuid: 'uuid-a', foe_uuid: 'uuid-b', games: legacy });
+    const lb = next_first_hand({ rotate: 'first', index: 2, my_uuid: 'uuid-b', foe_uuid: 'uuid-a', games: legacy });
+    assert.ok(la !== lb, '回退算法下双方推导必须互补');
+    const lc = next_first_hand({ rotate: 'first', index: 3, my_uuid: 'uuid-a', foe_uuid: 'uuid-b', games: legacy });
+    assert.ok(lc !== la, '回退算法按局号奇偶交替（第2局与第3局异侧）');
+    const ld = next_first_hand({ rotate: 'first', index: 4, my_uuid: 'uuid-a', foe_uuid: 'uuid-b', games: legacy });
+    assert.equal(ld, la, '回退算法按局号奇偶交替（第2局与第4局同侧）');
+
+    // 6) 赛事对局保留先手/阵营手动选项（轮换只预置默认值，不锁定选择框）
     const read = (p) => fs.readFileSync(path.resolve(__dirname, '..', p), 'utf8');
     const match_src = read(path.join('js', 'main', 'match-game.cjs'));
-    assert.ok(!match_src.includes('first_hand'), 'match-game 不应再引用先手轮换');
-    assert.ok(!match_src.includes('apply_rotation'), 'match-game 不应再强制锁定先手');
+    assert.ok(match_src.includes('next_first_hand'), 'match-game 应引用先手轮换推导');
+    assert.ok(match_src.includes('apply_next_first'), 'match-game 应把推导结果预置到先手选择框');
+    assert.ok(!/select_server_first\.disabled/.test(match_src), '先手选择框不得被锁定');
     const game_html = read(path.join('html', 'mod', 'match-game.html'));
     assert.ok(game_html.includes('我方是先手') && game_html.includes('我方是黑方'), '赛事对局页应保留我方/对方先手与黑方选项');
+    assert.ok(!/<sl-select[^>]*id='select_server_first'[^>]*disabled/.test(game_html), '先手选择框不应带 disabled 属性');
     const reg_html = read(path.join('html', 'mod', 'match-registration.html'));
-    assert.ok(!reg_html.includes('select_node_rotate'), '报名页不应再提供先手轮换锁定配置');
+    assert.ok(reg_html.includes('select_node_rotate'), '报名页应提供先手轮换配置');
+    assert.ok(reg_html.includes("nodeRotateSelect.value = node.rotate === 'first' ? 'first' : 'off';"), '报名页应回填轮换配置');
+    assert.ok(reg_html.includes("node.rotate = nodeRotateSelect.value === 'first' ? 'first' : 'off';"), '报名页保存时应写入轮换配置');
+    assert.ok(/node\.rotate = node\.rotate === 'off' \? 'off' : 'first';/.test(reg_html), '旧签表缺失 rotate 时默认强制轮换');
 
     console.log('contest-series: PASS');
 };

@@ -817,7 +817,7 @@ const rematch_update_ui = () => {
         rematch_set_label('接受重赛');
         button_end_restart.disabled = false;
     } else {
-        rematch_set_label('重赛');
+        rematch_set_label('交换先后手并重赛');
         button_end_restart.disabled = false;
     }
 };

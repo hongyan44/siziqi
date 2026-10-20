@@ -367,6 +367,9 @@ void match_report(cinatra::coro_http_request& request, cinatra::coro_http_respon
         std::vector<Manager::Replay::Record> replays;
         if (!Manager::Replay::query_replay(uuid, replays)) break;
         std::string winner_uuid;
+        // 本局先手方标识码：取自回放记录（first 为 0 表示黑方先手，1 表示白方先手）。
+        // 用于系列赛先手轮换——第 1 局随机，之后每局按上一局实际先手交换，双方据此推导一致结果。
+        std::string first_uuid;
         bool replay_ok = false;
         for (const auto& r : replays) {
             if (static_cast<int64_t>(r.id) != replay_id) continue;
@@ -375,6 +378,8 @@ void match_report(cinatra::coro_http_request& request, cinatra::coro_http_respon
                 || (r.black_uuid == b_uuid && r.white_uuid == a_uuid);
             if (!pair_ok) break;
             winner_uuid = r.result == "A" ? r.black_uuid : r.white_uuid;
+            if (r.first == 0) first_uuid = r.black_uuid;
+            else if (r.first == 1) first_uuid = r.white_uuid;
             replay_ok = true;
             break;
         }
@@ -398,6 +403,7 @@ void match_report(cinatra::coro_http_request& request, cinatra::coro_http_respon
             jsoncons::json game = jsoncons::json::object();
             game["replay_id"] = replay_id;
             game["winner_uuid"] = winner_uuid;
+            game["first_uuid"] = first_uuid;
             game["at"] = static_cast<int64_t>(Libs::Only::Time::timestamp_ms());
             games.push_back(game);
         }

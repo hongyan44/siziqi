@@ -52,6 +52,9 @@ const FriendList = require('./friend-list.cjs');
         return node;
     };
 
+    // 管理员标识徽章（权限等级 4 才渲染）
+    const admin_badge = () => h('sl-badge', { variant: 'warning', pill: '', text: '管理员' });
+
     const drawer = () => document.getElementById('friend_drawer');
     const drawer_open = () => { const node = drawer(); return Boolean(node && node.classList.contains('open')); };
 
@@ -171,6 +174,7 @@ const FriendList = require('./friend-list.cjs');
         if (!node) return;
         node.classList.add('open');
         refresh_list();
+        refresh_online();
     };
 
     const close_drawer = () => {
@@ -208,7 +212,10 @@ const FriendList = require('./friend-list.cjs');
         const item = h('div', { class: 'd-flex align-items-center gap-2 p-2 rounded border' }, [
             avatar(user, '2rem'),
             h('div', { class: 'flex-grow-1 min-w-0' }, [
-                h('div', { class: 'fw-semibold text-truncate', text: FriendList.display_name(user.name) })
+                h('div', { class: 'd-flex align-items-center gap-1' }, [
+                    h('span', { class: 'fw-semibold text-truncate', text: FriendList.display_name(user.name) }),
+                    FriendList.is_admin(user) ? admin_badge() : null
+                ])
             ]),
             h('sl-button', { size: 'small', variant: 'success', outline: '', text: '接受' }),
             h('sl-button', { size: 'small', variant: 'danger', outline: '', text: '拒绝' })
@@ -252,6 +259,7 @@ const FriendList = require('./friend-list.cjs');
             h('div', { class: 'flex-grow-1 min-w-0' }, [
                 h('div', { class: 'd-flex align-items-center gap-1' }, [
                     h('span', { class: 'fw-semibold text-truncate', text: FriendList.display_name(friend.name) }),
+                    FriendList.is_admin(friend) ? admin_badge() : null,
                     h('span', { class: online ? 'friend-dot online' : 'friend-dot' })
                 ]),
                 h('small', { class: 'text-secondary', text: FriendList.format_presence(friend, now) })
@@ -282,6 +290,80 @@ const FriendList = require('./friend-list.cjs');
         if (!ok) return notify('error', '删除失败');
         notify('success', '已删除好友');
         refresh_list();
+    };
+
+    // ---------- 全部在线玩家（仅管理员） ----------
+    const add_online_player = async (player) => {
+        const outcome = await window.http_friend_request(token(), player.friend_id);
+        if (!outcome) return notify('error', '发送申请失败');
+        notify('success', outcome.relation === 'friend' ? '你们已成为好友' : '好友申请已发送');
+        await refresh_list();
+        await refresh_online();
+    };
+
+    const online_item = (player, now) => {
+        const item = h('div', { class: 'd-flex align-items-center gap-2 p-2 rounded border' }, [
+            avatar(player, '2.2rem'),
+            h('div', { class: 'flex-grow-1 min-w-0' }, [
+                h('div', { class: 'd-flex align-items-center gap-1' }, [
+                    h('span', { class: 'fw-semibold text-truncate', text: FriendList.display_name(player.name) }),
+                    FriendList.is_admin(player) ? admin_badge() : null,
+                    h('span', { class: player.online ? 'friend-dot online' : 'friend-dot' })
+                ]),
+                h('small', { class: 'text-secondary', text: FriendList.format_presence(player, now) })
+            ])
+        ]);
+        if (player.relation === 'none') {
+            const add = h('sl-button', { size: 'small', variant: 'primary', text: '添加好友' });
+            add.addEventListener('click', () => add_online_player(player));
+            item.append(add);
+        } else {
+            const label = FriendList.relation_label(player.relation);
+            const holder = h('sl-button', { size: 'small', variant: 'default', outline: '', text: label.text });
+            holder.setAttribute('disabled', '');
+            item.append(holder);
+        }
+        return item;
+    };
+
+    const render_online = (players, my_uuid) => {
+        const box = document.getElementById('div_friend_online');
+        if (!box) return;
+        box.replaceChildren();
+        const sorted = FriendList.sort_friends(players || []);
+        if (!sorted.length) {
+            box.append(h('div', { class: 'text-secondary small py-2', text: '当前没有在线玩家' }));
+            return;
+        }
+        const now = Date.now();
+        sorted.forEach((player) => box.append(online_item(player, now)));
+    };
+
+    const refresh_online = async () => {
+        const section = document.getElementById('section_friend_online');
+        if (!section) return;
+        if (!logged_in() || !window.http_friend_online) {
+            section.classList.add('d-none');
+            return;
+        }
+        const result = await window.http_friend_online(token());
+        if (!result || !Array.isArray(result.players)) {
+            // 非管理员或接口不可用：隐藏该区块
+            section.classList.add('d-none');
+            return;
+        }
+        section.classList.remove('d-none');
+        render_online(result.players, result.uuid || '');
+    };
+
+    const do_refresh_online = async () => {
+        const button = document.getElementById('button_friend_online_refresh');
+        if (button) button.disabled = true;
+        try {
+            await refresh_online();
+        } finally {
+            if (button) button.disabled = false;
+        }
     };
 
     // ---------- 私信会话 ----------
@@ -406,7 +488,10 @@ const FriendList = require('./friend-list.cjs');
         box.append(h('div', { class: 'd-flex align-items-center gap-2 p-2 rounded border' }, [
             avatar(result, '2rem'),
             h('div', { class: 'flex-grow-1 min-w-0' }, [
-                h('div', { class: 'fw-semibold text-truncate', text: FriendList.display_name(result.name) }),
+                h('div', { class: 'd-flex align-items-center gap-1' }, [
+                    h('span', { class: 'fw-semibold text-truncate', text: FriendList.display_name(result.name) }),
+                    FriendList.is_admin(result) ? admin_badge() : null
+                ]),
                 h('small', { class: 'text-secondary', text: result.friend_id || '' })
             ]),
             action
@@ -463,6 +548,9 @@ const FriendList = require('./friend-list.cjs');
 
         const copy = document.getElementById('button_friend_copy_id');
         if (copy) copy.addEventListener('click', copy_id);
+
+        const refresh = document.getElementById('button_friend_online_refresh');
+        if (refresh) refresh.addEventListener('click', do_refresh_online);
     };
 
     const start = () => {

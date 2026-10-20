@@ -160,4 +160,42 @@ const series_view = ({ node, group_index, my_uuid, foe_uuid }) => {
     return { bo, target, games, mine, foe, completed, winner_uuid, next_index: mine + foe + 1 };
 };
 
-export { normalize_bo, series_target, locate_pair, locate_pair_by_uuid, series_view, group_is_completed, pick_current_round };
+/**
+ * @description: 依据“先手轮换”配置推导本局先手
+ *   规则：第 1 局随机（双方协商）；第 2 局起按上一局实际先手交换，逐局交替。
+ *   改用签表中 games 记录的先手方（first_uuid）推导，双方算法一致，
+ *   且与「是否按重赛按钮」无关——无论从表单重新加入还是点重赛开新局，结果都相同。
+ * @param {object} args
+ * @param {string} args.rotate 签表节点的先手轮换配置（'first' 强制轮换，否则不轮换=随机）
+ * @param {number} args.index 本局序号（从 1 开始）
+ * @param {string} args.my_uuid 我方唯一身份标识码
+ * @param {string} args.foe_uuid 对方唯一身份标识码
+ * @param {object[]} [args.games] 已完赛记录（每项含 first_uuid）；缺省从 node 读取
+ * @param {object} [args.node] 签表节点（args.games 缺省时使用）
+ * @param {number} [args.group_index] 分组序号（args.games 缺省时使用）
+ * @return {'my' | 'foe' | 'rand'}
+ */
+const next_first_hand = ({ rotate, index, my_uuid, foe_uuid, games, node, group_index }) => {
+    if (rotate !== 'first') return 'rand';
+
+    const i = Number(index);
+    if (!Number.isFinite(i) || i <= 1) return 'rand'; // 第 1 局真随机
+
+    let list = Array.isArray(games) ? games : null;
+    if (!list) {
+        const results = node && node.results && typeof node.results === 'object' ? node.results : {};
+        const entry = (node && group_index !== undefined) ? (results[String(group_index)] || {}) : {};
+        list = Array.isArray(entry.games) ? entry.games : [];
+    }
+
+    const last = list.length ? list[list.length - 1] : null;
+    const anchor = last && last.first_uuid ? last.first_uuid : '';
+    if (anchor) return anchor === my_uuid ? 'foe' : 'my'; // 与上一局实际先手交换
+
+    // 回退（旧记录无 first_uuid）：按 uuid 排序 + 局号奇偶交替，双方结果一致
+    const pair = [my_uuid, foe_uuid].sort();
+    const leader = i % 2 === 0 ? pair[1] : pair[0];
+    return leader === my_uuid ? 'my' : 'foe';
+};
+
+export { normalize_bo, series_target, locate_pair, locate_pair_by_uuid, series_view, group_is_completed, pick_current_round, next_first_hand };

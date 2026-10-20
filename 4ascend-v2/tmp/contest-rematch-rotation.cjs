@@ -4,8 +4,9 @@
  *
  * 需求：
  *   1) 重赛必须轮换先后手（原缺陷：重赛沿用上一局先手）；
- *   2) 重赛改为双方共识：一方点“重赛”后，另一方按钮变为“接受重赛”，双方都同意才开新局；
- *   3) 开新局时【强制交换先后手，并保持黑白方不变】。
+ *   2) 重赛改为双方共识：一方点“交换先后手并重赛”后，另一方按钮变为“接受重赛”，双方都同意才开新局；
+ *   3) 开新局时【强制交换先后手，并保持黑白方不变】；
+ *   4) 重赛按钮默认文案为“交换先后手并重赛”。
  *
  * 测试策略：
  *   1. 源码结构断言；
@@ -45,6 +46,7 @@ ok('监听 game_rematch 消息', /result\.type !== 'game_rematch'/.test(online_s
 ok('match-game 串行化上报链路', /end_report_chain = end_report_chain\.then\(task, task\);/.test(match_src));
 ok('match-game 已移除 contest_refresh_first', /contest_refresh_first/.test(match_src) === false);
 ok('结算按钮支持“对方已离开”文案', /rematch_set_label\('对方已离开'\)/.test(online_src));
+ok('结算按钮默认文案为“交换先后手并重赛”', /rematch_set_label\('交换先后手并重赛'\)/.test(online_src));
 ok('对方离开时停止重赛广播', /const rematch_foe_left = \(\) => \{[\s\S]*?stop_resend\(910\)/.test(online_src));
 ok('结算画面渲染对方离开状态', /gl_rematch_foe_left = Boolean\(gl_opponent_left\);\s*\n\s*rematch_update_ui\(\);/.test(online_src));
 ok('game_leave 结合心跳判离线', /room_foeex/.test(online_src) && /const gone = exp > 0 && exp < now - 60 \* 1000;/.test(online_src));
@@ -62,7 +64,7 @@ const make_harness = (src, initial = {}) => {
         run_calls: 0,
         hide_calls: 0,
         resent: [],
-        label: '重赛',
+        label: '交换先后手并重赛',
         notified: [],
         clicked: []
     };
@@ -193,7 +195,7 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
         h.api.rematch_reset();
         const s = h.api.get();
         ok('重置清空双方同意', s.my === false && s.foe === false);
-        ok('重置恢复按钮文案', h.state.label === '重赛', h.state.label);
+        ok('重置恢复按钮文案', h.state.label === '交换先后手并重赛', h.state.label);
         ok('重置关闭共识窗口', s.end === false);
     }
     {
@@ -218,13 +220,13 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
         ok('离开后覆盖等待重赛文案', h.state.label === '对方已离开', h.state.label);
         h.api.rematch_reset();
         ok('重置清除对方离开标记', h.api.get().left === false);
-        ok('重置恢复重赛文案', h.state.label === '重赛', h.state.label);
+        ok('重置恢复重赛文案', h.state.label === '交换先后手并重赛', h.state.label);
     }
     {
         // 非结算期标记离开：不更新按钮，但标记保留（等待结算画面渲染）
         const h = make_harness(block_src);
         h.api.rematch_foe_left();
-        ok('未结算时不改按钮文案', h.state.label === '重赛', h.state.label);
+        ok('未结算时不改按钮文案', h.state.label === '交换先后手并重赛', h.state.label);
         ok('离开标记仍被保留', h.api.get().left === true);
     }
     {
@@ -297,10 +299,43 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
         ok('B 保持黑方(my)', cb.color === 'my', cb.color);
     }
 
+    // ---------- 3b. 与签表先手轮换推导一致 ----------
+    console.log('\n[3b] 重赛交换结果与签表轮换推导一致');
+    {
+        const series = (() => {
+            const file = path.join(root, 'js', 'main', 'contest-series.cjs');
+            const module = { exports: {} };
+            const text = fs.readFileSync(file, 'utf8').replace(/^export\s*\{([^}]+)\};?/gm, 'module.exports = {$1};');
+            new Function('require', 'module', 'exports', text)((p) => require(p), module, module.exports);
+            return module.exports;
+        })();
+
+        // 上一局的先手方在签表里记录为 first_uuid，与本地 gl_first_index 保持一致
+        const cases = [
+            { my_index: 0, first_index: 0 }, // 我方黑方且先手
+            { my_index: 0, first_index: 1 }, // 我方黑方、对方先手
+            { my_index: 1, first_index: 0 }, // 我方白方、对方先手
+            { my_index: 1, first_index: 1 }  // 我方白方且先手
+        ];
+
+        for (const c of cases) {
+            const h = make_harness(block_src, c);
+            const rematch_first = h.api.next_config().first;
+            const rotation_first = series.next_first_hand({
+                rotate: 'first',
+                index: 2,
+                my_uuid: 'uuid-me',
+                foe_uuid: 'uuid-foe',
+                games: [{ replay_id: 1, winner_uuid: 'uuid-me', first_uuid: c.first_index === c.my_index ? 'uuid-me' : 'uuid-foe' }]
+            });
+            ok(`重赛与轮换推导一致（my_index=${c.my_index}, first_index=${c.first_index}）`, rematch_first === rotation_first, `${rematch_first} vs ${rotation_first}`);
+        }
+    }
+
     // ---------- 4. 发布产物 ----------
     console.log('\n[4] 发布产物');
     for (const [name, src_path, built_path, must_have] of [
-        ['online.min.js', online_path, online_built, ['game_rematch', '接受重赛', '等待对方接受']],
+        ['online.min.js', online_path, online_built, ['game_rematch', '接受重赛', '等待对方接受', '交换先后手并重赛']],
         ['match-game.min.js', match_path, match_built, []]
     ]) {
         ok(`${name} 存在`, fs.existsSync(built_path));

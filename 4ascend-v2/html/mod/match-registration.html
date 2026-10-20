@@ -526,9 +526,16 @@
                         <div class='col-6'><sl-input id='input_node_group_count' type='number' label='分为几组' min='1' max='32' step='1'></sl-input></div>
                     </div>
                     <div class='row g-2'>
-                        <div class='col-12'>
+                        <div class='col-6'>
                             <sl-input id='input_node_bo' type='number' label='系列赛制（BO几）' min='1' max='15' step='2'
                                 help-text='默认 BO3；偶数自动进位为奇数'></sl-input>
+                        </div>
+                        <div class='col-6'>
+                            <sl-select id='select_node_rotate' label='先手轮换'
+                                help-text='强制轮换：第1局随机，之后逐局交换先后手'>
+                                <sl-option value='first'>强制轮换</sl-option>
+                                <sl-option value='off'>不轮换（随机）</sl-option>
+                            </sl-select>
                         </div>
                     </div>
                     <sl-button id='button_save_node' class='w-100' variant='warning' outline>保存设置</sl-button>
@@ -663,12 +670,13 @@
         // 节点数据模型
         // node = { id, name, maxPlayers, groupCount, players, groups, x, y, main, bo, rotate, results, player_uuids }
         // groups: 二维数组，每项是该组的玩家名列表
-        // bo: 系列赛局数（默认 3）；rotate: 已废弃（先手/阵营恒为随机，固定 'off'）
+        // bo: 系列赛局数（默认 3）
+        // rotate: 先手轮换（'first' 强制轮换：第1局随机，之后逐局交换；'off' 不轮换，每局随机）
         // results: { [组序号]: { bo, wins: {uuid: n}, games: [...], completed, winner_uuid, updated_at } }
         // player_uuids: { 昵称: uuid }，报名时由服务端写入
         const defaultState = () => ({
             nodes: [
-                { id: 'node_main', name: '主赛事（第1次抽签）', maxPlayers: 16, groupCount: 8, players: [], groups: Array.from({ length: 8 }, () => []), x: 96, y: 400, main: true, bo: 3, rotate: 'off', results: {}, player_uuids: {} }
+                { id: 'node_main', name: '主赛事（第1次抽签）', maxPlayers: 16, groupCount: 8, players: [], groups: Array.from({ length: 8 }, () => []), x: 96, y: 400, main: true, bo: 3, rotate: 'first', results: {}, player_uuids: {} }
             ],
             edges: []
         });
@@ -683,7 +691,8 @@
                 node.x = typeof node.x === 'number' ? node.x : 96;
                 node.y = typeof node.y === 'number' ? node.y : 400;
                 node.bo = normalize_bo(node.bo);
-                node.rotate = 'off';
+                // 缺失时默认强制轮换；显式设为 'off'（不轮换）的保留原值
+                node.rotate = node.rotate === 'off' ? 'off' : 'first';
                 node.results = node.results && typeof node.results === 'object' ? node.results : {};
                 node.player_uuids = node.player_uuids && typeof node.player_uuids === 'object' ? node.player_uuids : {};
                 // 被管理员移除过的身份标识码，防止保存时合并服务端数据把该账号“复活”
@@ -799,6 +808,7 @@
         const nodeMaxInput = document.getElementById('input_node_max_players');
         const nodeGroupInput = document.getElementById('input_node_group_count');
         const nodeBoInput = document.getElementById('input_node_bo');
+        const nodeRotateSelect = document.getElementById('select_node_rotate');
         const saveNodeButton = document.getElementById('button_save_node');
         const deleteNodeButton = document.getElementById('button_delete_node');
         const summaryPlayers = document.getElementById('summary_players');
@@ -1133,7 +1143,7 @@
                 groups: Array.from({ length: 4 }, () => []),
                 drawn: false,
                 bo: 3,
-                rotate: 'off',
+                rotate: 'first',
                 results: {},
                 player_uuids: {},
                 removed_uuids: [],
@@ -1606,6 +1616,7 @@
                 nodeMaxInput.value = node.maxPlayers;
                 nodeGroupInput.value = node.groupCount;
                 nodeBoInput.value = normalize_bo(node.bo);
+                nodeRotateSelect.value = node.rotate === 'first' ? 'first' : 'off';
                 deleteNodeButton.classList.toggle('d-none', Boolean(node.main));
             }
         };
@@ -1664,11 +1675,11 @@
             const newMax = Math.max(1, Math.min(64, Number(nodeMaxInput.value) || node.maxPlayers));
             const newCount = Math.max(1, Math.min(32, Number(nodeGroupInput.value) || node.groupCount));
 
-            // 系列赛制；先手/阵营不再由签表锁定，恒为随机
+            // 系列赛制与先手轮换（强制轮换时：第1局随机，之后逐局交换先后手）
             const newBo = normalize_bo(Number(nodeBoInput.value) || node.bo);
             const boChanged = newBo !== normalize_bo(node.bo);
             node.bo = newBo;
-            node.rotate = 'off';
+            node.rotate = nodeRotateSelect.value === 'first' ? 'first' : 'off';
             if (boChanged) recompute_results(node);
 
             // 如果组数变了，重建 groups

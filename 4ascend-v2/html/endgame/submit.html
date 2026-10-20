@@ -268,8 +268,62 @@
                     </div>
                 </div>
             </div>
+
+            <div id='submit_hint' class='card editor-card shadow-sm mt-3'>
+                <div class='card-body d-flex align-items-center gap-3 p-3'>
+                    <sl-icon name='lock' class='text-secondary' style='font-size: 1.35rem;'></sl-icon>
+                    <div class='text-secondary small'>投稿到服务器需要权限等级 2，请登录并提升权限等级后再提交。</div>
+                </div>
+            </div>
+
+            <div id='submit_card' class='card editor-card shadow-sm mt-3 d-none'>
+                <div class='card-body'>
+                    <div class='d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2'>
+                        <div>
+                            <div class='fw-bold'>提交投稿</div>
+                            <div class='text-secondary small'>将编辑好的残局提交到服务器，由高等级用户审核后发布</div>
+                        </div>
+                        <sl-badge id='submit_level_badge' variant='primary' pill>等级 ≥ 2 可投稿</sl-badge>
+                    </div>
+                    <div class='row g-2'>
+                        <div class='col-12 col-sm-6'>
+                            <sl-select id='submit_target' label='投稿目标' value='daily' size='small'>
+                                <sl-option value='daily'>每日残局</sl-option>
+                                <sl-option value='level'>残局闯关</sl-option>
+                            </sl-select>
+                        </div>
+                        <div id='submit_level_wrap' class='col-12 col-sm-6 d-none'>
+                            <sl-input id='submit_level' type='number' min='1' max='100' value='1' label='目标关卡' help-text='1 - 100' size='small'></sl-input>
+                        </div>
+                        <div class='col-12'>
+                            <sl-input id='submit_title' maxlength='10' label='残局名称' placeholder='最多10个中文字符' size='small'></sl-input>
+                        </div>
+                    </div>
+                    <div class='d-flex flex-wrap align-items-center gap-2 mt-3'>
+                        <sl-button id='button_submit_puzzle' variant='primary' pill><sl-icon slot='prefix' name='cloud-arrow-up'></sl-icon>提交投稿</sl-button>
+                        <span id='submit_feedback' class='text-secondary small'></span>
+                    </div>
+                </div>
+            </div>
+
+            <div id='review_card' class='card editor-card shadow-sm mt-3 d-none'>
+                <div class='card-body'>
+                    <div class='d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2'>
+                        <div>
+                            <div class='fw-bold'>投稿审核</div>
+                            <div class='text-secondary small'>仅权限等级 ≥ 3 可见，通过后投稿才会正式发布</div>
+                        </div>
+                        <div class='d-flex align-items-center gap-2'>
+                            <sl-badge id='review_count' variant='warning' pill>0</sl-badge>
+                            <sl-button id='button_review_refresh' size='small' variant='default' outline><sl-icon slot='prefix' name='arrow-clockwise'></sl-icon>刷新</sl-button>
+                        </div>
+                    </div>
+                    <div id='review_empty' class='text-secondary small py-2'>暂无待审核投稿。</div>
+                    <div id='review_list' class='sequence-list d-flex flex-column gap-2'></div>
+                </div>
+            </div>
         </main>
-        <footer class='text-center text-muted py-1' style='font-size: 0.74rem;'>残局投稿编辑器 · 当前仅编辑与预览，不提交服务器</footer>
+        <footer class='text-center text-muted py-1' style='font-size: 0.74rem;'>残局投稿编辑器 · 等级 ≥ 2 可投稿，等级 ≥ 3 可审核投稿</footer>
     </div>
 
     <script>
@@ -294,6 +348,8 @@
         let tool = 'black';
         let plantLevel = 0;
         let scheduleTurn = 1;
+        // 服务端投稿/审核依赖的用户信息；未登录时为 null。
+        let submit_user = null;
         // 黑方正着与白方预设按同一序号一一对应：blackBook[i] -> sequence[i]。
         const board_marks = { black: blackBook, white: sequence };
         const move_count_at = (moves, x, y) => moves.filter((pos) => pos[0] === x && pos[1] === y).length;
@@ -747,8 +803,144 @@
                 showAlert(`残局码解析失败：${error.message || '未知错误'}`, 'danger');
             }
         });
+
+        // ---------- 服务端投稿（等级 ≥ 2） ----------
+        const submit_level = () => (submit_user ? clamp(Number(submit_user.level) || 1, 1, 4) : 0);
+        const syncSubmitLevelVisibility = () => {
+            const target = document.getElementById('submit_target').value;
+            document.getElementById('submit_level_wrap').classList.toggle('d-none', target !== 'level');
+        };
+        const setSubmitFeedback = (message, variant = 'secondary') => {
+            const node = document.getElementById('submit_feedback');
+            node.textContent = message;
+            node.className = `text-${variant} small`;
+        };
+        const submitPuzzle = async () => {
+            const button = document.getElementById('button_submit_puzzle');
+            const target = document.getElementById('submit_target').value === 'level' ? 'level' : 'daily';
+            const title = (document.getElementById('submit_title').value || '').trim();
+            const level = target === 'level' ? clamp(Math.floor(Number(document.getElementById('submit_level').value) || 1), 1, 100) : 0;
+            if (!Array.from(title).length || Array.from(title).length > 10) { setSubmitFeedback('残局名称不能为空，且最多10个中文字符。', 'danger'); return; }
+            // 允许无正着残局投稿；若已填写正着，仍要求黑白手数一致。
+            if (blackBook.length !== sequence.length) { setSubmitFeedback('黑方正着与白方预案手数必须一致。', 'danger'); return; }
+            const token = window.get_token();
+            if (!token) { setSubmitFeedback('登录状态已失效，请重新登录后再投稿。', 'danger'); return; }
+            button.disabled = true;
+            try {
+                const code = EndgameArchive.encode(exportData());
+                const success = await window.http_puzzle_submit(token, target, level, title, code);
+                if (!success) throw new Error('服务端拒绝了本次投稿');
+                setSubmitFeedback(target === 'daily' ? '投稿已提交，等待审核（每日残局）' : `投稿已提交，等待审核（第 ${level} 关）`, 'success');
+                showAlert('投稿已提交，等待审核');
+            } catch (error) {
+                setSubmitFeedback(error.message || '投稿失败，请稍后重试。', 'danger');
+                showAlert(`投稿失败：${error.message || '未知错误'}`, 'danger');
+            } finally {
+                button.disabled = false;
+            }
+        };
+
+        // ---------- 投稿审核（等级 ≥ 3） ----------
+        const reviewTargetText = (item) => (item.target === 'daily' ? '每日残局' : `第 ${Number(item.level) || 0} 关`);
+        // 服务端时间戳为毫秒；沿用好友系统相同的格式化约定。
+        const formatSubmitTime = (value) => {
+            const ms = Number(value) || 0;
+            if (ms <= 0) return '未知时间';
+            const date = new Date(ms);
+            const pad = (number) => String(number).padStart(2, '0');
+            return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+        };
+        const renderReviewList = (submissions) => {
+            const list = document.getElementById('review_list');
+            const empty = document.getElementById('review_empty');
+            const items = Array.isArray(submissions) ? submissions : [];
+            list.innerHTML = '';
+            document.getElementById('review_count').textContent = String(items.length);
+            empty.classList.toggle('d-none', items.length > 0);
+            items.forEach((item) => {
+                const row = document.createElement('div');
+                row.className = 'sequence-item border rounded p-2 d-flex align-items-center justify-content-between gap-2';
+                const info = document.createElement('div');
+                info.className = 'min-w-0';
+                const line1 = document.createElement('div');
+                line1.className = 'fw-bold small text-truncate';
+                line1.textContent = `${reviewTargetText(item)} · ${item.title || '未命名'}`;
+                const line2 = document.createElement('div');
+                line2.className = 'text-secondary small';
+                line2.textContent = `提交人：${item.creator_name || item.creator || '未知'} · ${formatSubmitTime(item.created_at)}`;
+                info.append(line1, line2);
+                const actions = document.createElement('div');
+                actions.className = 'd-flex gap-1 flex-shrink-0';
+                const approve = document.createElement('sl-button');
+                approve.size = 'small'; approve.variant = 'primary'; approve.textContent = '通过';
+                approve.addEventListener('click', () => reviewSubmission(item, 'approve', approve));
+                const reject = document.createElement('sl-button');
+                reject.size = 'small'; reject.variant = 'danger'; reject.outline = true; reject.textContent = '驳回';
+                reject.addEventListener('click', () => reviewSubmission(item, 'reject', reject));
+                actions.append(approve, reject);
+                row.append(info, actions);
+                list.append(row);
+            });
+        };
+        const reviewSubmission = async (item, action, button) => {
+            const token = window.get_token();
+            if (!token) return showAlert('登录状态已失效，请重新登录。', 'danger');
+            button.disabled = true;
+            try {
+                const success = await window.http_puzzle_submission_review(token, item.id, action);
+                if (!success) {
+                    // 通过失败通常意味着目标位置已被占用：等级 3 不能覆盖，仅等级 4 可覆盖。
+                    showAlert(action === 'approve' ? '该位置已有残局，权限等级 3 不能覆盖，请联系管理员' : '驳回失败，请稍后重试', 'danger');
+                    return;
+                }
+                showAlert(action === 'approve' ? '已通过该投稿' : '已驳回该投稿');
+                await refresh_review();
+            } catch (error) {
+                showAlert(action === 'approve' ? '该位置已有残局，权限等级 3 不能覆盖，请联系管理员' : `驳回失败：${error.message || '未知错误'}`, 'danger');
+            } finally {
+                button.disabled = false;
+            }
+        };
+        const refresh_review = async () => {
+            const card = document.getElementById('review_card');
+            const token = window.get_token();
+            if (!token) { card.classList.add('d-none'); return; }
+            const button = document.getElementById('button_review_refresh');
+            button.disabled = true;
+            try {
+                const result = await window.http_puzzle_submission_query(token);
+                if (!result || result.can_review !== true) { card.classList.add('d-none'); return; }
+                card.classList.remove('d-none');
+                renderReviewList(result.submissions);
+            } catch (_) {
+                card.classList.add('d-none');
+            } finally {
+                button.disabled = false;
+            }
+        };
+        const applySubmitAccount = (info) => {
+            submit_user = info || null;
+            const level = submit_level();
+            document.getElementById('submit_card').classList.toggle('d-none', level < 2);
+            document.getElementById('submit_hint').classList.toggle('d-none', level >= 2);
+            document.getElementById('review_card').classList.toggle('d-none', level < 3);
+            if (level >= 2) syncSubmitLevelVisibility();
+            if (level >= 3) refresh_review();
+        };
+        const loadSubmitUser = async () => {
+            if (!window.get_token || !window.get_token()) { applySubmitAccount(null); return; }
+            try { applySubmitAccount(await window.http_user_info(window.get_token())); }
+            catch (_) { applySubmitAccount(null); }
+        };
+        document.getElementById('submit_target').addEventListener('sl-change', syncSubmitLevelVisibility);
+        document.getElementById('button_submit_puzzle').addEventListener('click', submitPuzzle);
+        document.getElementById('button_review_refresh').addEventListener('click', refresh_review);
+        // 返回标签页时同步一次审核列表，避免长时间停留后数据过期；不做轮询。
+        document.addEventListener('visibilitychange', () => { if (!document.hidden && submit_level() >= 3) refresh_review(); });
+
         window.addEventListener('resize', redraw);
         setTool('black'); renderSequence(); renderBook(); renderSchedule(); renderGuide(); redraw(); updateSummary();
+        loadSubmitUser();
     </script>
 </body>
 

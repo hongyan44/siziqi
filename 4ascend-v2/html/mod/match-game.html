@@ -230,7 +230,7 @@
                         </sl-select>
                     </div>
 
-                    <!-- 保留先手/阵营手动选项；不再由签表强制锁定先手，双方配置不一致时由服务端校验 -->
+                    <!-- 先手/阵营可手动选择；签表开启先手轮换时会预置本局先手（不锁定，双方配置不一致时由服务端校验） -->
                     <div class='d-flex flex-row gap-1'>
                         <sl-select id='select_server_first' value='rand' placeholder='先手决定' size='large' pill hoist>
                             <sl-option value='my'>我方是先手</sl-option>
@@ -489,7 +489,7 @@
         <div class='d-flex flex-column gap-2'>
             <sl-button id='button_end_restart' variant='primary'>
                 <sl-icon slot='prefix' name='arrow-repeat'></sl-icon>
-                重赛
+                交换先后手并重赛
             </sl-button>
 
             <sl-button id='button_end_archive' variant='default'>

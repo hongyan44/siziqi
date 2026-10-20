@@ -101,6 +101,13 @@
     };
 
     /**
+     * @description: 判断用户是否为管理员（权限等级 4）
+     * @param {{level: number}} user
+     * @return {boolean}
+     */
+    const is_admin = (user) => Number(user && user.level) === 4;
+
+    /**
      * @description: 昵称回退
      * @param {string} name
      * @return {string}
@@ -151,6 +158,7 @@
         format_last_seen,
         format_presence,
         relation_label,
+        is_admin,
         display_name,
         normalize_message,
         format_message_time

@@ -41,6 +41,9 @@ sqlite3_stmt* p_update_account = nullptr;
 sqlite3_stmt* p_get_level         = nullptr;
 sqlite3_stmt* p_consume_level_key = nullptr;
 
+sqlite3_stmt* p_get_name_color = nullptr;
+sqlite3_stmt* p_set_name_color = nullptr;
+
 sqlite3_stmt* p_friend_id_user   = nullptr;
 sqlite3_stmt* p_friend_id_uuid   = nullptr;
 sqlite3_stmt* p_friend_id_set    = nullptr;
@@ -196,6 +199,7 @@ void init() noexcept {
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN account TEXT NOT NULL DEFAULT '';", nullptr, nullptr, nullptr);
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN pass TEXT NOT NULL DEFAULT '';", nullptr, nullptr, nullptr);
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN friend_id TEXT NOT NULL DEFAULT '';", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "ALTER TABLE users ADD COLUMN name_color TEXT NOT NULL DEFAULT '';", nullptr, nullptr, nullptr);
 
     // 没有索引则创建
     sqlite3_exec(db, "CREATE INDEX IF NOT EXISTS idx_users_mail ON users (mail)", nullptr, nullptr, nullptr);
@@ -263,6 +267,8 @@ void init() noexcept {
         nullptr
     );
     sqlite3_prepare_v2(db, "SELECT level FROM users WHERE uuid = ?;", -1, &p_get_level, nullptr);
+    sqlite3_prepare_v2(db, "SELECT name_color FROM users WHERE uuid = ?;", -1, &p_get_name_color, nullptr);
+    sqlite3_prepare_v2(db, "UPDATE users SET name_color = ? WHERE uuid = ?;", -1, &p_set_name_color, nullptr);
     sqlite3_prepare_v2(
         db,
         "UPDATE level_keys SET used_at = strftime('%s','now') WHERE digest = ? AND used_at = 0 AND level BETWEEN 2 AND 4",
@@ -299,6 +305,8 @@ void close() noexcept {
     sqlite3_finalize(p_ident_uuid);
     sqlite3_finalize(p_get_level);
     sqlite3_finalize(p_consume_level_key);
+    sqlite3_finalize(p_get_name_color);
+    sqlite3_finalize(p_set_name_color);
     sqlite3_finalize(p_all_user);
     sqlite3_finalize(p_friend_id_user);
     sqlite3_finalize(p_friend_id_uuid);
@@ -703,6 +711,33 @@ bool update_pass(std::string_view uuid, std::string_view pass) noexcept {
     const int rc      = sqlite3_step(p_update_pass);
     const int changed = sqlite3_changes(db);
     reset(p_update_pass);
+    return rc == SQLITE_DONE && changed == 1;
+};
+
+// 查询昵称颜色（空串表示未设置）
+bool get_name_color(std::string_view uuid, std::string& out) noexcept {
+    out.clear();
+    if (!db || !p_get_name_color || uuid.empty()) return false;
+
+    bind_text(p_get_name_color, 1, uuid);
+    const int rc = sqlite3_step(p_get_name_color);
+    if (rc == SQLITE_ROW) {
+        if (const char* text = reinterpret_cast<const char*>(sqlite3_column_text(p_get_name_color, 0))) out = text;
+    }
+    reset(p_get_name_color);
+    return rc == SQLITE_ROW;
+};
+
+// 设置昵称颜色（空串表示清除）
+bool set_name_color(std::string_view uuid, std::string_view color) noexcept {
+    if (!db || !p_set_name_color || uuid.empty()) return false;
+
+    bind_text(p_set_name_color, 1, color);
+    bind_text(p_set_name_color, 2, uuid);
+
+    const int rc      = sqlite3_step(p_set_name_color);
+    const int changed = sqlite3_changes(db);
+    reset(p_set_name_color);
     return rc == SQLITE_DONE && changed == 1;
 };
 } // namespace User

@@ -102,6 +102,33 @@ let gl_game, gl_rand_aic, gl_rand_unity, gl_rand_other, gl_board, gl_state, gl_t
 let gl_cf_room, gl_cf_archive, gl_cf_health, gl_cf_initb, gl_cf_balance, gl_cf_mode, gl_cf_first, gl_cf_color, gl_cf_token, gl_cf_client;
 
 
+// 昵称颜色缓存（uuid -> 颜色描述：'' 无 / '#rrggbb' 纯色 / 'linear-gradient(...)' 渐变）
+const view_name_color_cache = new Map();
+
+/**
+ * @description: 将昵称颜色应用到节点（纯色直接着色，渐变使用文字裁剪）
+ * @param {HTMLElement} node
+ * @param {string} color
+ * @return {void}
+ */
+const apply_name_color = (node, color) => {
+    if (!node) return;
+    if (typeof color === 'string' && color.indexOf('linear-gradient') === 0) {
+        node.style.background = color;
+        node.style.webkitBackgroundClip = 'text';
+        node.style.backgroundClip = 'text';
+        node.style.webkitTextFillColor = 'transparent';
+        node.style.color = 'transparent';
+    } else {
+        node.style.background = '';
+        node.style.webkitBackgroundClip = '';
+        node.style.backgroundClip = '';
+        node.style.webkitTextFillColor = '';
+        node.style.color = typeof color === 'string' ? color : '';
+    }
+};
+
+
 
 
 /**
@@ -180,6 +207,10 @@ const game_clear = () => {
     game_p2_ascend.innerText = 'PR: ?';
     game_p2_stone.innerText = '?';
     game_p2_clock.innerText = 'CLK: ?';
+
+    // 重置昵称颜色（回到默认样式）
+    apply_name_color(game_p1_name, '');
+    apply_name_color(game_p2_name, '');
 
     game_info_plant_cd.innerText = `CD=cd`;
     game_info_plant_normal.innerText = 'p NPlants';
@@ -1021,6 +1052,27 @@ const run = async () => {
     game_p2_ascend.innerText = 'PR: 0+0';
     game_p2_stone.innerText = foe_icon;
     game_p2_clock.innerText = `CLK: ${gl_foe_clock}`;
+
+    // 应用双方昵称颜色：先用缓存即时渲染，缺失的颜色批量拉取后回填
+    try {
+        const name_nodes = { [my_uuid]: game_p1_name, [foe_uuid]: game_p2_name };
+        const apply_pair = () => {
+            apply_name_color(name_nodes[my_uuid], view_name_color_cache.get(my_uuid));
+            apply_name_color(name_nodes[foe_uuid], view_name_color_cache.get(foe_uuid));
+        };
+        apply_pair();
+
+        const missing = [my_uuid, foe_uuid].filter((uuid) => uuid && !view_name_color_cache.has(uuid));
+        if (missing.length && typeof window.http_user_colors === 'function') {
+            window.http_user_colors([my_uuid, foe_uuid]).then((list) => {
+                (list || []).forEach((item) => { if (item && item.uuid) view_name_color_cache.set(item.uuid, item.color || ''); });
+                [my_uuid, foe_uuid].forEach((uuid) => { if (!view_name_color_cache.has(uuid)) view_name_color_cache.set(uuid, ''); });
+                apply_pair();
+            }).catch(() => {});
+        }
+    } catch (_) {
+        // 昵称颜色渲染失败不应影响对局主流程
+    }
 
     game_redraw();
     view_accept(run_id);

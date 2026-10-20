@@ -87,6 +87,10 @@ void fill_user(jsoncons::json& target, std::string_view uuid) noexcept {
         target["avatar"] = "";
     }
     target["uuid"] = std::string(uuid);
+    // 权限等级：供前端渲染管理员徽章（读取失败回退为普通用户 1 级）。
+    int level = 1;
+    Manager::User::get_level(uuid, level);
+    target["level"] = level;
 }
 
 // 返回响应
@@ -498,6 +502,69 @@ void friend_message_list(cinatra::coro_http_request& request, cinatra::coro_http
     reply("friend_message_list", result, response);
 }
 
+// 在线玩家列表（仅 4 级管理员可见）：枚举所有在线用户及其与自己的关系
+void friend_online(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
+    auto body = api_body(request.get_body());
+    if (!body) return;
+    auto rjson = body.value();
+
+    std::string uuid;
+    if (!resolve_token(rjson, response, "friend_online", uuid)) return;
+
+    int level = 0;
+    if (!Manager::User::get_level(uuid, level) || level < 4) return api_http_error("friend_online", response);
+
+    const auto now = Libs::Only::Time::timestamp_ms();
+
+    std::vector<std::string> uuids;
+    Manager::User::all_user(uuids);
+
+    jsoncons::json players = jsoncons::json::array();
+    for (const auto& other : uuids) {
+        if (other.empty()) continue;
+
+        int64_t seen = 0;
+        if (!Manager::Friend::last_seen(other, seen) || seen <= 0) continue;
+        if ((now - seen) > ONLINE_WINDOW_MS) continue;
+
+        jsoncons::json item = jsoncons::json::object();
+        fill_user(item, other);
+
+        std::string friend_id;
+        Manager::User::friend_id_user(other, friend_id);
+        item["friend_id"] = friend_id;
+
+        std::string relation = "none";
+        if (other == uuid) {
+            relation = "self";
+        } else {
+            bool is_friend = false;
+            Manager::Friend::are_friends(uuid, other, is_friend);
+            if (is_friend) {
+                relation = "friend";
+            } else {
+                bool outgoing = false;
+                bool incoming = false;
+                Manager::Friend::request_exists(uuid, other, outgoing);
+                Manager::Friend::request_exists(other, uuid, incoming);
+                if (outgoing) relation = "outgoing";
+                else if (incoming) relation = "incoming";
+            }
+        }
+        item["relation"]  = relation;
+        item["online"]    = true;
+        item["last_seen"] = seen;
+
+        players.push_back(std::move(item));
+    }
+
+    jsoncons::json result = jsoncons::json::object();
+    result["uuid"]    = uuid;
+    result["players"] = std::move(players);
+
+    reply("friend_online", result, response);
+}
+
 // 装载所有路由
 void load(cinatra::coro_http_server& server) noexcept {
     server.set_http_handler<cinatra::POST>("/friend/heartbeat", friend_heartbeat);
@@ -512,6 +579,7 @@ void load(cinatra::coro_http_server& server) noexcept {
     server.set_http_handler<cinatra::POST>("/friend/invite_clear", friend_invite_clear);
     server.set_http_handler<cinatra::POST>("/friend/message_send", friend_message_send);
     server.set_http_handler<cinatra::POST>("/friend/message_list", friend_message_list);
+    server.set_http_handler<cinatra::POST>("/friend/online", friend_online);
 };
 } // namespace Friend
 } // namespace Http

@@ -43,6 +43,10 @@ bool unlock_level(std::string_view uuid, std::string_view secret, int& level) no
 bool generate_level_key(int target_level, std::string& secret) noexcept;
 // 查询用户昵称
 bool name_user(std::string_view uuid, std::string& name) noexcept;
+// 查询昵称颜色（空串表示未设置）
+bool get_name_color(std::string_view uuid, std::string& out) noexcept;
+// 设置昵称颜色（空串表示清除）
+bool set_name_color(std::string_view uuid, std::string_view color) noexcept;
 
 // 查询用户专属短 ID（用于好友搜索）
 bool friend_id_user(std::string_view uuid, std::string& friend_id) noexcept;

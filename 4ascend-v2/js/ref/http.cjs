@@ -147,6 +147,43 @@ window.http_puzzle_delete = async (token, id) => {
 };
 
 /**
+ * @description: 提交残局投稿（权限等级 ≥ 2；target 为 daily 或 level）
+ * @param {string} token
+ * @param {'daily'|'level'} target
+ * @param {number} level 仅 target 为 level 时需要
+ * @param {string} title
+ * @param {string} code
+ * @return {Promise<boolean>}
+ */
+window.http_puzzle_submit = async (token, target, level, title, code) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/puzzle/submit`, { token, target, level, title, code });
+    return Boolean(rjson && rjson.status);
+};
+
+/**
+ * @description: 查询残局投稿（等级 2 看自己的投稿；等级 ≥ 3 可看全部待审核投稿）
+ * @param {string} token
+ * @return {Promise<{can_review: boolean, submissions: object[]} | void>}
+ */
+window.http_puzzle_submission_query = async (token) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/puzzle/submission_query`, { token });
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+/**
+ * @description: 审核残局投稿（权限等级 ≥ 3；action 为 approve 或 reject）
+ * @param {string} token
+ * @param {number} id
+ * @param {'approve'|'reject'} action
+ * @return {Promise<boolean>}
+ */
+window.http_puzzle_submission_review = async (token, id, action) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/puzzle/submission_review`, { token, id, action });
+    return Boolean(rjson && rjson.status);
+};
+
+/**
  * @description: 用户信息更新
  * @param {string} token
  * @param {string} name
@@ -156,6 +193,28 @@ window.http_puzzle_delete = async (token, id) => {
 window.http_user_update = async (token, name, avatar) => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/update`, { token, name, avatar });
     return Boolean(rjson && rjson.status);
+};
+
+/**
+ * @description: 设置对战昵称颜色（等级 ≥ 3 可设置纯色；等级 4 额外允许渐变彩色；传空字符串清除）
+ * @param {string} token
+ * @param {string} color
+ * @return {Promise<boolean>}
+ */
+window.http_user_set_color = async (token, color) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/set_color`, { token, color });
+    return Boolean(rjson && rjson.status);
+};
+
+/**
+ * @description: 批量查询用户昵称颜色（公开接口，用于对战界面渲染双方昵称颜色）
+ * @param {string[]} uuids
+ * @return {Promise<Array<{uuid: string, color: string, level: number}>>}
+ */
+window.http_user_colors = async (uuids) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/colors`, { uuids: uuids || [] });
+    if (!rjson || !rjson.status || !Array.isArray(rjson.result)) return [];
+    return rjson.result;
 };
 
 /**
@@ -527,6 +586,17 @@ window.http_friend_search = async (token, friend_id) => {
  */
 window.http_friend_request = async (token, friend_id) => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/request`, { token, friend_id });
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+/**
+ * @description: 查询全部在线玩家（仅权限等级 4 管理员可用）
+ * @param {string} token
+ * @return {Promise<{uuid: string, players: object[]} | void>}
+ */
+window.http_friend_online = async (token) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/online`, { token });
     if (!rjson || !rjson.status) return;
     return rjson.result;
 };

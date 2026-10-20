@@ -143,6 +143,7 @@
                         <canvas id='canvas_view_turn' class='pe-none'></canvas>
                         <canvas id='canvas_view_ascend' class='pe-none'></canvas>
                         <canvas id='canvas_view_move' class='pe-none'></canvas>
+                        <canvas id='canvas_guide' class='pe-none'></canvas>
                     </div>
                 </div>
             </div>
@@ -564,6 +565,7 @@
                     runtime.index = gameNodeIndex;
                     mode = 'game';
                     setDialogueVisible(false);
+                    refreshGuide();
                     done();
                 } else { runtime.advance(); renderNode(); }
                 return;
@@ -604,6 +606,80 @@
         const legal = (x, y) => game && game.valid(x, y, fromPlayer());
         const moveLabel = (move) => `${move[0] + 1} · ${move[1] + 1}`;
         const archiveMoveToBoard = ([x, y]) => importedArchive ? [x, 8 - y] : [x, y];
+
+        // ==================== 引导落子（残局码内嵌，红色虚线旋转圈） ====================
+        // 作者在残局页定义的引导落子点随残局码写入 guide_moves，剧情对局按序提示玩家落点。
+        const guideCanvas = $('canvas_guide');
+        let guide = null;
+        let guideFrame = 0;
+        let guidePhase = 0;
+        const GUIDE_COLOR = '#ff2d2d';
+        const hasActiveGuide = () => Boolean(guide && guide.active() && mode === 'game' && !gameOver);
+        const drawGuide = () => {
+            if (!guideCanvas || !guideCanvas.getContext) return;
+            const ctx = guideCanvas.getContext('2d');
+            if (!ctx) return;
+            const rect = boardCanvas.getBoundingClientRect();
+            const cssW = rect.width || (ui && ui.size) || 0;
+            const cssH = rect.height || (ui && ui.size) || 0;
+            const dpr = window.devicePixelRatio || 1;
+            const pixelW = Math.max(1, Math.round(cssW * dpr));
+            const pixelH = Math.max(1, Math.round(cssH * dpr));
+            if (guideCanvas.width !== pixelW || guideCanvas.height !== pixelH) {
+                guideCanvas.width = pixelW;
+                guideCanvas.height = pixelH;
+                guideCanvas.style.width = `${cssW}px`;
+                guideCanvas.style.height = `${cssH}px`;
+            }
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, cssW, cssH);
+            if (!hasActiveGuide() || !ui || !ui.spacing || !ui.size || !cssW) return;
+            const target = guide.current();
+            const scale = cssW / ui.size;
+            const cx = (ui.offset + target[0] * ui.spacing) * scale;
+            const cy = (ui.offset + target[1] * ui.spacing) * scale;
+            const radius = ui.spacing * ((ui.stone_radius || 0.41) + 0.16) * scale;
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+            ctx.setLineDash([Math.max(6, radius * 0.38), Math.max(5, radius * 0.26)]);
+            ctx.lineDashOffset = -guidePhase;
+            ctx.strokeStyle = GUIDE_COLOR;
+            ctx.lineWidth = Math.max(3, radius * 0.16);
+            ctx.shadowColor = GUIDE_COLOR;
+            ctx.shadowBlur = Math.max(4, radius * 0.32);
+            ctx.stroke();
+            ctx.closePath();
+            ctx.restore();
+        };
+        const guideTick = () => {
+            if (!hasActiveGuide()) { guideFrame = 0; drawGuide(); return; }
+            guidePhase = (guidePhase + 1.6) % 720;
+            drawGuide();
+            guideFrame = requestAnimationFrame(guideTick);
+        };
+        const refreshGuide = () => {
+            if (!hasActiveGuide()) {
+                if (guideFrame) { cancelAnimationFrame(guideFrame); guideFrame = 0; }
+                drawGuide();
+                return;
+            }
+            if (!guideFrame) guideFrame = requestAnimationFrame(guideTick);
+        };
+        // 玩家落在当前引导点则推进到下一个；否则取消后续全部引导。
+        const advanceGuide = (x, y) => {
+            if (!guide || !guide.active()) return;
+            const result = guide.advance(x, y);
+            if (result.cancelled) setStatus('未按引导落子，后续引导已取消。', 'warning');
+            else if (result.done) setStatus('已按引导完成全部落子提示。', 'success');
+            refreshGuide();
+        };
+        const resetGuide = (archiveData) => {
+            const moves = (archiveData && archiveData.guide_moves) || [];
+            guide = moves.length ? window.EndgameExports.create_guide(moves.map(archiveMoveToBoard)) : null;
+            guidePhase = 0;
+            refreshGuide();
+        };
 
         const getBoardSize = () => {
             const wrap = boardCanvas.parentElement;
@@ -779,6 +855,7 @@
             if (ui.ascend_is_lifted(move[0], move[1])) ui.ascend_counter(move[0], move[1]);
             recordModelHistory();
             if (!game.ed_tr_1(move[0], move[1])) { game.history_boards.pop(); return false; }
+            if (source === 'player') advanceGuide(move[0], move[1]);
             await syncAiStone(move[0], move[1], generation);
             moves.push({ move, source });
             if (source === 'player') playerMoveCount++;
@@ -898,6 +975,7 @@
             RulesRuntime.initialize(game, game.first_player);
             game.board.turns = (saved.turns || []).map(archiveMoveToBoard);
             ui.init(); ui.draw_board(); redraw(); renderInfo();
+            resetGuide(archiveData);
         };
 
         // 解析阵营/血量配置（可选残局码），并写回 config
@@ -995,7 +1073,7 @@
             if (!gameOver && generation === gameGeneration) setStatus(state.turn_player === selfPlayer ? '轮到你落子。' : '对手 AI 回合。', 'primary');
         };
 
-        window.addEventListener('resize', () => { if (ui && game) redraw(); dimKey = ''; drawDim(); layoutFace(); });
+        window.addEventListener('resize', () => { if (ui && game) redraw(); dimKey = ''; drawDim(); layoutFace(); refreshGuide(); });
 
         (async () => {
             if (!window.get_token || !window.get_token()) { playerName = '你'; }

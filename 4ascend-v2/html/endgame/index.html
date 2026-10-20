@@ -330,6 +330,8 @@
         let challengeMode = 'daily';
         let dailyChallenge = null;
         const USER_LEVEL_NAMES = { 1: '普通用户', 2: '进阶用户', 3: '高级用户', 4: '管理员' };
+        // 残局投稿身份：随权限等级变化，等级 2 可投稿，等级 3 可投稿并审核，等级 4 额外可管理残局。
+        const SUBMIT_ROLES = { 1: '登录后可浏览残局', 2: '可投稿残局', 3: '可投稿并审核残局', 4: '管理员（可管理残局）' };
         let endgameUserInfo = null;
         let puzzleRecords = [];
         const hasToken = () => Boolean(window.get_token && window.get_token());
@@ -361,15 +363,15 @@
             if (!info) {
                 endgameUserSummary.textContent = '登录后管理昵称、权限等级与残局投稿身份';
                 endgameUserLevel.textContent = '登录后查看账号等级';
-                endgameUserRole.textContent = '登录后可管理昵称并提交残局';
+                endgameUserRole.textContent = SUBMIT_ROLES[1];
                 adminEntry.classList.add('d-none');
                 renderPuzzles();
                 return;
             }
             const level = safeLevel(info.level);
-            endgameUserSummary.textContent = `${info.name || '无名氏'} · 等级 ${level} · ${USER_LEVEL_NAMES[level]}`;
+            endgameUserSummary.textContent = `${info.name || '无名氏'} · 等级 ${level} · ${SUBMIT_ROLES[level]}`;
             endgameUserLevel.textContent = `等级 ${level} · ${USER_LEVEL_NAMES[level]}`;
-            endgameUserRole.textContent = level === 4 ? '管理员：可管理昵称、提交并新增或删除残局' : '可管理昵称并提交残局';
+            endgameUserRole.textContent = SUBMIT_ROLES[level];
             adminEntry.classList.toggle('d-none', level !== 4);
             renderPuzzles();
         };

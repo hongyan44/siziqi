@@ -25,6 +25,12 @@ sqlite3_stmt* p_query = nullptr;
 sqlite3_stmt* p_daily_query = nullptr;
 sqlite3_stmt* p_daily_update = nullptr;
 
+sqlite3_stmt* p_sub_insert         = nullptr;
+sqlite3_stmt* p_sub_list_creator   = nullptr;
+sqlite3_stmt* p_sub_list_all       = nullptr;
+sqlite3_stmt* p_sub_load_pending   = nullptr;
+sqlite3_stmt* p_sub_review         = nullptr;
+
 void bind_text(sqlite3_stmt* statement, int index, std::string_view value) noexcept {
     sqlite3_bind_text(statement, index, value.data(), static_cast<int>(value.size()), SQLITE_TRANSIENT);
 }
@@ -87,6 +93,55 @@ void init() noexcept {
     );
     sqlite3_prepare_v2(db, "SELECT title, code, creator, updated_at FROM daily_puzzle WHERE id = 1", -1, &p_daily_query, nullptr);
     sqlite3_prepare_v2(db, "INSERT INTO daily_puzzle(id, title, code, creator, updated_at) VALUES (1, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title = excluded.title, code = excluded.code, creator = excluded.creator, updated_at = excluded.updated_at", -1, &p_daily_update, nullptr);
+
+    // 残局投稿：普通/进阶用户提交，高级/管理员审核后发布到每日挑战或指定关卡。
+    sqlite3_exec(
+        db,
+        "CREATE TABLE IF NOT EXISTS puzzle_submissions ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "target TEXT NOT NULL, "
+        "level INTEGER NOT NULL DEFAULT 0, "
+        "title TEXT NOT NULL, "
+        "code TEXT NOT NULL, "
+        "creator TEXT NOT NULL, "
+        "created_at INTEGER NOT NULL, "
+        "status INTEGER NOT NULL DEFAULT 0, "
+        "reviewer TEXT NOT NULL DEFAULT '', "
+        "reviewed_at INTEGER NOT NULL DEFAULT 0"
+        ") STRICT",
+        nullptr,
+        nullptr,
+        nullptr
+    );
+    sqlite3_prepare_v2(
+        db,
+        "INSERT INTO puzzle_submissions(target, level, title, code, creator, created_at, status, reviewer, reviewed_at) VALUES (?, ?, ?, ?, ?, ?, 0, '', 0)",
+        -1,
+        &p_sub_insert,
+        nullptr
+    );
+    sqlite3_prepare_v2(
+        db,
+        "SELECT id, target, level, title, code, creator, created_at, status, reviewer, reviewed_at FROM puzzle_submissions WHERE creator = ? AND (? < 0 OR status = ?) ORDER BY id DESC",
+        -1,
+        &p_sub_list_creator,
+        nullptr
+    );
+    sqlite3_prepare_v2(
+        db,
+        "SELECT id, target, level, title, code, creator, created_at, status, reviewer, reviewed_at FROM puzzle_submissions WHERE (? < 0 OR status = ?) ORDER BY id DESC",
+        -1,
+        &p_sub_list_all,
+        nullptr
+    );
+    sqlite3_prepare_v2(
+        db,
+        "SELECT target, level, title, code, creator, created_at FROM puzzle_submissions WHERE id = ? AND status = 0",
+        -1,
+        &p_sub_load_pending,
+        nullptr
+    );
+    sqlite3_prepare_v2(db, "UPDATE puzzle_submissions SET status = ?, reviewer = ?, reviewed_at = ? WHERE id = ? AND status = 0", -1, &p_sub_review, nullptr);
 }
 
 void close() noexcept {
@@ -96,12 +151,22 @@ void close() noexcept {
     sqlite3_finalize(p_query);
     sqlite3_finalize(p_daily_query);
     sqlite3_finalize(p_daily_update);
+    sqlite3_finalize(p_sub_insert);
+    sqlite3_finalize(p_sub_list_creator);
+    sqlite3_finalize(p_sub_list_all);
+    sqlite3_finalize(p_sub_load_pending);
+    sqlite3_finalize(p_sub_review);
     p_insert = nullptr;
     p_update = nullptr;
     p_delete = nullptr;
     p_query = nullptr;
     p_daily_query = nullptr;
     p_daily_update = nullptr;
+    p_sub_insert = nullptr;
+    p_sub_list_creator = nullptr;
+    p_sub_list_all = nullptr;
+    p_sub_load_pending = nullptr;
+    p_sub_review = nullptr;
     if (db) sqlite3_close(db);
     db = nullptr;
 }
@@ -184,6 +249,135 @@ bool update_daily(std::string_view title, std::string_view code, std::string_vie
     const int rc = sqlite3_step(p_daily_update);
     reset(p_daily_update);
     return rc == SQLITE_DONE;
+}
+
+bool add_submission(std::string_view target, uint32_t level, std::string_view title, std::string_view code, std::string_view creator, uint64_t created_at, uint64_t& id) noexcept {
+    id = 0;
+    if (!db || !p_sub_insert || (target != "daily" && target != "level") || title.empty() || code.empty() || creator.empty()) return false;
+    if (target == "level" && (level < 1 || level > 100)) return false;
+
+    bind_text(p_sub_insert, 1, target);
+    sqlite3_bind_int(p_sub_insert, 2, static_cast<int>(level));
+    bind_text(p_sub_insert, 3, title);
+    bind_text(p_sub_insert, 4, code);
+    bind_text(p_sub_insert, 5, creator);
+    sqlite3_bind_int64(p_sub_insert, 6, static_cast<sqlite3_int64>(created_at));
+
+    const int rc = sqlite3_step(p_sub_insert);
+    if (rc == SQLITE_DONE) id = static_cast<uint64_t>(sqlite3_last_insert_rowid(db));
+    reset(p_sub_insert);
+    return rc == SQLITE_DONE && id != 0;
+}
+
+bool list_submissions(std::string_view creator, int status_filter, std::vector<Submission>& out) noexcept {
+    out.clear();
+    if (!db) return false;
+
+    sqlite3_stmt* statement = creator.empty() ? p_sub_list_all : p_sub_list_creator;
+    if (!statement) return false;
+
+    if (creator.empty()) {
+        sqlite3_bind_int(statement, 1, status_filter);
+        sqlite3_bind_int(statement, 2, status_filter);
+    } else {
+        bind_text(statement, 1, creator);
+        sqlite3_bind_int(statement, 2, status_filter);
+        sqlite3_bind_int(statement, 3, status_filter);
+    }
+
+    int rc = SQLITE_OK;
+    while ((rc = sqlite3_step(statement)) == SQLITE_ROW) {
+        Submission record{};
+        record.id = static_cast<uint64_t>(sqlite3_column_int64(statement, 0));
+        record.target = column_text(statement, 1);
+        record.level = static_cast<uint32_t>(sqlite3_column_int(statement, 2));
+        record.title = column_text(statement, 3);
+        record.code = column_text(statement, 4);
+        record.creator = column_text(statement, 5);
+        record.created_at = static_cast<uint64_t>(sqlite3_column_int64(statement, 6));
+        record.status = sqlite3_column_int(statement, 7);
+        record.reviewer = column_text(statement, 8);
+        record.reviewed_at = static_cast<uint64_t>(sqlite3_column_int64(statement, 9));
+        out.emplace_back(std::move(record));
+    }
+    reset(statement);
+    return rc == SQLITE_DONE;
+}
+
+bool review_submission(uint64_t id, bool approve, std::string_view reviewer, uint64_t now, bool allow_overwrite, bool& slot_occupied) noexcept {
+    slot_occupied = false;
+    if (!db || !p_sub_load_pending || !p_sub_review || id == 0 || reviewer.empty()) return false;
+
+    // 只处理仍处于待审核状态的投稿。
+    sqlite3_bind_int64(p_sub_load_pending, 1, static_cast<sqlite3_int64>(id));
+    const int load_rc = sqlite3_step(p_sub_load_pending);
+    if (load_rc != SQLITE_ROW) {
+        reset(p_sub_load_pending);
+        return false;
+    }
+    Submission record{};
+    record.id = id;
+    record.target = column_text(p_sub_load_pending, 0);
+    record.level = static_cast<uint32_t>(sqlite3_column_int(p_sub_load_pending, 1));
+    record.title = column_text(p_sub_load_pending, 2);
+    record.code = column_text(p_sub_load_pending, 3);
+    record.creator = column_text(p_sub_load_pending, 4);
+    record.created_at = static_cast<uint64_t>(sqlite3_column_int64(p_sub_load_pending, 5));
+    reset(p_sub_load_pending);
+
+    // 拒绝：直接标记状态，不做发布。
+    if (!approve) {
+        sqlite3_bind_int(p_sub_review, 1, 2);
+        bind_text(p_sub_review, 2, reviewer);
+        sqlite3_bind_int64(p_sub_review, 3, static_cast<sqlite3_int64>(now));
+        sqlite3_bind_int64(p_sub_review, 4, static_cast<sqlite3_int64>(id));
+        const int rc = sqlite3_step(p_sub_review);
+        const int changed = sqlite3_changes(db);
+        reset(p_sub_review);
+        return rc == SQLITE_DONE && changed == 1;
+    }
+
+    // 通过：先发布到目标位置，成功后再标记为已通过。
+    if (record.target == "daily") {
+        DailyRecord daily{};
+        query_daily(daily);
+        if (!daily.code.empty() && !allow_overwrite) {
+            slot_occupied = true;
+            return false;
+        }
+        if (!update_daily(record.title, record.code, reviewer, now)) return false;
+    } else if (record.target == "level") {
+        std::vector<Record> records;
+        query_puzzles(records);
+        uint64_t existing_id = 0; // 该关卡已被占用时的残局主键
+        for (const auto& existing : records) {
+            if (existing.level != record.level) continue;
+            existing_id = existing.id;
+            break;
+        }
+        if (existing_id != 0) {
+            // 关卡已有残局：等级 3 不允许覆盖，等级 4 走更新覆盖。
+            if (!allow_overwrite) {
+                slot_occupied = true;
+                return false;
+            }
+            if (!update_puzzle(existing_id, record.level, record.title, record.code, now)) return false;
+        } else {
+            uint64_t new_id = 0;
+            if (!add_puzzle(record.level, record.title, record.code, reviewer, now, new_id)) return false;
+        }
+    } else {
+        return false;
+    }
+
+    sqlite3_bind_int(p_sub_review, 1, 1);
+    bind_text(p_sub_review, 2, reviewer);
+    sqlite3_bind_int64(p_sub_review, 3, static_cast<sqlite3_int64>(now));
+    sqlite3_bind_int64(p_sub_review, 4, static_cast<sqlite3_int64>(id));
+    const int rc = sqlite3_step(p_sub_review);
+    const int changed = sqlite3_changes(db);
+    reset(p_sub_review);
+    return rc == SQLITE_DONE && changed == 1;
 }
 } // namespace Puzzle
 } // namespace Manager

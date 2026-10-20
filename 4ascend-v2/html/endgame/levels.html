@@ -123,6 +123,12 @@
                     <div class='text-secondary small'>以下残局来自服务端，所有玩家都可以查看并挑战；残局内容由管理员统一维护。</div>
                 </div>
             </section>
+            <section id='reviewer_notice' class='card shadow-sm mb-4 d-none'>
+                <div class='card-body d-flex align-items-center gap-3 p-3'>
+                    <sl-icon name='shield-check' class='text-primary' style='font-size: 1.35rem;'></sl-icon>
+                    <div class='text-secondary small'>权限等级 3 可通过残局投稿（在残局投稿编辑器中审核），但不能在此直接新增/删除/覆盖残局。</div>
+                </div>
+            </section>
 
             <section>
                 <div class='d-flex align-items-center justify-content-between gap-2 mb-2'>
@@ -173,9 +179,11 @@
         const showFeedback = (message, type = 'secondary') => { const node = $('import_feedback'); node.textContent = message; node.className = `import-hint mt-2 text-${type}`; };
         const renderProgress = () => { const completed = Object.values(levelRecords).filter((item) => item && item.completed).length; $('progress_text').textContent = `${completed} / ${TOTAL_LEVELS}`; $('progress_fill').style.width = `${completed}%`; };
         const isAdmin = () => endgameUserInfo && Number(endgameUserInfo.level) === 4;
+        // 等级 3 只能通过投稿编辑器审核，本页不授予任何编辑能力。
+        const isReviewer = () => endgameUserInfo && Number(endgameUserInfo.level) === 3;
         const validTitle = (title) => { const value = String(title || '').trim(); return value.length > 0 && Array.from(value).length <= 10; };
         const refreshServerRecords = async () => { try { serverRecords = await window.http_puzzle_query(); } catch (_) { serverRecords = []; } renderLevels(); };
-        const renderAdminEditor = () => { $('admin_editor').classList.toggle('d-none', !isAdmin()); $('visitor_notice').classList.toggle('d-none', isAdmin()); };
+        const renderAdminEditor = () => { $('admin_editor').classList.toggle('d-none', !isAdmin()); $('visitor_notice').classList.toggle('d-none', isAdmin()); $('reviewer_notice').classList.toggle('d-none', !isReviewer()); };
         const resetEditor = () => { editingId = 0; $('input_level').value = '1'; $('input_title').value = ''; $('input_code').value = ''; $('button_save').innerHTML = '<sl-icon slot=\'prefix\' name=\'cloud-arrow-up\'></sl-icon>保存到服务端'; };
         const editRecord = (record) => { if (!isAdmin()) return; editingId = Number(record.id); $('input_level').value = String(record.level); $('input_title').value = record.title; $('input_code').value = record.code; $('button_save').innerHTML = '<sl-icon slot=\'prefix\' name=\'pencil-square\'></sl-icon>更新服务端残局'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
         const openLevel = (level) => {
