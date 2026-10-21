@@ -6,12 +6,14 @@
 
 const BOARD_SIZE = 9;
 
-// 对局节点允许的配置键
-const GAME_KEYS = ['残局码', '结束残局', '步数对话', '刷草点', '刷草计划', '我方', '先手', '胜利', '失败', '平局'];
+// 对局节点允许的配置键（结束对局=... 为新写法，结束残局=... 兼容旧剧本）
+const GAME_KEYS = ['残局码', '结束对局', '结束残局', '步数对话', '刷草点', '刷草计划', '我方', '先手', '胜利', '失败', '平局'];
 // 保留目标：直接结束剧情
 const END_TARGETS = ['结束', '剧终'];
 // 返回对局：中途触发的对话播完后回到当前对局继续下棋
 const RESUME_KEYWORDS = ['继续对局', '返回对局'];
+// 对局块结束标记：编辑器据此把「* 对局」到本行之间的内容包进同一个对局框
+const GAME_END_KEYWORDS = ['结束此对局'];
 
 // 条件分支：% IF 条件 -> 标签 / % ELSE -> 标签
 // 条件取自"最近一次对局的结果"
@@ -108,7 +110,9 @@ const normalizeGameConfig = (raw) => {
     const scheduleText = String(source['刷草计划'] == null ? '' : source['刷草计划']);
     const selfText = String(source['我方'] == null ? '' : source['我方']).trim();
     const firstText = String(source['先手'] == null ? '' : source['先手']).trim();
-    const endText = String(source['结束残局'] == null ? '' : source['结束残局']).trim();
+    // 结束对局条件：优先取新键 结束对局，回退旧键 结束残局（兼容旧剧本）
+    const endSource = source['结束对局'] == null ? source['结束残局'] : source['结束对局'];
+    const endText = String(endSource == null ? '' : endSource).trim();
     const dialogueText = String(source['步数对话'] == null ? '' : source['步数对话']);
     const endSteps = /^步数\s*[:：]\s*(\d+)$/.exec(endText);
     return {
@@ -247,6 +251,13 @@ class StoryScript {
                 return;
             }
 
+            // 对局块结束标记：结束此对局（仅作分块边界，运行时按普通节点跳过）
+            if (GAME_END_KEYWORDS.includes(text_)) {
+                nodes.push({ 'type': 'game_end' });
+                pending = null;
+                return;
+            }
+
             // 标注：@ 箭头 锚点 / @ 圈 4,4 / @ 清除（可选 色=#ff3b30）
             if (text_.startsWith('@')) {
                 const tokens = text_.slice(1).trim().split(/\s+/).filter(Boolean);
@@ -341,7 +352,7 @@ class StoryScript {
                 });
                 if (config.points_text && config.points.length === 0) result.push(`对局“${node.title}”的刷草点格式无效：${config.points_text}`);
                 if (config.schedule_text && config.schedule.length === 0) result.push(`对局“${node.title}”的刷草计划格式无效：${config.schedule_text}（应形如 3:4,4;5,4|9:2,2）`);
-                if (config.end_text && !config.end_kind) result.push(`对局“${node.title}”的“结束残局”格式无效：${config.end_text}（应为 胜负 或 步数:12）`);
+                if (config.end_text && !config.end_kind) result.push(`对局“${node.title}”的“结束对局”格式无效：${config.end_text}（应为 胜负 或 步数:12）`);
                 if (config.dialogues_text && !config.dialogues.length) result.push(`对局“${node.title}”的“步数对话”格式无效：${config.dialogues_text}（应形如 3:标签|6:标签）`);
                 (config.dialogues || []).forEach((item) => {
                     if (!hasTarget(item.target)) result.push(`对局“${node.title}”的步数对话指向了不存在的标签：${item.target}`);
@@ -377,7 +388,7 @@ class StoryScript {
                 const config = node.config || normalizeGameConfig(node.config_raw || {});
                 lines.push(`* ${node.title}`);
                 if (config.archive) lines.push(`  残局码=${config.archive}`);
-                if (config.end_text) lines.push(`  结束残局=${config.end_text}`);
+                if (config.end_text) lines.push(`  结束对局=${config.end_text}`);
                 if (config.dialogues.length) lines.push(`  步数对话=${dialoguesToText(config.dialogues)}`);
                 if (config.points.length) lines.push(`  刷草点=${pointsToText(config.points)}`);
                 if (config.schedule.length) lines.push(`  刷草计划=${scheduleToText(config.schedule)}`);
@@ -393,6 +404,7 @@ class StoryScript {
                 else lines.push(`% IF ${COND_TEXT[node.condition] || node.condition} -> ${node.target}`);
             } else if (node.type === 'end') lines.push('结束');
             else if (node.type === 'resume') lines.push('继续对局');
+            else if (node.type === 'game_end') lines.push('结束此对局');
             else if (node.type === 'mark') {
                 const tail = node.color ? ` 色=${node.color}` : '';
                 if (node.kind === 'clear') lines.push('@ 清除');

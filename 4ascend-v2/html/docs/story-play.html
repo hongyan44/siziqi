@@ -57,7 +57,7 @@
         .met-cursor-pointer .dialogue-inner { cursor: pointer; }
         .dialogue-face { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: .4rem; }
         .dialogue-face-frame { position: relative; display: flex; align-items: center; justify-content: center; border: 2px solid #000; border-radius: .4rem; background: #0b0d11; overflow: hidden; }
-        .dialogue-face-frame img { display: block; width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; }
+        .dialogue-face-frame img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; }
         .dialogue-face-frame sl-icon { font-size: 1.6rem; color: #57616e; }
         .dialogue-speaker { font-weight: 700; font-size: .95rem; line-height: 1.25; color: #8fd0ff; text-align: center; max-width: 100%; word-break: break-all; }
         .dialogue-body { flex: 1 1 auto; min-width: 0; }
@@ -284,14 +284,17 @@
             return image || character.rep || '';
         };
 
-        // 表情框高 = 黑框高的 3/4，垂直居中；宽 = 高 / 1.5。测量前先清空尺寸，避免文本换行与框尺寸互相影响
+        // 表情框高 = 文本区高的 3/4；必须按 .dialogue-body 测量：
+        // 若按 .dialogue-inner 测量，已加载的角色图片会以固有尺寸（512×768）撑大黑框，
+        // 算出的高度其实来自图片本身，导致表情图越画越大、占满对话框。
         const layoutFace = () => {
             const inner = document.querySelector('#dialogue .dialogue-inner');
+            const body = document.querySelector('#dialogue .dialogue-body');
             const frame = $('dialogue_face_frame');
-            if (!inner || !frame) return;
-            frame.style.height = '';
-            frame.style.width = '';
-            const innerHeight = inner.getBoundingClientRect().height;
+            if (!inner || !body || !frame) return;
+            const style = window.getComputedStyle(inner);
+            const padding = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
+            const innerHeight = body.getBoundingClientRect().height + padding;
             if (!innerHeight) return;
             const height = Math.max(48, Math.round(innerHeight * 0.75));
             const width = Math.max(32, Math.round(height / FACE_RATIO));

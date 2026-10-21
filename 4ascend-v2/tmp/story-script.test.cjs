@@ -419,37 +419,38 @@ const TYPES = ['say', 'choice', 'label', 'say', 'game', 'label', 'say', 'end', '
     console.log('PASS: step_cond 条件跳转');
 }
 
-// 27) 结束残局：解析归一化（步数:N / 胜负 / 未配置）
+// 27) 结束对局：解析归一化（步数:N / 胜负 / 未配置）
 {
     const gameOf = (text) => StoryScript.parse(text).nodes.find((n) => n.type === 'game');
 
-    const steps = StoryScript.parse('[A] x\n* 残局\n  结束残局=步数:12\n结束');
-    assert.deepEqual(steps.errors, [], '结束残局不应产生解析错误');
-    assert.equal(gameOf('[A] x\n* 残局\n  结束残局=步数:12\n结束').config.end_kind, 'steps');
-    assert.equal(gameOf('[A] x\n* 残局\n  结束残局=步数:12\n结束').config.end_steps, 12);
-    assert.equal(gameOf('[A] x\n* 残局\n  结束残局=步数:12\n结束').config.end_text, '步数:12');
-    assert.equal(gameOf('[A] x\n* 残局\n  结束残局=步数：8\n结束').config.end_steps, 8, '全角冒号也接受');
+    const steps = StoryScript.parse('[A] x\n* 对局\n  结束对局=步数:12\n结束');
+    assert.deepEqual(steps.errors, [], '结束对局不应产生解析错误');
+    assert.equal(gameOf('[A] x\n* 对局\n  结束对局=步数:12\n结束').config.end_kind, 'steps');
+    assert.equal(gameOf('[A] x\n* 对局\n  结束对局=步数:12\n结束').config.end_steps, 12);
+    assert.equal(gameOf('[A] x\n* 对局\n  结束对局=步数:12\n结束').config.end_text, '步数:12');
+    assert.equal(gameOf('[A] x\n* 对局\n  结束对局=步数：8\n结束').config.end_steps, 8, '全角冒号也接受');
 
-    assert.equal(gameOf('[A] x\n* 残局\n  结束残局=胜负\n结束').config.end_kind, 'outcome');
-    assert.equal(gameOf('[A] x\n* 残局\n  结束残局=胜负\n结束').config.end_steps, 0);
-    assert.equal(gameOf('[A] x\n* 残局\n  我方=黑\n结束').config.end_kind, '', '未配置时无结束条件（等价胜负）');
-    console.log('PASS: 结束残局解析');
+    assert.equal(gameOf('[A] x\n* 对局\n  结束对局=胜负\n结束').config.end_kind, 'outcome');
+    assert.equal(gameOf('[A] x\n* 对局\n  结束对局=胜负\n结束').config.end_steps, 0);
+    assert.equal(gameOf('[A] x\n* 对局\n  我方=黑\n结束').config.end_kind, '', '未配置时无结束条件（等价胜负）');
+    assert.equal(gameOf('[A] x\n* 对局\n  结束残局=步数:5\n结束').config.end_steps, 5, '旧键 结束残局 仍兼容');
+    console.log('PASS: 结束对局解析');
 }
 
-// 28) 结束残局：校验与还原
+// 28) 结束对局：校验与还原
 {
-    assert.deepEqual(StoryScript.validate('[A] x\n* 残局\n  结束残局=胜负\n结束'), []);
-    assert.deepEqual(StoryScript.validate('[A] x\n* 残局\n  结束残局=步数:12\n结束'), []);
+    assert.deepEqual(StoryScript.validate('[A] x\n* 对局\n  结束对局=胜负\n结束'), []);
+    assert.deepEqual(StoryScript.validate('[A] x\n* 对局\n  结束对局=步数:12\n结束'), []);
     assert.ok(
-        StoryScript.validate('[A] x\n* 残局\n  结束残局=随便\n结束').some((e) => e.includes('结束残局')),
-        '非法结束残局应报错'
+        StoryScript.validate('[A] x\n* 对局\n  结束对局=随便\n结束').some((e) => e.includes('结束对局')),
+        '非法结束对局应报错'
     );
 
-    const out = StoryScript.stringify(StoryScript.parse('[A] x\n* 残局\n  残局码=AB12\n  结束残局=步数:12\n:赢\n[A] 赢\n结束'));
-    assert.ok(out.includes('结束残局=步数:12'), `结束残局应还原：${out}`);
-    assert.ok(out.indexOf('残局码=AB12') < out.indexOf('结束残局=步数:12'), '结束残局应紧随残局码');
+    const out = StoryScript.stringify(StoryScript.parse('[A] x\n* 对局\n  残局码=AB12\n  结束对局=步数:12\n:赢\n[A] 赢\n结束'));
+    assert.ok(out.includes('结束对局=步数:12'), `结束对局应还原：${out}`);
+    assert.ok(out.indexOf('残局码=AB12') < out.indexOf('结束对局=步数:12'), '结束对局应紧随残局码');
     assert.deepEqual(StoryScript.validate(out), [], '还原后应校验通过');
-    console.log('PASS: 结束残局校验与还原');
+    console.log('PASS: 结束对局校验与还原');
 }
 
 // 29) 步数对话：解析 / 校验 / 还原
@@ -464,8 +465,8 @@ const TYPES = ['say', 'choice', 'label', 'say', 'game', 'label', 'say', 'end', '
 
     const out = StoryScript.stringify(parsed);
     assert.ok(out.includes('步数对话=3:中场|6:结尾'), `步数对话应还原：${out}`);
-    const ordered = StoryScript.stringify(StoryScript.parse('[A] x\n* 对局\n  残局码=AB\n  结束残局=胜负\n  步数对话=3:中场\n:中场\n[A] 中场\n继续对局\n结束'));
-    assert.ok(ordered.indexOf('结束残局=胜负') < ordered.indexOf('步数对话=3:中场'), '步数对话应排在结束残局之后');
+    const ordered = StoryScript.stringify(StoryScript.parse('[A] x\n* 对局\n  残局码=AB\n  结束对局=胜负\n  步数对话=3:中场\n:中场\n[A] 中场\n继续对局\n结束'));
+    assert.ok(ordered.indexOf('结束对局=胜负') < ordered.indexOf('步数对话=3:中场'), '步数对话应排在结束对局之后');
     assert.deepEqual(StoryScript.validate(src), [], '应校验通过');
     assert.deepEqual(StoryScript.validate(out), [], '还原后应校验通过');
 
@@ -506,6 +507,30 @@ const TYPES = ['say', 'choice', 'label', 'say', 'game', 'label', 'say', 'end', '
     assert.equal(pick(2).target, '中场', '总手数 2（AI 应手）触发中场');
     assert.equal(pick(3).target, '结尾', '总手数 3（玩家第二次）触发结尾');
     console.log('PASS: 步数对话按落子总手数匹配');
+}
+
+// 32) 结束此对局：对局块结束标记的解析 / 还原 / 运行时跳过
+{
+    const src = '[A] x\n* 对局 第一场\n  残局码=AB\n[A] 场内对白\n结束此对局\n[A] 场外对白\n结束';
+    const parsed = StoryScript.parse(src);
+    assert.deepEqual(parsed.errors, [], '结束此对局不应产生解析错误');
+    assert.deepEqual(
+        parsed.nodes.map((n) => n.type),
+        ['say', 'game', 'say', 'game_end', 'say', 'end'],
+        '结束此对局应为独立的 game_end 节点'
+    );
+    const out = StoryScript.stringify(parsed);
+    assert.ok(out.includes('结束此对局'), `结束此对局应还原：${out}`);
+    assert.deepEqual(StoryScript.validate(src), [], '结束此对局剧本应校验通过');
+    assert.deepEqual(StoryScript.validate(out), [], '还原后应校验通过');
+
+    // 运行时把 game_end 当普通节点跳过，不影响后续推进
+    const rt = new StoryRuntime(parsed);
+    assert.equal(rt.advance().type, 'game');
+    assert.equal(rt.advance().type, 'say');
+    assert.equal(rt.advance().type, 'game_end');
+    assert.equal(rt.advance().text, '场外对白', 'game_end 之后应能继续推进');
+    console.log('PASS: 结束此对局块标记');
 }
 
 console.log('story-script: ALL PASS');

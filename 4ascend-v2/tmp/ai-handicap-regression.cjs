@@ -59,7 +59,7 @@ assert.equal(AiHandicap.levelOf('6'), null);
 assert.equal(AiHandicap.levelOf(null), null);
 console.log('PASS: 入门/简单/普通进入取用弱化，熟练及以上不参与');
 
-// 0) 入门：同时叠加两条规则——占草点优先改堵
+// 0) 入门：仅占草规则命中（非卖血）→ 改堵玩家打点
 {
     const game = makeGame({ turn: R.BLACK });
     put(game, S.WHITE, [[1, 4], [2, 4], [3, 4]]);
@@ -71,32 +71,42 @@ console.log('PASS: 入门/简单/普通进入取用弱化，熟练及以上不�
     assert.equal(result.level, 'dumb', '档位应标记为 dumb');
     assert.equal(result.reason, 'easy-block-player-ascend');
     assert.equal(result.action, xy(4, 4), '应改到玩家打点 (4,4)');
-    console.log('PASS: 入门难度叠加简单规则，占草点改堵玩家打点');
+    console.log('PASS: 入门难度仅占草规则命中时，占草点改堵玩家打点');
 }
 
-// 0b) 入门：非占草落点命中卖血 → 改自己打点
+// 0b) 入门：对手已成型且有我方成打点 → 主动回打（有打必回），不看引擎原落点
 {
     const game = makeGame({ turn: R.BLACK });
     put(game, S.WHITE_ASCEND, [[3, 4], [4, 4], [5, 4], [6, 4]]);
     put(game, S.BLACK, [[6, 6], [6, 7], [6, 8]]);
 
-    const result = handicap.adjust(game, xy(4, 4), '0');
-    assert.ok(result, '入门难度应改写卖血落点');
+    // 引擎原落点取一个与卖血点/占草点都无关的普通空点，仍应被主动改成自己的成打点
+    const result = handicap.adjust(game, xy(0, 0), '0');
+    assert.ok(result, '对手已成型且有我方成打点时应主动回打');
     assert.equal(result.level, 'dumb', '档位应标记为 dumb');
-    assert.equal(result.reason, 'normal-no-sell-blood');
+    assert.equal(result.reason, 'dumb-answer-ascend');
     const chosen = handicap.describe(game, result.action);
-    assert.equal(chosen.formsAscend, true, '改后的落点必须是自己的打点');
-    console.log('PASS: 入门难度叠加普通规则，卖血点改自身打点');
+    assert.equal(chosen.formsAscend, true, '回打落点必须是自己的成打点');
+    console.log(`PASS: 入门难度有打必回，主动回打到 (${chosen.x},${chosen.y})`);
 }
 
-// 0c) 入门：既非占草也非卖血 → 不改写
+// 0c) 入门：既非占草也非卖血且对手无威胁 → 不改写
 {
     const game = makeGame({ turn: R.BLACK });
     put(game, S.WHITE, [[1, 4], [2, 4], [3, 4]]);
     put(game, S.BLACK, [[0, 4]]);
     game.board.set_plant(7, 7, P.ONE);
     assert.equal(handicap.adjust(game, xy(0, 0), '0'), null, '入门难度对普通落点不应改写');
-    console.log('PASS: 入门难度仅在命中占草/卖血时改写');
+    console.log('PASS: 入门难度仅在命中占草/卖血/有打必回时改写');
+}
+
+// 0d) 入门：对手已成型但我方无成打点 → 不改写
+{
+    const game = makeGame({ turn: R.BLACK });
+    put(game, S.WHITE_ASCEND, [[3, 4], [4, 4], [5, 4], [6, 4]]);
+    put(game, S.BLACK, [[0, 0], [8, 8]]);
+    assert.equal(handicap.adjust(game, xy(8, 0), '0'), null, '没有成打点时应保持原状');
+    console.log('PASS: 入门难度无成打点时不动落点');
 }
 
 // 1) 简单：引擎取占草点 → 改堵玩家打点
@@ -204,6 +214,13 @@ console.log('PASS: 入门/简单/普通进入取用弱化，熟练及以上不�
     const result = handicap.adjust(game, xy(7, 7), '1');
     assert.ok(legal.includes(result.action), '改写后的落点必须合法');
     console.log('PASS: 改写落点始终合法');
+}
+
+// 9) 入门 SIM 提升到 45（仅 4ascend-zero）
+{
+    const source = fs.readFileSync(path.resolve(__dirname, '../js/main/ai.cjs'), 'utf8');
+    assert.match(source, /if \(opt === '0'\) return 45;/, '入门难度 SIM 应为 45');
+    console.log('PASS: 入门难度 SIM 提升为 45');
 }
 
 console.log('\n全部通过：难度取用弱化回归');

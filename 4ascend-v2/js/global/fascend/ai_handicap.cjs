@@ -10,7 +10,8 @@ const { STONE_ENUM, PLANT_ENUM, PLAYER_ENUM } = require('./enum.cjs');
  * 只改写“取用”环节，不参与“选子”：MCTS 的搜索、先验与打分完全保持原样，
  * 仅在引擎返回落点之后、真正落子之前，按难度把落点替换成更弱的选择。
  *
- * - 入门（opt=0）：最低难度，同时叠加简单与普通两条规则（先占草改堵，未命中再卖血改打）。
+ * - 入门（opt=0）：最低难度，叠加两条弱化规则：永远优先“不卖血（有打必回）”
+ *   （对手已成型且我方存在成打点时主动回打，不看引擎原落点），其次占草改堵。
  * - 简单（opt=1）：引擎若选了占草点，且盘面上存在玩家单独打点，则改为堵点。
  * - 普通（opt=2）：引擎若选了卖血点，则改为自己的打点；没有打点时才允许卖血。
  *
@@ -149,16 +150,66 @@ class AiHandicap {
     }
 
     /**
-     * 入门难度（最低）：同时叠加简单与普通两条弱化规则。
-     * 先按简单规则处理占草点（改为堵玩家打点），未命中时再按普通规则处理卖血点（改自己打点）。
+     * 对手盘面是否存在未抵消的 ASCEND 威胁（对手成打子仍留在盘上，我方不回打就会挨打）。
+     * @param {any} game
+     * @return {boolean}
+     */
+    foeThreatPresent(game) {
+        const foeAscendStone = game.state.turn_player === PLAYER_ENUM.BLACK
+            ? STONE_ENUM.WHITE_ASCEND
+            : STONE_ENUM.BLACK_ASCEND;
+        const board = game.board;
+        for (let y = 0; y < board.h; y++) {
+            for (let x = 0; x < board.w; x++) {
+                if (board.get_stone(x, y) === foeAscendStone) return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 入门难度主动兜底（有打必回）：只要对手已成型且我方存在成打点，
+     * 就不再依赖引擎是否恰好选中卖血点，直接选最强成打点回应。
+     * @param {any} game
+     * @param {number} action 引擎原落点
+     * @param {number[]} legal
+     * @return {{action: number, level: string, reason: string, original: number, detail: object} | null}
+     */
+    answerAscend(game, action, legal) {
+        if (!this.foeThreatPresent(game)) return null;
+
+        const builds = this.scan(game, legal).filter((move) => move.formsAscend);
+        if (!builds.length) return null;
+
+        const chosen = this.pickStrongest(builds);
+        if (!chosen) return null;
+
+        return {
+            action: chosen.action,
+            level: 'dumb',
+            reason: 'dumb-answer-ascend',
+            original: action,
+            detail: {
+                chosen: { x: chosen.x, y: chosen.y },
+                selfPower: chosen.selfPower,
+            },
+        };
+    }
+
+    /**
+     * 入门难度（最低）：两条弱化规则叠加。
+     * 优先级：永远优先“不卖血（有打必回）”——对手已成型且我方有成打点就主动回打；
+     * 未命中时再按简单规则处理占草点（改堵玩家打点）。
      * @param {any} game
      * @param {number} action
      * @param {ReturnType<AiHandicap['describe']>} info
      * @param {number[]} legal
      */
     weakenDumb(game, action, info, legal) {
-        const rewritten = this.weakenEasy(game, action, info, legal)
-            || this.weakenNormal(game, action, info, legal);
+        const answer = this.answerAscend(game, action, legal);
+        if (answer) return answer;
+
+        const rewritten = this.weakenEasy(game, action, info, legal);
         if (!rewritten) return null;
         rewritten.level = 'dumb';
         return rewritten;

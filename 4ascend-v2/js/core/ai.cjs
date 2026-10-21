@@ -161,6 +161,22 @@ const info_clear = () => {
 
 
 /**
+ * @description: 取登录玩家的昵称与昵称颜色（未登录或请求失败返回 null）
+ * @return {Promise<{name: string, color: string} | null>}
+ */
+const login_profile_self = async () => {
+    try {
+        const token = window.get_token();
+        if (!token || typeof window.http_user_info !== 'function') return null;
+        const info = await window.http_user_info(token);
+        if (!info || !info.name) return null;
+        return { 'name': info.name, 'color': info.name_color || '' };
+    } catch (_) {
+        return null;
+    }
+};
+
+/**
  * @description: 游戏文字重置
  * @return {void}
  */
@@ -917,13 +933,15 @@ const run = async () => {
 
     const my_uuid = '1';
     const foe_uuid = '2';
-    const my_name = '本地玩家（我方）';
+    // 登录玩家用昵称作为棋盘上方的 ID；未登录沿用本地玩家名
+    const login = await login_profile_self();
+    const my_name = login ? login.name : '本地玩家（我方）';
     const foe_name = gl_cf_level;
 
     game_p1_name.innerText = my_name;
     game_p2_name.innerText = foe_name;
     // 登录玩家已设置昵称颜色时，用自己的彩色昵称替换默认名字
-    window.name_color_apply_self(game_p1_name);
+    if (login && login.color) window.name_color_apply(game_p1_name, login.color);
 
     // 决定随机数种子
     rand_aic = new RandAIC(seed_aic);
@@ -1065,7 +1083,7 @@ const run = async () => {
     game_p2_ascend.innerText = 'PR: 0+0';
     game_p2_stone.innerText = foe_icon;
     // 登录玩家已设置昵称颜色时，用自己的彩色昵称替换默认名字
-    window.name_color_apply_self(game_p1_name);
+    if (login && login.color) window.name_color_apply(game_p1_name, login.color);
 
     game_redraw();
     time = Date.now();
