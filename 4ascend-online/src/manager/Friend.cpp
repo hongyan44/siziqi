@@ -33,6 +33,8 @@ sqlite3_stmt* p_req_exists     = nullptr;
 sqlite3_stmt* p_req_incoming   = nullptr;
 sqlite3_stmt* p_req_outgoing   = nullptr;
 sqlite3_stmt* p_req_count      = nullptr;
+sqlite3_stmt* p_settings_get   = nullptr;
+sqlite3_stmt* p_settings_set   = nullptr;
 sqlite3_stmt* p_invite_add     = nullptr;
 sqlite3_stmt* p_invite_latest  = nullptr;
 sqlite3_stmt* p_invite_clear   = nullptr;
@@ -109,6 +111,11 @@ void init() noexcept {
     );
     sqlite3_exec(
         db,
+        "CREATE TABLE IF NOT EXISTS friend_settings (uuid TEXT PRIMARY KEY, request_mode TEXT NOT NULL) STRICT",
+        nullptr, nullptr, nullptr
+    );
+    sqlite3_exec(
+        db,
         "CREATE TABLE IF NOT EXISTS invites ("
         "from_uuid TEXT NOT NULL, to_uuid TEXT NOT NULL, room TEXT NOT NULL, created_at INTEGER NOT NULL, "
         "PRIMARY KEY(from_uuid, to_uuid)) STRICT",
@@ -153,6 +160,13 @@ void init() noexcept {
     sqlite3_prepare_v2(db, "SELECT from_uuid, created_at FROM requests WHERE to_uuid = ? ORDER BY created_at DESC", -1, &p_req_incoming, nullptr);
     sqlite3_prepare_v2(db, "SELECT to_uuid, created_at FROM requests WHERE from_uuid = ? ORDER BY created_at DESC", -1, &p_req_outgoing, nullptr);
     sqlite3_prepare_v2(db, "SELECT COUNT(1) FROM requests WHERE to_uuid = ?", -1, &p_req_count, nullptr);
+    sqlite3_prepare_v2(db, "SELECT request_mode FROM friend_settings WHERE uuid = ?", -1, &p_settings_get, nullptr);
+    sqlite3_prepare_v2(
+        db,
+        "INSERT INTO friend_settings (uuid, request_mode) VALUES (?, ?) "
+        "ON CONFLICT(uuid) DO UPDATE SET request_mode = excluded.request_mode",
+        -1, &p_settings_set, nullptr
+    );
     sqlite3_prepare_v2(
         db,
         "INSERT INTO invites (from_uuid, to_uuid, room, created_at) VALUES (?, ?, ?, ?) "
@@ -214,6 +228,8 @@ void close() noexcept {
     sqlite3_finalize(p_req_incoming);
     sqlite3_finalize(p_req_outgoing);
     sqlite3_finalize(p_req_count);
+    sqlite3_finalize(p_settings_get);
+    sqlite3_finalize(p_settings_set);
     sqlite3_finalize(p_invite_add);
     sqlite3_finalize(p_invite_latest);
     sqlite3_finalize(p_invite_clear);
@@ -233,6 +249,8 @@ void close() noexcept {
     p_req_incoming = nullptr;
     p_req_outgoing = nullptr;
     p_req_count = nullptr;
+    p_settings_get = nullptr;
+    p_settings_set = nullptr;
     p_invite_add = nullptr;
     p_invite_latest = nullptr;
     p_invite_clear = nullptr;
@@ -415,6 +433,31 @@ bool count_incoming(std::string_view to, int64_t& out) noexcept {
     if (rc == SQLITE_ROW) out = sqlite3_column_int64(p_req_count, 0);
     reset(p_req_count);
     return rc == SQLITE_ROW;
+}
+
+void request_mode(std::string_view uuid, std::string& out) noexcept {
+    // 默认需要同意；未设置或读取失败都回退到 manual。
+    out = "manual";
+    if (!db || !p_settings_get || uuid.empty()) return;
+
+    bind_text(p_settings_get, 1, uuid);
+    const int rc = sqlite3_step(p_settings_get);
+    if (rc == SQLITE_ROW) {
+        const auto mode = column_text(p_settings_get, 0);
+        if (mode == "deny" || mode == "manual" || mode == "auto") out = mode;
+    }
+    reset(p_settings_get);
+}
+
+bool set_request_mode(std::string_view uuid, std::string_view mode) noexcept {
+    if (!db || !p_settings_set || uuid.empty()) return false;
+    if (mode != "deny" && mode != "manual" && mode != "auto") return false;
+
+    bind_text(p_settings_set, 1, uuid);
+    bind_text(p_settings_set, 2, mode);
+    const int rc = sqlite3_step(p_settings_set);
+    reset(p_settings_set);
+    return rc == SQLITE_DONE;
 }
 
 

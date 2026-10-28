@@ -36,6 +36,7 @@
     <script src='/js/ref/global-music.min.js?v=replace'></script>
     <script src='/js/ref/http.min.js?v=replace'></script>
     <script src='/js/ref/friends.min.js?v=replace'></script>
+    <script src='/js/ref/wallet.min.js?v=replace'></script>
 
     <link href='/css/global.min.css?v=replace' rel='stylesheet'>
 
@@ -89,7 +90,7 @@
             margin-bottom: 0.5rem;
         }
 
-        /* 好友抽屉 */
+        /* 好友弹窗：占屏宽 75% 的居中面板，聊天与资料都在面板内展示 */
         .friend-drawer {
             position: fixed;
             inset: 0;
@@ -100,22 +101,26 @@
         .friend-drawer .friend-drawer-backdrop {
             position: absolute;
             inset: 0;
-            background: rgba(0, 0, 0, 0.28);
+            background: rgba(0, 0, 0, 0.32);
             opacity: 0;
             transition: opacity 0.28s ease;
         }
 
         .friend-drawer .friend-drawer-panel {
             position: absolute;
-            top: 0;
-            left: 0;
-            height: 100%;
-            width: 380px;
-            max-width: 88vw;
+            top: 50%;
+            left: 50%;
+            width: 75vw;
+            min-width: 320px;
+            height: 85vh;
+            max-height: 900px;
             background: #fff;
-            box-shadow: 0 0 24px rgba(0, 0, 0, 0.2);
-            transform: translateX(-100%);
-            transition: transform 0.28s ease;
+            border-radius: 0.9rem;
+            overflow: hidden;
+            box-shadow: 0 16px 56px rgba(0, 0, 0, 0.3);
+            opacity: 0;
+            transform: translate(-50%, -50%) scale(0.96);
+            transition: transform 0.28s ease, opacity 0.28s ease;
             display: flex;
             flex-direction: column;
         }
@@ -129,11 +134,55 @@
         }
 
         .friend-drawer.open .friend-drawer-panel {
-            transform: translateX(0);
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
         }
 
         .friend-drawer .min-w-0 {
             min-width: 0;
+        }
+
+        .friend-drawer-body {
+            display: grid;
+            grid-template-columns: 320px minmax(0, 1fr);
+            flex-grow: 1;
+            min-height: 0;
+        }
+
+        .friend-drawer-side {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            padding: 0.75rem;
+            overflow-y: auto;
+            border-right: 1px solid var(--sl-color-neutral-200);
+        }
+
+        .friend-drawer-detail {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            padding: 0.75rem;
+            background: var(--sl-color-neutral-50);
+        }
+
+        .friend-detail-pane {
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+            min-height: 0;
+        }
+
+        .friend-detail-empty {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            flex-grow: 1;
+            color: var(--sl-color-neutral-500);
+            font-size: var(--sl-font-size-small);
         }
 
         .friend-dot {
@@ -150,20 +199,17 @@
             box-shadow: 0 0 0 2px var(--sl-color-success-100);
         }
 
-        /* 好友聊天框 */
-        .friend-chat-body {
-            min-height: 0;
-        }
-
+        /* 好友聊天框（内嵌在弹窗右侧） */
         .friend-chat-list {
             display: flex;
             flex-direction: column;
             gap: 0.5rem;
-            height: 340px;
-            max-height: 52vh;
+            flex-grow: 1;
+            min-height: 0;
             overflow-y: auto;
             padding: 0.5rem;
-            background: var(--sl-color-neutral-50);
+            background: #fff;
+            border: 1px solid var(--sl-color-neutral-200);
             border-radius: 8px;
         }
 
@@ -206,6 +252,33 @@
 
         .friend-chat-composer {
             margin-top: 0.5rem;
+        }
+
+        /* 好友申请页：覆盖在弹窗内容之上 */
+        .friend-requests-view {
+            position: absolute;
+            inset: 0;
+            background: #fff;
+            z-index: 3;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 申请入口固定为圆形按钮（人像 + 号） */
+        #button_friend_requests::part(base) {
+            border-radius: 50%;
+        }
+
+        @media (max-width: 820px) {
+            .friend-drawer-body {
+                grid-template-columns: minmax(0, 1fr);
+                grid-template-rows: 45% minmax(0, 1fr);
+            }
+
+            .friend-drawer-side {
+                border-right: none;
+                border-bottom: 1px solid var(--sl-color-neutral-200);
+            }
         }
     </style>
 
@@ -377,6 +450,13 @@
                     <div class='category-title fw-bold'>额外功能</div>
                     <div class='row g-2 g-md-3'>
                         <div class='col-6 col-md-4'>
+                            <sl-button variant='default' size='large' href='/pages/user/shop.html' target='_self' pill
+                                outline class='w-100'>
+                                <sl-icon slot='prefix' name='shop'></sl-icon>棋币商店
+                            </sl-button>
+                        </div>
+
+                        <div class='col-6 col-md-4'>
                             <sl-button variant='default' size='large' href='/pages/mod/match.html' target='_self' pill outline
                                 class='w-100'>
                                 <sl-icon slot='prefix' name='diagram-3'></sl-icon>赛事相关
@@ -511,6 +591,8 @@
 
     <sl-dialog id='dialog_user' class='d-none' label='账号信息'>
             <div class='d-flex flex-column gap-4'>
+                <div id='block_user_wallet'></div>
+
                 <div class='d-flex flex-column gap-2 w-100'>
                     <div class='p-3 rounded border bg-light'>
                         <div class='d-flex align-items-center justify-content-between gap-2'>
@@ -815,52 +897,122 @@
                     <sl-icon name='people-fill' class='text-primary'></sl-icon>
                     <span class='fw-bold'>好友</span>
                 </div>
-                <sl-button id='button_friend_close' size='small' circle title='关闭'>
-                    <sl-icon name='x-lg'></sl-icon>
-                </sl-button>
-            </div>
-
-            <div class='d-flex flex-column gap-3 p-3 flex-grow-1 overflow-auto'>
-                <div class='p-2 rounded border bg-light d-flex align-items-center justify-content-between gap-2'>
-                    <div class='min-w-0'>
-                        <small class='text-secondary d-block'>我的好友ID</small>
-                        <span id='span_friend_my_id' class='fw-bold'>----</span>
+                <div class='d-flex align-items-center gap-2'>
+                    <div class='position-relative'>
+                        <sl-button id='button_friend_requests' variant='default' size='small' circle title='好友申请'>
+                            <sl-icon name='person-plus'></sl-icon>
+                        </sl-button>
+                        <span id='badge_friend_requests'
+                            class='d-none position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger'
+                            style='font-size: 0.6rem;'>0</span>
                     </div>
-                    <sl-button id='button_friend_copy_id' size='small' variant='default' outline>
-                        <sl-icon slot='prefix' name='clipboard'></sl-icon>复制
+                    <sl-button id='button_friend_close' size='small' circle title='关闭'>
+                        <sl-icon name='x-lg'></sl-icon>
                     </sl-button>
                 </div>
+            </div>
 
-                <section>
-                    <div class='category-title fw-bold mb-2'>添加好友</div>
-                    <div class='d-flex flex-row align-items-start gap-2'>
-                        <sl-input id='input_friend_search' class='flex-grow-1' placeholder='输入好友ID' maxlength='8'
-                            help-text='8位字母数字，不区分大小写'></sl-input>
-                        <sl-button id='button_friend_search' variant='primary'>搜索</sl-button>
-                    </div>
-                    <div id='div_friend_search_result' class='mt-2'></div>
-                </section>
-
-                <section id='section_friend_requests' class='d-none'>
-                    <div class='category-title fw-bold mb-2'>待处理申请</div>
-                    <div id='div_friend_requests' class='d-flex flex-column gap-2'></div>
-                </section>
-
-                <section id='section_friend_online' class='d-none'>
-                    <div class='d-flex align-items-center justify-content-between mb-2 gap-2'>
-                        <div class='category-title fw-bold mb-0'>全部在线玩家（管理员）</div>
-                        <sl-button id='button_friend_online_refresh' size='small' variant='default' outline>
-                            <sl-icon slot='prefix' name='arrow-clockwise'></sl-icon>刷新
+            <div class='friend-drawer-body'>
+                <aside class='friend-drawer-side'>
+                    <div class='p-2 rounded border bg-light d-flex align-items-center justify-content-between gap-2'>
+                        <div class='min-w-0'>
+                            <small class='text-secondary d-block'>我的好友ID</small>
+                            <span id='span_friend_my_id' class='fw-bold'>----</span>
+                        </div>
+                        <sl-button id='button_friend_copy_id' size='small' variant='default' outline>
+                            <sl-icon slot='prefix' name='clipboard'></sl-icon>复制
                         </sl-button>
                     </div>
-                    <div id='div_friend_online' class='d-flex flex-column gap-2'></div>
-                </section>
 
-                <section>
-                    <div class='category-title fw-bold mb-2'>好友列表</div>
-                    <div id='div_friend_list' class='d-flex flex-column gap-2'></div>
+                    <section>
+                        <div class='category-title fw-bold mb-2'>添加好友</div>
+                        <div class='d-flex flex-row align-items-start gap-2'>
+                            <sl-input id='input_friend_search' class='flex-grow-1' placeholder='输入好友ID' maxlength='8'
+                                help-text='8位字母数字，不区分大小写'></sl-input>
+                            <sl-button id='button_friend_search' variant='primary'>搜索</sl-button>
+                        </div>
+                        <div id='div_friend_search_result' class='mt-2'></div>
+                    </section>
+
+                    <section id='section_friend_online'>
+                        <div class='d-flex align-items-center justify-content-between mb-2 gap-2'>
+                            <div class='category-title fw-bold mb-0'>近七天活跃玩家</div>
+                            <sl-button id='button_friend_online_refresh' size='small' variant='default' outline>
+                                <sl-icon slot='prefix' name='arrow-clockwise'></sl-icon>刷新
+                            </sl-button>
+                        </div>
+                        <div id='div_friend_online' class='d-flex flex-column gap-2'></div>
+                    </section>
+
+                    <section>
+                        <div class='category-title fw-bold mb-2'>好友列表</div>
+                        <div id='div_friend_list' class='d-flex flex-column gap-2'></div>
+                    </section>
+                </aside>
+
+                <section id='friend_detail' class='friend-drawer-detail'>
+                    <div id='friend_detail_empty' class='friend-detail-empty'>
+                        <sl-icon name='chat-left-dots' style='font-size: 2rem;'></sl-icon>
+                        <span>选择好友开始聊天，或点击昵称查看玩家资料</span>
+                    </div>
+
+                    <div id='friend_chat_view' class='friend-detail-pane d-none'>
+                        <div class='d-flex align-items-center justify-content-between gap-2 pb-2 border-bottom'>
+                            <span id='span_friend_chat_title' class='fw-bold text-truncate'>聊天</span>
+                            <sl-button id='button_friend_chat_profile' size='small' variant='default' outline>
+                                <sl-icon slot='prefix' name='person'></sl-icon>资料
+                            </sl-button>
+                        </div>
+                        <div id='div_friend_chat_list' class='friend-chat-list my-2'></div>
+                        <div class='d-flex align-items-center gap-2 friend-chat-composer'>
+                            <sl-input id='input_friend_chat' class='flex-grow-1' placeholder='输入消息…'
+                                maxlength='1000'></sl-input>
+                            <sl-button id='button_friend_chat_send' variant='primary'>发送</sl-button>
+                        </div>
+                    </div>
+
+                    <div id='friend_profile_view' class='friend-detail-pane d-none'>
+                        <div class='d-flex align-items-center justify-content-between gap-2 pb-2 border-bottom'>
+                            <span class='fw-bold'>玩家资料</span>
+                            <sl-button id='button_friend_profile_back' size='small' circle title='返回'>
+                                <sl-icon name='arrow-left'></sl-icon>
+                            </sl-button>
+                        </div>
+                        <div id='div_friend_profile_body' class='d-flex flex-column gap-3 py-2 overflow-auto'></div>
+                        <div id='div_friend_profile_actions' class='d-flex gap-2 pt-2'></div>
+                    </div>
                 </section>
             </div>
+
+            <!-- 好友申请页（顶置在好友栏上方的圆形按钮打开） -->
+            <section id='friend_requests_view' class='friend-requests-view d-none'>
+                <div class='d-flex align-items-center justify-content-between p-3 border-bottom'>
+                    <div class='d-flex align-items-center gap-2'>
+                        <sl-button id='button_friend_requests_back' size='small' circle title='返回好友'>
+                            <sl-icon name='arrow-left'></sl-icon>
+                        </sl-button>
+                        <span class='fw-bold'>好友申请</span>
+                    </div>
+                </div>
+                <div class='p-3 d-flex flex-column gap-3 flex-grow-1 overflow-auto'>
+                    <section>
+                        <div class='category-title fw-bold mb-2'>申请设置</div>
+                        <sl-select id='select_friend_request_mode' size='small' value='manual'>
+                            <sl-option value='deny'>不允许申请好友</sl-option>
+                            <sl-option value='manual'>好友申请需要同意</sl-option>
+                            <sl-option value='auto'>好友申请自动同意</sl-option>
+                        </sl-select>
+                    </section>
+                    <section>
+                        <div class='category-title fw-bold mb-2'>收到的申请</div>
+                        <div id='div_friend_requests_page' class='d-flex flex-column gap-2'></div>
+                    </section>
+                    <section>
+                        <div class='category-title fw-bold mb-2'>发出的申请</div>
+                        <div id='div_friend_outgoing_page' class='d-flex flex-column gap-2'></div>
+                    </section>
+                </div>
+            </section>
         </div>
     </div>
 

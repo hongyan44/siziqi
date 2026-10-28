@@ -157,7 +157,8 @@ const room_join = async (id, server) => {
                 select_server_balance.value,
                 select_server_mode.value,
                 select_server_first.value,
-                select_server_color.value
+                select_server_color.value,
+                'contest'
             );
             Online.run();
 

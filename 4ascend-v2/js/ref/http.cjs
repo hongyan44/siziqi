@@ -283,6 +283,18 @@ window.http_user_unlock_level = async (token, secret) => {
 };
 
 /**
+ * @description: 商店购买（目前仅 level2 / level3 权限码）
+ * @param {string} token
+ * @param {'level2'|'level3'} item
+ * @return {Promise<{ok: boolean, reason: string, level: number, coin: number, exp_level: number, exp_cur: number, exp_need: number} | void>}
+ */
+window.http_shop_buy = async (token, item) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/shop_buy`, { token, item });
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+/**
  * @description: 刷新凭证
  * @param {string} token
  * @return {Promise<string | void>}
@@ -376,7 +388,7 @@ window.http_replay_get = async (id, token = window.get_token()) => {
  * @param {string} opponent
  * @param {Uint8Array} data
  * @param {object} meta
- * @return {Promise<number | void>}
+ * @return {Promise<{id?: number, reward?: number} | void>} id 为回放 ID，reward 为本局结算的棋币
  */
 window.http_replay_update = async (token, opponent, data, meta = {}) => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/replay/update`, {
@@ -386,7 +398,7 @@ window.http_replay_update = async (token, opponent, data, meta = {}) => {
         ...meta
     });
     if (!rjson || !rjson.status) return;
-    return rjson.result.id;
+    return rjson.result;
 };
 
 
@@ -649,6 +661,17 @@ window.http_friend_accept = async (token, from) => {
  */
 window.http_friend_reject = async (token, from) => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/reject`, { token, from });
+    return Boolean(rjson && rjson.status);
+};
+
+/**
+ * @description: 保存好友申请设置（deny 不允许申请 / manual 需要同意 / auto 自动同意）
+ * @param {string} token
+ * @param {string} mode
+ * @return {Promise<boolean>}
+ */
+window.http_friend_settings = async (token, mode) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/settings`, { token, mode });
     return Boolean(rjson && rjson.status);
 };
 

@@ -863,9 +863,16 @@ const game_end = async () => {
             black_hp: gl_state.hp[0],
             white_hp: gl_state.hp[1],
             result: winner
-        }).then((replay_id) => {
+        }).then((uploaded) => {
+            const replay_id = Number(uploaded && uploaded.id) || 0;
             if (replay_id) console.info('排位回放已保存:', replay_id);
             else console.warn('排位回放保存失败：服务端未返回回放 ID');
+            // 棋币与经验结算：排位模式棋币 ×3、经验 ×2，这里仅做提示
+            const coin_reward = Number(uploaded && uploaded.reward) || 0;
+            const exp_reward = Number(uploaded && uploaded.exp_reward) || 0;
+            if (coin_reward > 0 || exp_reward > 0) {
+                toast.success(`本局获得 ${coin_reward} 棋币 · ${exp_reward} 经验`);
+            }
         }).catch((error) => {
             console.error('排位回放上传失败:', error);
         });

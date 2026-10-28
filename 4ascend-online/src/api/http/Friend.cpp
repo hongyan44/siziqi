@@ -35,6 +35,8 @@ namespace Friend {
 namespace {
 // 在线判定窗口：客户端每 20s 心跳一次，窗口放宽到 60s 以容忍抖动与网络延迟。
 constexpr int64_t ONLINE_WINDOW_MS = 60 * 1000;
+// 活跃展示窗口：所有玩家都能查看近七天登录过的玩家（含资料与好友申请入口）。
+constexpr int64_t ACTIVE_WINDOW_MS = 7LL * 24 * 60 * 60 * 1000;
 // 对战邀请有效期：超时后不再提示，并顺手清理。
 constexpr int64_t INVITE_TTL_MS = 2 * 60 * 1000;
 // 私信有效期：30 天，过期即不可见并清理。
@@ -246,6 +248,10 @@ void friend_list(cinatra::coro_http_request& request, cinatra::coro_http_respons
     Manager::Friend::count_unread(uuid, now - MESSAGE_TTL_MS, unread);
     result["messages"] = unread;
 
+    std::string request_mode;
+    Manager::Friend::request_mode(uuid, request_mode);
+    result["request_mode"] = request_mode;
+
     reply("friend_list", result, response);
 }
 
@@ -273,6 +279,10 @@ void friend_search(cinatra::coro_http_request& request, cinatra::coro_http_respo
 
     result["found"] = true;
     fill_user(result, target);
+
+    std::string target_mode;
+    Manager::Friend::request_mode(target, target_mode);
+    result["request_mode"] = target_mode;
 
     bool is_friend = false;
     Manager::Friend::are_friends(uuid, target, is_friend);
@@ -316,10 +326,30 @@ void friend_request(cinatra::coro_http_request& request, cinatra::coro_http_resp
 
     const auto now = Libs::Only::Time::timestamp_ms();
 
+    // 对方的好友申请设置：deny 直接拒绝；auto 直接成为好友；manual 走申请流程。
+    std::string mode;
+    Manager::Friend::request_mode(target, mode);
+
+    jsoncons::json result = jsoncons::json::object();
+    if (mode == "deny") {
+        Manager::Friend::remove_request(uuid, target);
+        result["relation"] = "denied";
+        reply("friend_request", result, response);
+        return;
+    }
+
+    if (mode == "auto") {
+        Manager::Friend::add_friend(uuid, target, now);
+        Manager::Friend::remove_request(target, uuid);
+        Manager::Friend::remove_request(uuid, target);
+        result["relation"] = "friend";
+        reply("friend_request", result, response);
+        return;
+    }
+
     bool incoming = false;
     Manager::Friend::request_exists(target, uuid, incoming);
 
-    jsoncons::json result = jsoncons::json::object();
     if (incoming) {
         // 对方已申请：直接互加好友并清理双方申请。
         Manager::Friend::add_friend(uuid, target, now);
@@ -372,6 +402,21 @@ void friend_reject(cinatra::coro_http_request& request, cinatra::coro_http_respo
 
     Manager::Friend::remove_request(from, uuid);
     reply("friend_reject", jsoncons::json::null(), response);
+}
+
+// 好友申请设置：deny（不允许申请）/ manual（需要同意）/ auto（自动同意）
+void friend_settings(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
+    auto body = api_body(request.get_body());
+    if (!body) return;
+    auto rjson = body.value();
+
+    std::string uuid;
+    if (!resolve_token(rjson, response, "friend_settings", uuid)) return;
+
+    const auto mode = rjson.contains("mode") ? rjson["mode"].as<std::string>() : std::string();
+    if (!Manager::Friend::set_request_mode(uuid, mode)) return api_http_error("friend_settings", response);
+
+    reply("friend_settings", jsoncons::json::null(), response);
 }
 
 // 删除好友：同时清理双方申请与邀请，避免残留触发误提示
@@ -502,7 +547,7 @@ void friend_message_list(cinatra::coro_http_request& request, cinatra::coro_http
     reply("friend_message_list", result, response);
 }
 
-// 在线玩家列表（仅 4 级管理员可见）：枚举所有在线用户及其与自己的关系
+// 近七天活跃玩家列表（所有登录用户可见）：枚举最近 7 天内登录过的玩家及其与自己的关系
 void friend_online(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
     auto body = api_body(request.get_body());
     if (!body) return;
@@ -510,9 +555,6 @@ void friend_online(cinatra::coro_http_request& request, cinatra::coro_http_respo
 
     std::string uuid;
     if (!resolve_token(rjson, response, "friend_online", uuid)) return;
-
-    int level = 0;
-    if (!Manager::User::get_level(uuid, level) || level < 4) return api_http_error("friend_online", response);
 
     const auto now = Libs::Only::Time::timestamp_ms();
 
@@ -525,7 +567,7 @@ void friend_online(cinatra::coro_http_request& request, cinatra::coro_http_respo
 
         int64_t seen = 0;
         if (!Manager::Friend::last_seen(other, seen) || seen <= 0) continue;
-        if ((now - seen) > ONLINE_WINDOW_MS) continue;
+        if ((now - seen) > ACTIVE_WINDOW_MS) continue;
 
         jsoncons::json item = jsoncons::json::object();
         fill_user(item, other);
@@ -551,9 +593,14 @@ void friend_online(cinatra::coro_http_request& request, cinatra::coro_http_respo
                 else if (incoming) relation = "incoming";
             }
         }
-        item["relation"]  = relation;
-        item["online"]    = true;
-        item["last_seen"] = seen;
+
+        std::string mode;
+        Manager::Friend::request_mode(other, mode);
+
+        item["relation"]     = relation;
+        item["request_mode"] = mode;
+        item["online"]       = (now - seen) <= ONLINE_WINDOW_MS;
+        item["last_seen"]    = seen;
 
         players.push_back(std::move(item));
     }
@@ -574,6 +621,7 @@ void load(cinatra::coro_http_server& server) noexcept {
     server.set_http_handler<cinatra::POST>("/friend/request", friend_request);
     server.set_http_handler<cinatra::POST>("/friend/accept", friend_accept);
     server.set_http_handler<cinatra::POST>("/friend/reject", friend_reject);
+    server.set_http_handler<cinatra::POST>("/friend/settings", friend_settings);
     server.set_http_handler<cinatra::POST>("/friend/remove", friend_remove);
     server.set_http_handler<cinatra::POST>("/friend/challenge", friend_challenge);
     server.set_http_handler<cinatra::POST>("/friend/invite_clear", friend_invite_clear);

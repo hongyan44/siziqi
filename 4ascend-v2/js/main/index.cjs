@@ -63,6 +63,7 @@ const span_user_account = document.getElementById('span_user_account');
 const span_user_pass_status = document.getElementById('span_user_pass_status');
 const span_user_level = document.getElementById('span_user_level');
 const span_user_role = document.getElementById('span_user_role');
+const block_user_wallet = document.getElementById('block_user_wallet');
 const input_user_secret = document.getElementById('input_user_secret');
 const button_user_unlock = document.getElementById('button_user_unlock');
 
@@ -465,6 +466,8 @@ const user_info = async (token) => {
         render_user_pass_status(has_pass);
         user_ident = mail || phone || '';
         render_user_level(level);
+        // 经济系统：经验等级与棋币余额
+        if (block_user_wallet && window.WalletUI) window.WalletUI.render_panel(block_user_wallet, info);
         user_avatar_data = info.avatar || '';
         render_user_avatar();
         user_color_name = name || '';

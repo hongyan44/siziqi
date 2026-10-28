@@ -62,7 +62,7 @@ ok('前端：红点合计申请数 + 未读私信', /state\.requests \+ state\.m
 ok('前端：apply_state 记录未读数', /state\.messages = Number\(result\.messages\)/.test(friends_src));
 
 const html_src = read(path.join(root, 'html', 'index.html'));
-ok('页面：抽屉宽度放大 1.5 倍（510px）', html_src.includes('width: 510px'));
+ok('页面：好友弹窗占屏宽 75%', html_src.includes('width: 75vw'));
 ok('页面：含聊天框样式', html_src.includes('.friend-chat-list'));
 ok('页面：含聊天气泡样式', html_src.includes('.friend-chat-bubble'));
 
@@ -145,7 +145,7 @@ const run_badge = async () => {
     ok('产物：http.min.js 含 message_list', built_http.includes('/friend/message_list'));
     ok('产物：friends.min.js 含聊天逻辑', built_friends.includes('http_friend_message_send'));
     ok('产物：index.html 含聊天样式', built_index.includes('friend-chat-list'));
-    ok('产物：index.html 抽屉宽度 510px', built_index.includes('width:510px'));
+    ok('产物：index.html 好友弹窗宽度 75vw', built_index.includes('width:75vw'));
 
     if (failed) {
         console.log(`\n${failed} 项失败`);

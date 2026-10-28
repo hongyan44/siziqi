@@ -57,13 +57,36 @@ bool token_uuid(const jsoncons::json& rjson, std::string& token, std::string& uu
     return Manager::Token::token2uuid(token, uuid) && Manager::User::exist_user(uuid);
 }
 
+// 对局时长对应的棋币 / 经验基准奖励（败方 0-15，胜方翻倍）
+// 1-5 分钟：1-7；5-10 分钟：8-10；10-15 分钟：11-14；15 分钟以上：15
+int64_t reward_base(uint64_t seconds) noexcept {
+    if (seconds < 60) return 0;
+    if (seconds < 300) return 1 + static_cast<int64_t>((seconds - 60) * 6 / 239);
+    if (seconds < 600) return 8 + static_cast<int64_t>((seconds - 300) * 2 / 299);
+    if (seconds < 900) return 11 + static_cast<int64_t>((seconds - 600) * 3 / 299);
+    return 15;
+}
+
+// 模式倍率：房间号对战 1 倍；排位棋币 ×3、经验 ×2；赛事棋币 ×5、经验 ×3
+int64_t coin_rate(std::string_view category) noexcept {
+    if (category == "ranked") return 3;
+    if (category == "contest") return 5;
+    return 1;
+}
+
+int64_t exp_rate(std::string_view category) noexcept {
+    if (category == "ranked") return 2;
+    if (category == "contest") return 3;
+    return 1;
+}
+
 jsoncons::json record_json(const Manager::Replay::Record& record, std::string_view viewer) noexcept {
     jsoncons::json result = jsoncons::json::object();
     result["id"]          = record.id;
     result["time"]        = record.time;
     result["duration"]    = record.duration;
     result["mode"]        = record.mode;
-    result["type"]        = record.category == "ranked" ? "排位战" : "房间号对战";
+    result["type"]        = record.category == "ranked" ? "排位战" : record.category == "contest" ? "赛事对战" : "房间号对战";
     result["mode_label"]  = record.mode == 2 ? "永夜模式" : record.mode == 1 ? "灾荒模式" : "普通模式";
     result["first"]       = record.first;
     result["first_label"]  = record.first == 0 ? "黑方" : "白方";
@@ -128,6 +151,10 @@ void replay_update(cinatra::coro_http_request& request, cinatra::coro_http_respo
     std::string hash;
     Libs::Digest::Hash::sha256(data, hash);
 
+    const auto duration   = static_cast<uint64_t>(std::max<int64_t>(0, json_i64(rjson, "duration")));
+    const auto category   = json_string(rjson, "category").empty() ? std::string("online") : json_string(rjson, "category");
+    const auto result_code = json_string(rjson, "result").empty() ? std::string("none") : json_string(rjson, "result");
+
     uint64_t id = 0;
     const auto status = Manager::Replay::add_replay(
         uploader,
@@ -137,20 +164,49 @@ void replay_update(cinatra::coro_http_request& request, cinatra::coro_http_respo
         black_name,
         white_name,
         static_cast<uint64_t>(client_time),
-        static_cast<uint64_t>(std::max<int64_t>(0, json_i64(rjson, "duration"))),
+        duration,
         json_i64(rjson, "mode"),
         json_i64(rjson, "first"),
         json_i64(rjson, "black_hp"),
         json_i64(rjson, "white_hp"),
-        json_string(rjson, "category").empty() ? "online" : json_string(rjson, "category"),
-        json_string(rjson, "result").empty() ? "none" : json_string(rjson, "result"),
+        category,
+        result_code,
         hash,
         data,
         id
     );
 
+    // 棋币 / 经验结算：房间号、排位、赛事均发奖；败方按对局时长取 0-15，胜方双倍，
+    // 再按模式倍率放大（排位棋币 ×3 / 经验 ×2，赛事棋币 ×5 / 经验 ×3）。
+    // 双方都会上传回放，用「玩家对 + 开局分钟桶」占位，确保同一场对局只结算一次。
+    int64_t reward = 0;
+    int64_t exp_reward = 0;
+    if (status && (category == "online" || category == "ranked" || category == "contest")) {
+        const int64_t base     = reward_base(duration);
+        const bool draw        = result_code != "A" && result_code != "B";
+        const std::string winner = result_code == "A" ? black_uuid : result_code == "B" ? white_uuid : std::string();
+        const int64_t coin_mul = coin_rate(category);
+        const int64_t exp_mul  = exp_rate(category);
+        const int64_t black_coin = ((draw || winner == black_uuid) ? (draw ? base : base * 2) : base) * coin_mul;
+        const int64_t white_coin = ((draw || winner == white_uuid) ? (draw ? base : base * 2) : base) * coin_mul;
+        const int64_t black_exp  = ((draw || winner == black_uuid) ? (draw ? base : base * 2) : base) * exp_mul;
+        const int64_t white_exp  = ((draw || winner == white_uuid) ? (draw ? base : base * 2) : base) * exp_mul;
+
+        const bool fresh = Manager::User::claim_coin_match(black_uuid, white_uuid, client_time / 60);
+        if (fresh) {
+            reward     = uploader == black_uuid ? black_coin : white_coin;
+            exp_reward = uploader == black_uuid ? black_exp : white_exp;
+            if (black_coin > 0) Manager::User::add_coin(black_uuid, black_coin);
+            if (white_coin > 0) Manager::User::add_coin(white_uuid, white_coin);
+            if (black_exp > 0) Manager::User::add_exp(black_uuid, black_exp);
+            if (white_exp > 0) Manager::User::add_exp(white_uuid, white_exp);
+        }
+    }
+
     jsoncons::json result = jsoncons::json::object();
-    result["id"] = id;
+    result["id"]         = id;
+    result["reward"]     = reward;
+    result["exp_reward"] = exp_reward;
     std::string buffer;
     api_end("replay_update", status, result, buffer);
     response.set_status_and_content(cinatra::status_type::ok, buffer);

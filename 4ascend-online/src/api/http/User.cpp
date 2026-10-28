@@ -331,6 +331,14 @@ void user_info(cinatra::coro_http_request& request, cinatra::coro_http_response&
 
     info["score"] = score;
     info["level"] = level;
+    // 经济系统：棋币余额与经验等级，供账号信息 / 商店 / 玩家资料展示。
+    int64_t coin = 0, exp = 0;
+    Manager::User::get_wallet(uuid, coin, exp);
+    info["coin"]      = coin;
+    info["exp"]       = exp;
+    info["exp_level"] = Manager::User::exp_level(exp);
+    info["exp_cur"]   = Manager::User::exp_within(exp);
+    info["exp_need"]  = Manager::User::exp_need(Manager::User::exp_level(exp));
     // 密码以 HMAC 摘要存储，无法还原明文，这里只暴露“是否已设置”，供前端展示密码状态。
     info["has_pass"] = has_pass;
     // 昵称颜色：老数据行可能没有该列值，读取失败时回退为空串，不阻断信息返回。
@@ -388,6 +396,54 @@ void user_unlock_level(cinatra::coro_http_request& request, cinatra::coro_http_r
     jsoncons::json result = jsoncons::json::object();
     result["level"] = level;
     api_end("user_unlock_level", true, result, buffer);
+    response.set_status_and_content(cinatra::status_type::ok, buffer);
+};
+
+// 商店购买：目前仅上架 2 级 / 3 级权限码，购买后立即解锁对应权限等级
+void user_shop_buy(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
+    auto body = api_body(request.get_body());
+    if (!body) return api_http_error("shop_buy", response);
+    auto rjson = body.value();
+
+    auto bin = rjson["token"].as<jsoncons::byte_string_view>();
+    std::string token(bin.begin(), bin.end());
+    auto item = rjson["item"].as<std::string>();
+
+    std::string uuid;
+    if (!Manager::Token::token2uuid(token, uuid) || !Manager::User::exist_user(uuid)) return api_http_error("shop_buy", response);
+
+    int target_level = 0;
+    int64_t price    = 0;
+    if (item == "level2") {
+        target_level = 2;
+        price        = 1000;
+    } else if (item == "level3") {
+        target_level = 3;
+        price        = 2000;
+    } else {
+        // 棋盘皮肤 / 棋子样式 / 草样式 / 风格 UI 尚未实现，暂不支持购买
+        return api_http_error("shop_buy", response);
+    }
+
+    int level      = 1;
+    int64_t coin   = 0;
+    const int purchase = Manager::User::purchase_level(uuid, target_level, price, level, coin);
+    if (purchase < 0) return api_http_error("shop_buy", response);
+
+    int64_t exp = 0;
+    Manager::User::get_wallet(uuid, coin, exp);
+
+    jsoncons::json result = jsoncons::json::object();
+    result["ok"]        = purchase == 0;
+    result["reason"]    = purchase == 1 ? "owned" : purchase == 2 ? "coin" : "";
+    result["level"]     = level;
+    result["coin"]      = coin;
+    result["exp_level"] = Manager::User::exp_level(exp);
+    result["exp_cur"]   = Manager::User::exp_within(exp);
+    result["exp_need"]  = Manager::User::exp_need(Manager::User::exp_level(exp));
+
+    std::string buffer;
+    api_end("shop_buy", true, result, buffer);
     response.set_status_and_content(cinatra::status_type::ok, buffer);
 };
 
@@ -559,6 +615,12 @@ void user_profile(cinatra::coro_http_request& request, cinatra::coro_http_respon
     result["name"]         = name;
     result["avatar"]       = avatar;
     result["level"]        = level;
+    // 经济系统：公开资料只展示棋币余额与经验等级；
+    // 当前经验值与升级所需经验仅本人可在「账号信息」中查看（见 user_info）。
+    int64_t coin = 0, exp = 0;
+    Manager::User::get_wallet(uuid, coin, exp);
+    result["coin"]      = coin;
+    result["exp_level"] = Manager::User::exp_level(exp);
     result["name_color"]   = name_color;
     result["friend_id"]    = friend_id;
     result["online"]       = online;
@@ -568,6 +630,11 @@ void user_profile(cinatra::coro_http_request& request, cinatra::coro_http_respon
     result["ai_games"]     = ai_games;
     result["achievements"] = split_showcase(showcase);
     result["relation"]     = relation;
+
+    // 对方的好友申请设置：前端据此禁用「添加好友」按钮（deny 时不接受申请）
+    std::string request_mode;
+    Manager::Friend::request_mode(uuid, request_mode);
+    result["request_mode"] = request_mode;
 
     std::string buffer;
     api_end("user_profile", true, result, buffer);
@@ -752,6 +819,7 @@ void load(cinatra::coro_http_server& server) noexcept {
     server.set_http_handler<cinatra::POST>("/user/set_pass", user_set_pass);
     server.set_http_handler<cinatra::POST>("/user/set_account", user_set_account);
     server.set_http_handler<cinatra::POST>("/user/unlock_level", user_unlock_level);
+    server.set_http_handler<cinatra::POST>("/user/shop_buy", user_shop_buy);
     server.set_http_handler<cinatra::GET>("/admin/generate_level_key", generate_level_key);
 };
 } // namespace User

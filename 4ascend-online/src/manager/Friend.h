@@ -56,6 +56,10 @@ bool list_incoming(std::string_view to, std::vector<RequestRecord>& out) noexcep
 bool list_outgoing(std::string_view from, std::vector<RequestRecord>& out) noexcept;
 bool count_incoming(std::string_view to, int64_t& out) noexcept;
 
+// 好友申请设置：deny（不允许申请）/ manual（需要同意，默认）/ auto（自动同意）
+void request_mode(std::string_view uuid, std::string& out) noexcept;
+bool set_request_mode(std::string_view uuid, std::string_view mode) noexcept;
+
 // 对战邀请
 bool add_invite(std::string_view from, std::string_view to, std::string_view room, int64_t now) noexcept;
 bool latest_invite(std::string_view to, int64_t ttl_ms, int64_t now, InviteRecord& out) noexcept;

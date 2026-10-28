@@ -77,6 +77,11 @@ ok('规范化：空串返回空串', FriendList.normalize_friend_id('   ') === '
     ok('关系：自己禁用', FriendList.relation_label('self').disabled === true);
     ok('关系：陌生可添加', FriendList.relation_label('none').action === 'add');
     ok('关系：未知默认添加', FriendList.relation_label(undefined).action === 'add');
+    ok('关系：对方不接受申请时禁用', FriendList.relation_label('denied').disabled === true);
+    ok('设置：不允许申请文案', FriendList.request_mode_label('deny') === '不允许申请好友');
+    ok('设置：需要同意文案', FriendList.request_mode_label('manual') === '好友申请需要同意');
+    ok('设置：自动同意文案', FriendList.request_mode_label('auto') === '好友申请自动同意');
+    ok('设置：未知回退需要同意', FriendList.request_mode_label(undefined) === '好友申请需要同意');
 })();
 
 // ---------- display_name ----------

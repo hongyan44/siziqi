@@ -96,7 +96,21 @@
             case 'outgoing': return { text: '已申请', action: null, disabled: true };
             case 'incoming': return { text: '接受', action: 'accept', disabled: false };
             case 'self': return { text: '这是你自己', action: null, disabled: true };
+            case 'denied': return { text: '不接受申请', action: null, disabled: true };
             default: return { text: '添加好友', action: 'add', disabled: false };
+        }
+    };
+
+    /**
+     * @description: 好友申请设置文案
+     * @param {string} mode deny / manual / auto
+     * @return {string}
+     */
+    const request_mode_label = (mode) => {
+        switch (mode) {
+            case 'deny': return '不允许申请好友';
+            case 'auto': return '好友申请自动同意';
+            default: return '好友申请需要同意';
         }
     };
 
@@ -174,6 +188,7 @@
         format_presence,
         format_win_rate,
         relation_label,
+        request_mode_label,
         is_admin,
         display_name,
         normalize_message,

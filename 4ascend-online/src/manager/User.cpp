@@ -14,6 +14,7 @@
 
 #include <sqlite/sqlite3.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -47,6 +48,11 @@ sqlite3_stmt* p_set_name_color = nullptr;
 sqlite3_stmt* p_get_profile_stats = nullptr;
 sqlite3_stmt* p_set_ai_games      = nullptr;
 sqlite3_stmt* p_set_showcase      = nullptr;
+
+sqlite3_stmt* p_get_wallet       = nullptr;
+sqlite3_stmt* p_add_coin         = nullptr;
+sqlite3_stmt* p_add_exp          = nullptr;
+sqlite3_stmt* p_claim_coin_match = nullptr;
 
 sqlite3_stmt* p_friend_id_user   = nullptr;
 sqlite3_stmt* p_friend_id_uuid   = nullptr;
@@ -206,6 +212,8 @@ void init() noexcept {
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN name_color TEXT NOT NULL DEFAULT '';", nullptr, nullptr, nullptr);
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN ai_games INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN showcase TEXT NOT NULL DEFAULT '';", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "ALTER TABLE users ADD COLUMN coin INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "ALTER TABLE users ADD COLUMN exp INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
 
     // 没有索引则创建
     sqlite3_exec(db, "CREATE INDEX IF NOT EXISTS idx_users_mail ON users (mail)", nullptr, nullptr, nullptr);
@@ -279,6 +287,20 @@ void init() noexcept {
     // 仅当新值更大时写入，多端上报互相覆盖也不会让场次回退。
     sqlite3_prepare_v2(db, "UPDATE users SET ai_games = ? WHERE uuid = ? AND ai_games < ?;", -1, &p_set_ai_games, nullptr);
     sqlite3_prepare_v2(db, "UPDATE users SET showcase = ? WHERE uuid = ?;", -1, &p_set_showcase, nullptr);
+
+    // 棋币与经验：余额与累计经验读取、棋币/经验增减、同场对局结算占位。
+    sqlite3_prepare_v2(db, "SELECT coin, exp FROM users WHERE uuid = ?;", -1, &p_get_wallet, nullptr);
+    sqlite3_prepare_v2(db, "UPDATE users SET coin = MAX(0, coin + ?) WHERE uuid = ?;", -1, &p_add_coin, nullptr);
+    sqlite3_prepare_v2(db, "UPDATE users SET exp = MAX(0, exp + ?) WHERE uuid = ?;", -1, &p_add_exp, nullptr);
+    sqlite3_exec(
+        db,
+        "CREATE TABLE IF NOT EXISTS coin_matches (pair_key TEXT NOT NULL, bucket INTEGER NOT NULL, "
+        "PRIMARY KEY (pair_key, bucket)) STRICT",
+        nullptr,
+        nullptr,
+        nullptr
+    );
+    sqlite3_prepare_v2(db, "INSERT OR IGNORE INTO coin_matches (pair_key, bucket) VALUES (?, ?);", -1, &p_claim_coin_match, nullptr);
     sqlite3_prepare_v2(
         db,
         "UPDATE level_keys SET used_at = strftime('%s','now') WHERE digest = ? AND used_at = 0 AND level BETWEEN 2 AND 4",
@@ -320,6 +342,10 @@ void close() noexcept {
     sqlite3_finalize(p_get_profile_stats);
     sqlite3_finalize(p_set_ai_games);
     sqlite3_finalize(p_set_showcase);
+    sqlite3_finalize(p_get_wallet);
+    sqlite3_finalize(p_add_coin);
+    sqlite3_finalize(p_add_exp);
+    sqlite3_finalize(p_claim_coin_match);
     sqlite3_finalize(p_all_user);
     sqlite3_finalize(p_friend_id_user);
     sqlite3_finalize(p_friend_id_uuid);
@@ -793,6 +819,153 @@ bool set_showcase(std::string_view uuid, std::string_view showcase) noexcept {
     const int rc = sqlite3_step(p_set_showcase);
     reset(p_set_showcase);
     return rc == SQLITE_DONE;
+};
+
+// 查询经济数据：棋币余额与累计经验
+bool get_wallet(std::string_view uuid, int64_t& coin, int64_t& exp) noexcept {
+    coin = 0;
+    exp  = 0;
+    if (!db || !p_get_wallet || uuid.empty()) return false;
+
+    bind_text(p_get_wallet, 1, uuid);
+    const int rc = sqlite3_step(p_get_wallet);
+    if (rc == SQLITE_ROW) {
+        coin = sqlite3_column_int64(p_get_wallet, 0);
+        exp  = sqlite3_column_int64(p_get_wallet, 1);
+    }
+    reset(p_get_wallet);
+    return rc == SQLITE_ROW;
+};
+
+// 增减棋币：负数扣减时不会把余额压到 0 以下
+bool add_coin(std::string_view uuid, int64_t amount) noexcept {
+    if (!db || !p_add_coin || uuid.empty() || amount == 0) return false;
+
+    sqlite3_bind_int64(p_add_coin, 1, amount);
+    bind_text(p_add_coin, 2, uuid);
+
+    const int rc      = sqlite3_step(p_add_coin);
+    const int changed = sqlite3_changes(db);
+    reset(p_add_coin);
+    return rc == SQLITE_DONE && changed == 1;
+};
+
+// 增减经验：负数扣减时不会把累计经验压到 0 以下
+bool add_exp(std::string_view uuid, int64_t amount) noexcept {
+    if (!db || !p_add_exp || uuid.empty() || amount == 0) return false;
+
+    sqlite3_bind_int64(p_add_exp, 1, amount);
+    bind_text(p_add_exp, 2, uuid);
+
+    const int rc      = sqlite3_step(p_add_exp);
+    const int changed = sqlite3_changes(db);
+    reset(p_add_exp);
+    return rc == SQLITE_DONE && changed == 1;
+}
+
+// 同场对局结算占位：pair_key 由两个 uuid 排序拼接，bucket 为对局开始时间的分钟桶
+bool claim_coin_match(std::string_view uuid_a, std::string_view uuid_b, int64_t bucket) noexcept {
+    if (!db || !p_claim_coin_match || uuid_a.empty() || uuid_b.empty() || uuid_a == uuid_b) return false;
+
+    std::string first(uuid_a);
+    std::string second(uuid_b);
+    if (second < first) std::swap(first, second);
+    std::string pair_key = first + '|' + second;
+
+    bind_text(p_claim_coin_match, 1, pair_key);
+    sqlite3_bind_int64(p_claim_coin_match, 2, bucket);
+
+    const int rc      = sqlite3_step(p_claim_coin_match);
+    const int changed = sqlite3_changes(db);
+    reset(p_claim_coin_match);
+    return rc == SQLITE_DONE && changed == 1;
+};
+
+// 购买权限等级：先校验等级与棋币，再用条件 UPDATE 原子扣币并升级
+int purchase_level(std::string_view uuid, int target_level, int64_t price, int& level, int64_t& coin) noexcept {
+    level = 0;
+    coin  = 0;
+    if (!db || uuid.empty() || target_level < 2 || target_level > 4 || price < 0) return -1;
+    if (!get_level(uuid, level)) return -1;
+
+    int64_t exp = 0;
+    if (!get_wallet(uuid, coin, exp)) return -1;
+    if (level >= target_level) return 1;
+    if (coin < price) return 2;
+
+    if (sqlite3_exec(db, "BEGIN IMMEDIATE TRANSACTION", nullptr, nullptr, nullptr) != SQLITE_OK) return -1;
+
+    sqlite3_stmt* statement = nullptr;
+    const int prepare_rc    = sqlite3_prepare_v2(
+        db,
+        "UPDATE users SET coin = coin - ?, level = ? WHERE uuid = ? AND coin >= ? AND level < ?;",
+        -1,
+        &statement,
+        nullptr
+    );
+    if (prepare_rc != SQLITE_OK) {
+        sqlite3_exec(db, "ROLLBACK", nullptr, nullptr, nullptr);
+        return -1;
+    }
+    sqlite3_bind_int64(statement, 1, price);
+    sqlite3_bind_int(statement, 2, target_level);
+    bind_text(statement, 3, uuid);
+    sqlite3_bind_int64(statement, 4, price);
+    sqlite3_bind_int(statement, 5, target_level);
+
+    const int step_rc = sqlite3_step(statement);
+    const int changed = sqlite3_changes(db);
+    reset(statement);
+    sqlite3_finalize(statement);
+
+    if (step_rc != SQLITE_DONE || changed != 1) {
+        sqlite3_exec(db, "ROLLBACK", nullptr, nullptr, nullptr);
+        return -1;
+    }
+    if (sqlite3_exec(db, "COMMIT", nullptr, nullptr, nullptr) != SQLITE_OK) {
+        sqlite3_exec(db, "ROLLBACK", nullptr, nullptr, nullptr);
+        return -1;
+    }
+
+    if (!get_level(uuid, level) || !get_wallet(uuid, coin, exp)) return -1;
+    return 0;
+};
+
+// 经验曲线：1→2 级 100，2→3 级 120，此后每级按上一级 1.2 倍向下取整
+int64_t exp_need(int level) noexcept {
+    if (level < 1) level = 1;
+    // 上限保护：保证 need * 6 不会溢出 int64
+    static constexpr int64_t MAX_NEED = 1500000000000000000LL;
+    int64_t need = 100;
+    for (int index = 1; index < level; ++index) {
+        if (need >= MAX_NEED) return MAX_NEED;
+        need = need * 6 / 5;
+    }
+    return need;
+};
+
+int exp_level(int64_t exp) noexcept {
+    if (exp <= 0) return 1;
+
+    int level = 1;
+    int64_t rest = exp;
+    while (level < 999 && rest >= exp_need(level)) {
+        rest -= exp_need(level);
+        level += 1;
+    }
+    return level;
+};
+
+int64_t exp_within(int64_t exp) noexcept {
+    if (exp <= 0) return 0;
+
+    int level = 1;
+    int64_t rest = exp;
+    while (level < 999 && rest >= exp_need(level)) {
+        rest -= exp_need(level);
+        level += 1;
+    }
+    return rest;
 };
 } // namespace User
 } // namespace Manager

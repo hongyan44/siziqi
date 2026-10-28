@@ -103,6 +103,8 @@ let gl_my_index, gl_foe_index, gl_first_index;
 let gl_click_time, gl_click_level;
 let gl_game, gl_rand_aic, gl_rand_unity, gl_rand_other, gl_board, gl_state, gl_timer;
 let gl_cf_room, gl_cf_archive, gl_cf_health, gl_cf_initb, gl_cf_balance, gl_cf_mode, gl_cf_first, gl_cf_color, gl_cf_token, gl_cf_client;
+// 对局分类：online 在线对局 / ranked 排位 / contest 赛事，决定棋币与经验倍率
+let gl_cf_category = 'online';
 let gl_replay_uploaded = false;
 let gl_foe_uuid = '';
 let gl_end_hook = null;
@@ -1092,9 +1094,10 @@ const rematch_listen = async (client) => {
  * 
  * @param {string} first
  * @param {string} color
+ * @param {string} category
  * @return {void}
  */
-const setup = (client, token, room, archive, health, initb, balance, mode, first, color) => {
+const setup = (client, token, room, archive, health, initb, balance, mode, first, color, category = 'online') => {
     const size = window.math_size(main_game, [game_top_card]);
     gl_ui = new GameCanvas(
         canvas_board,
@@ -1136,6 +1139,8 @@ const setup = (client, token, room, archive, health, initb, balance, mode, first
 
     gl_cf_first = first;
     gl_cf_color = color;
+
+    gl_cf_category = category;
 
     // 监听对方的重赛请求
     rematch_listen(gl_cf_client);
@@ -1799,18 +1804,25 @@ const run_once = async () => {
         gl_replay_uploaded = true;
         const archive_data = BaseZalgo.decode(exportf());
         try {
-            replay_id = Number(await window.http_replay_update(gl_cf_token, foe_uuid, archive_data, {
+            const uploaded = await window.http_replay_update(gl_cf_token, foe_uuid, archive_data, {
                 black_uuid: my_color === PLAYER_ENUM.BLACK ? my_uuid : foe_uuid,
                 white_uuid: my_color === PLAYER_ENUM.WHITE ? my_uuid : foe_uuid,
                 time: Math.floor(time / 1000),
                 duration: Math.max(0, Math.floor((await window.http_time_ms() - time) / 1000)),
                 mode: gl_cf_mode === 'night' ? 2 : gl_cf_mode === 'blight' ? 1 : 0,
-                category: 'online',
+                category: gl_cf_category,
                 first: first_index,
                 black_hp: state.hp[0],
                 white_hp: state.hp[1],
                 result: winner
-            })) || 0;
+            });
+            replay_id = Number(uploaded && uploaded.id) || 0;
+            // 棋币与经验结算：服务端按对局时长、胜负与分类倍率发放，这里仅做提示
+            const coin_reward = Number(uploaded && uploaded.reward) || 0;
+            const exp_reward = Number(uploaded && uploaded.exp_reward) || 0;
+            if (coin_reward > 0 || exp_reward > 0) {
+                toast.success(`本局获得 ${coin_reward} 棋币 · ${exp_reward} 经验`);
+            }
         } catch (error) {
             console.error('回放上传失败:', error);
         }
