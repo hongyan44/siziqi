@@ -31,6 +31,7 @@
     <script src='/js/risk/api.min.js?v=replace'></script>
 
     <script src='/js/ref/must.min.js?v=replace'></script>
+    <script src='/js/ref/achievement.min.js?v=replace'></script>
     <script src='/js/ref/music.min.js?v=replace'></script>
     <script src='/js/ref/global-music.min.js?v=replace'></script>
     <script src='/js/ref/http.min.js?v=replace'></script>
@@ -109,8 +110,8 @@
             top: 0;
             left: 0;
             height: 100%;
-            width: 510px;
-            max-width: 92vw;
+            width: 380px;
+            max-width: 88vw;
             background: #fff;
             box-shadow: 0 0 24px rgba(0, 0, 0, 0.2);
             transform: translateX(-100%);
@@ -409,19 +410,26 @@
                 <section>
                     <div class='category-title fw-bold'>账号与设置</div>
                     <div class='row g-2 g-md-3'>
-                        <div class='col-6 col-md-4'>
+                        <div class='col-6 col-md-3'>
                             <sl-button id='button_user' variant='default' size='large' pill outline class='w-100'>
                                 <sl-icon slot='prefix' name='person-gear'></sl-icon>账号信息
                             </sl-button>
                         </div>
 
-                        <div class='col-6 col-md-4'>
+                        <div class='col-6 col-md-3'>
+                            <sl-button variant='default' size='large' href='/pages/user/achievements.html' target='_self'
+                                pill outline class='w-100'>
+                                <sl-icon slot='prefix' name='trophy'></sl-icon>我的成就
+                            </sl-button>
+                        </div>
+
+                        <div class='col-6 col-md-3'>
                             <sl-button id='button_local' variant='default' size='large' pill outline class='w-100'>
                                 <sl-icon slot='prefix' name='gear'></sl-icon>本地设置
                             </sl-button>
                         </div>
 
-                        <div class='col-6 col-md-4'>
+                        <div class='col-6 col-md-3'>
                             <sl-button id='button_clear' variant='default' size='large' pill outline class='w-100'>
                                 <sl-icon slot='prefix' name='box-arrow-right'></sl-icon>数据清理
                             </sl-button>
@@ -544,6 +552,19 @@
                                 <span class='text-secondary'>登录密码</span>
                                 <span id='span_user_pass_status'>加载中...</span>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class='border-top pt-3 mt-1 d-flex align-items-center gap-3'>
+                    <sl-avatar id='span_user_avatar' style='--size: 4rem;'></sl-avatar>
+                    <div class='d-flex flex-column gap-1'>
+                        <div class='text-secondary small'>账号头像（同步到好友列表与排行榜）</div>
+                        <div>
+                            <sl-button id='button_user_avatar_pick' size='small' variant='primary' outline>
+                                <sl-icon slot='prefix' name='image'></sl-icon>上传头像
+                            </sl-button>
+                            <input id='input_user_avatar_file' type='file' accept='image/*' class='d-none'>
                         </div>
                     </div>
                 </div>

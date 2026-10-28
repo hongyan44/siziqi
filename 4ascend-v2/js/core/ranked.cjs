@@ -1442,6 +1442,9 @@ const run = async () => {
 
     game_redraw();
 
+    // 成就：首次进入真人对局
+    if (typeof window.achievement_event === 'function') window.achievement_event('online_enter');
+
     // gl_cf_client.stop_resend(900);
     // gl_cf_client.stop_resend(901);
     // gl_cf_client.stop_resend(906);
@@ -1677,6 +1680,8 @@ const run = async () => {
         if (win) {
             gl_wins = true;
             if (gl_ui) gl_ui.set_turn_flash(false);
+            // 成就：赢下真人对局
+            if (win === my_color && typeof window.achievement_event === 'function') window.achievement_event('online_win');
             game_msg.innerText = win === my_color ? `🏆|${my_name}|胜利${my_icon}` : `💀|${foe_name}|胜利${foe_icon}`;
             span_end_win.innerText = win === my_color ? my_name : foe_name;
             gl_end = true;

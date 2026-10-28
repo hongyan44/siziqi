@@ -81,6 +81,18 @@
                 transform: rotate(360deg);
             }
         }
+
+        /* 排行榜昵称：可点击查看玩家资料 */
+        .leaderboard-name {
+            cursor: pointer;
+            transition: color 0.15s ease;
+        }
+
+        .leaderboard-name:hover,
+        .leaderboard-name:focus-visible {
+            color: var(--sl-color-primary-600);
+            text-decoration: underline;
+        }
     </style>
 
     <div id='loading' class='loading-a'>
@@ -497,6 +509,7 @@
 
 
 <script src='/js/ref/must.min.js?v=replace'></script>
+    <script src='/js/ref/achievement.min.js?v=replace'></script>
 <script src='/js/ref/http.min.js?v=replace'></script>
 <script src='/js/ref/friends.min.js?v=replace'></script>
 

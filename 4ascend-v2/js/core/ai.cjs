@@ -1291,6 +1291,11 @@ const run = async () => {
         if (win) {
             gl_wins = true;
             if (gl_ui) gl_ui.set_turn_flash(false);
+            // 成就：赢下 AI（入门难度为 0，其余均视为简单及以上）；败局也计入 AI 对局场次
+            if (typeof window.achievement_event === 'function') {
+                if (win === my_color) window.achievement_event('ai_win', { 'easy_or_above': gl_cf_level_option !== '0' });
+                else window.achievement_event('ai_game');
+            }
             game_msg.innerText = win === my_color ? `🏆|${my_name}|胜利${my_icon}` : `💀|${foe_name}|胜利${foe_icon}`;
             span_end_win.innerText = win === my_color ? my_name : foe_name;
             break;

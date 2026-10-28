@@ -55,6 +55,9 @@ const range_click_level = document.getElementById('range_click_level');
 const dialog_user = document.getElementById('dialog_user');
 const input_user_name = document.getElementById('input_user_name');
 const button_user_submit = document.getElementById('button_user_submit');
+const span_user_avatar = document.getElementById('span_user_avatar');
+const button_user_avatar_pick = document.getElementById('button_user_avatar_pick');
+const input_user_avatar_file = document.getElementById('input_user_avatar_file');
 const span_user_mail = document.getElementById('span_user_mail');
 const span_user_account = document.getElementById('span_user_account');
 const span_user_pass_status = document.getElementById('span_user_pass_status');
@@ -86,6 +89,8 @@ const button_user_account_submit = document.getElementById('button_user_account_
 
 // 当前账号绑定的邮箱或手机号，用于发送设置密码的验证码
 let user_ident = '';
+// 当前账号头像（data URL，空字符串表示未设置）
+let user_avatar_data = '';
 
 const USER_LEVEL_NAMES = {
     1: '普通用户',
@@ -403,6 +408,50 @@ const render_user_pass_status = (has_pass) => {
     span_user_pass_status.classList.toggle('text-secondary', !set);
 };
 
+/**
+ * @description: 渲染账号头像（有图用图片，无图用昵称首字占位）
+ * @return {void}
+ */
+const render_user_avatar = () => {
+    const name = input_user_name.value || '';
+    if (user_avatar_data) {
+        span_user_avatar.image = user_avatar_data;
+        span_user_avatar.initials = '';
+    } else {
+        span_user_avatar.image = '';
+        span_user_avatar.initials = name ? name.trim().slice(0, 1) : '?';
+    }
+};
+
+/**
+ * @description: 把本地图片居中裁剪压缩为 256×256 的 JPEG data URL
+ * @param {File} file
+ * @return {Promise<string>}
+ */
+const read_avatar_file = (file) => new Promise((resolve, reject) => {
+    if (!file || !String(file.type || '').startsWith('image/')) return reject(new Error('请选择图片文件！'));
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+        URL.revokeObjectURL(url);
+        const size = 256;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const context = canvas.getContext('2d');
+        const scale = Math.max(size / image.width, size / image.height);
+        const width = image.width * scale;
+        const height = image.height * scale;
+        context.drawImage(image, (size - width) / 2, (size - height) / 2, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
+    };
+    image.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('图片解析失败！'));
+    };
+    image.src = url;
+});
+
 const user_info = async (token) => {
     try {
         const info = await window.http_user_info(token);
@@ -416,6 +465,8 @@ const user_info = async (token) => {
         render_user_pass_status(has_pass);
         user_ident = mail || phone || '';
         render_user_level(level);
+        user_avatar_data = info.avatar || '';
+        render_user_avatar();
         user_color_name = name || '';
         user_color_selection = info.name_color || '';
         render_user_color();
@@ -467,6 +518,8 @@ const user_update = async (token, name, avatar) => {
         const status = await window.http_user_update(token, name, avatar);
         if (status) {
             dialog_user.hide();
+            // 头像与昵称改动同步到好友抽屉
+            if (typeof window.friends_refresh === 'function') window.friends_refresh();
             return toast.success('更新账号信息成功！');
         }
         toast.error('更新账号信息失败！');
@@ -743,8 +796,24 @@ button_user_submit.addEventListener('pointerdown', (event) => {
     window.sleep_task(
         [button_user_submit, input_user_name],
         button_user_submit,
-        async () => user_update(window.get_token(), name, '')
+        async () => user_update(window.get_token(), name, user_avatar_data)
     );
+});
+
+// 选择本地图片作为头像，压缩后仅预览，随“保存修改”一并提交
+button_user_avatar_pick.addEventListener('click', () => input_user_avatar_file.click());
+
+input_user_avatar_file.addEventListener('change', async () => {
+    const file = input_user_avatar_file.files && input_user_avatar_file.files[0];
+    input_user_avatar_file.value = '';
+    if (!file) return;
+    try {
+        user_avatar_data = await read_avatar_file(file);
+        render_user_avatar();
+        toast.success('头像已选择，保存修改后生效！');
+    } catch (error) {
+        toast.error(error.message || '头像处理失败！');
+    }
 });
 
 // 清理
@@ -761,6 +830,9 @@ dialog_user.addEventListener('sl-after-hide', (event) => {
     [input_user_pass_code, input_user_pass, input_user_pass2].forEach((element) => { element.value = ''; });
     [input_user_account_code, input_user_account].forEach((element) => { element.value = ''; });
     block_user_account_set.style.display = 'none';
+    user_avatar_data = '';
+    span_user_avatar.image = '';
+    span_user_avatar.initials = '';
     user_color_name = '';
     user_color_selection = '';
     render_user_color();

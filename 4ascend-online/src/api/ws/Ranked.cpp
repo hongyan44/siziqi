@@ -97,9 +97,16 @@ ranked_leaderboard(jsoncons::basic_json<char>& rjson, cinatra::coro_http_connect
 
         if (uuids[index] == uuid) my = index;
 
-        value["id"]    = index;
-        value["name"]  = names[index];
-        value["score"] = scores[index];
+        // 头像与玩家标识随昵称一起下发，供前端渲染头像并支持点击查看玩家资料。
+        std::string name, avatar, mail;
+        int64_t time = 0;
+        if (!Manager::User::info_user(uuids[index], name, avatar, mail, time)) avatar.clear();
+
+        value["id"]     = index;
+        value["uuid"]   = uuids[index];
+        value["name"]   = names[index];
+        value["avatar"] = avatar;
+        value["score"]  = scores[index];
         leaderboard.emplace_back(value);
     }
 

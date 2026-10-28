@@ -12,6 +12,9 @@
 #include "../../manager/Token.h"
 #include "../../manager/User.h"
 
+#include "../../manager/Friend.h"
+#include "../../manager/Replay.h"
+
 #include "../../libs/only/Random.h"
 #include "../../libs/only/Time.h"
 
@@ -123,6 +126,37 @@ bool is_gradient_color(std::string_view value) noexcept {
 // 流动彩虹：固定标记 rainbow（4 级专属，具体动画由渲染层实现）
 bool is_rainbow_color(std::string_view value) noexcept {
     return value == "rainbow";
+}
+
+// 头像：仅接受前端裁剪压缩后的 data:image/... 数据（限制体积，避免超长文本写入数据库）
+bool is_avatar(std::string_view value) noexcept {
+    constexpr size_t MAX_AVATAR_SIZE = 200 * 1024;
+    return value.size() <= MAX_AVATAR_SIZE && value.compare(0, 11, "data:image/") == 0;
+}
+
+// 成就 id：小写字母/数字/下划线，最长 24
+bool is_achievement_id(std::string_view value) noexcept {
+    if (value.empty() || value.size() > 24) return false;
+    for (const char c : value) {
+        const bool allowed = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_';
+        if (!allowed) return false;
+    }
+    return true;
+}
+
+// 展示成就字符串（逗号分隔）转数组
+jsoncons::json split_showcase(std::string_view showcase) noexcept {
+    jsoncons::json result = jsoncons::json::array();
+    size_t start = 0;
+    while (start <= showcase.size()) {
+        const auto comma = showcase.find(',', start);
+        const auto end   = comma == std::string_view::npos ? showcase.size() : comma;
+        const auto id    = showcase.substr(start, end - start);
+        if (is_achievement_id(id)) result.push_back(std::string(id));
+        if (comma == std::string_view::npos) break;
+        start = comma + 1;
+    }
+    return result;
 }
 } // namespace
 
@@ -307,6 +341,12 @@ void user_info(cinatra::coro_http_request& request, cinatra::coro_http_response&
     std::string friend_id;
     if (!Manager::User::ensure_friend_id(uuid, friend_id)) return api_http_error("user_info", response);
     info["friend_id"] = friend_id;
+    // 玩家展示数据：AI 对局场次与展示的成就，供「我的成就」页读取。
+    int64_t ai_games = 0;
+    std::string showcase;
+    Manager::User::get_profile_stats(uuid, ai_games, showcase);
+    info["ai_games"] = ai_games;
+    info["showcase"] = split_showcase(showcase);
     api_end("user_info", true, info, buffer);
     response.set_status_and_content(cinatra::status_type::ok, buffer);
 };
@@ -363,7 +403,18 @@ void user_update(cinatra::coro_http_request& request, cinatra::coro_http_respons
     auto avatar = rjson["avatar"].as<std::string>();
 
     std::string uuid;
-    if (!Manager::Token::token2uuid(token, uuid) || !Manager::User::exist_user(uuid)) return api_http_error("user_update", response); // cp
+    if (!Manager::Token::token2uuid(token, uuid) || !Manager::User::exist_user(uuid) || !is_name(name))
+        return api_http_error("user_update", response); // cp
+
+    // 头像为空表示保持原头像（旧版前端不携带头像，避免误清空）；
+    // 非空时只接受前端裁剪压缩后的 data:image/... 数据。
+    if (avatar.empty()) {
+        std::string old_name, mail;
+        int64_t time = 0;
+        if (!Manager::User::info_user(uuid, old_name, avatar, mail, time)) return api_http_error("user_update", response); // cp
+    } else if (!is_avatar(avatar)) {
+        return api_http_error("user_update", response); // cp
+    }
 
     Manager::User::update_user(uuid, name, avatar);
 
@@ -438,6 +489,137 @@ void user_colors(cinatra::coro_http_request& request, cinatra::coro_http_respons
 
     std::string buffer;
     api_end("user_colors", true, result, buffer);
+    response.set_status_and_content(cinatra::status_type::ok, buffer);
+};
+
+// 玩家公开资料（好友列表 / 排行榜头像与昵称点击后展示）
+// 无需登录即可查看基础资料；携带 token 时附带与查看者的好友关系，用于「添加好友」按钮。
+void user_profile(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
+    auto body = api_body(request.get_body());
+    if (!body) return;
+    auto rjson = body.value();
+
+    if (!rjson.contains("uuid") || !rjson["uuid"].is_string()) return api_http_error("user_profile", response);
+    const auto uuid = rjson["uuid"].as<std::string>();
+    if (uuid.empty() || !Manager::User::exist_user(uuid)) return api_http_error("user_profile", response); // cp
+
+    std::string name, avatar, mail;
+    int64_t time = 0;
+    if (!Manager::User::info_user(uuid, name, avatar, mail, time)) return api_http_error("user_profile", response); // cp
+
+    int level = 1;
+    Manager::User::get_level(uuid, level);
+
+    std::string name_color, friend_id;
+    Manager::User::get_name_color(uuid, name_color);
+    Manager::User::friend_id_user(uuid, friend_id);
+
+    // 最近活跃：在线窗口与好友心跳保持一致（60s）
+    int64_t last_seen = 0;
+    const bool has_seen = Manager::Friend::last_seen(uuid, last_seen);
+    const auto now = Libs::Only::Time::timestamp_ms();
+    const bool online = has_seen && last_seen > 0 && now - last_seen <= 60 * 1000;
+
+    // 真实对局场次与近 100 场胜率：直接由回放统计（每个玩家最多保留 100 场）
+    int64_t real_games = 0, real_wins = 0;
+    Manager::Replay::stats_player(uuid, static_cast<int64_t>(Manager::Replay::MAX_PLAYER_REPLAYS), real_games, real_wins);
+
+    int64_t ai_games = 0;
+    std::string showcase;
+    Manager::User::get_profile_stats(uuid, ai_games, showcase);
+
+    // 好友关系：未登录或 token 失效时按陌生人处理
+    std::string relation = "none";
+    if (rjson.contains("token") && rjson["token"].is_byte_string()) {
+        auto bin = rjson["token"].as<jsoncons::byte_string_view>();
+        std::string token(bin.begin(), bin.end());
+
+        std::string viewer;
+        if (Manager::Token::token2uuid(token, viewer) && !viewer.empty() && Manager::User::exist_user(viewer)) {
+            if (viewer == uuid) {
+                relation = "self";
+            } else {
+                bool is_friend = false;
+                Manager::Friend::are_friends(viewer, uuid, is_friend);
+                if (is_friend) {
+                    relation = "friend";
+                } else {
+                    bool outgoing = false, incoming = false;
+                    Manager::Friend::request_exists(viewer, uuid, outgoing);
+                    Manager::Friend::request_exists(uuid, viewer, incoming);
+                    if (outgoing) relation = "outgoing";
+                    else if (incoming) relation = "incoming";
+                }
+            }
+        }
+    }
+
+    jsoncons::json result = jsoncons::json::object();
+    result["uuid"]         = uuid;
+    result["name"]         = name;
+    result["avatar"]       = avatar;
+    result["level"]        = level;
+    result["name_color"]   = name_color;
+    result["friend_id"]    = friend_id;
+    result["online"]       = online;
+    result["last_seen"]    = last_seen;
+    result["real_games"]   = real_games;
+    result["real_wins"]    = real_wins;
+    result["ai_games"]     = ai_games;
+    result["achievements"] = split_showcase(showcase);
+    result["relation"]     = relation;
+
+    std::string buffer;
+    api_end("user_profile", true, result, buffer);
+    response.set_status_and_content(cinatra::status_type::ok, buffer);
+};
+
+// 同步玩家展示数据：AI 对局场次（仅增大）与展示的成就（最多 3 个）
+void user_stats_update(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
+    auto body = api_body(request.get_body());
+    if (!body) return;
+    auto rjson = body.value();
+
+    auto bin = rjson["token"].as<jsoncons::byte_string_view>();
+    std::string token(bin.begin(), bin.end());
+
+    std::string uuid;
+    if (!Manager::Token::token2uuid(token, uuid) || !Manager::User::exist_user(uuid)) return api_http_error("user_stats_update", response); // cp
+
+    if (rjson.contains("ai_games") && rjson["ai_games"].is_number()) {
+        int64_t ai_games = rjson["ai_games"].as<int64_t>();
+        if (ai_games < 0) ai_games = 0;
+        if (ai_games > 1000000000) ai_games = 1000000000;
+        Manager::User::set_ai_games(uuid, ai_games);
+    }
+
+    if (rjson.contains("showcase") && rjson["showcase"].is_array()) {
+        std::string joined;
+        size_t count = 0;
+        for (const auto& item : rjson["showcase"].array_range()) {
+            if (count >= 3) break;
+            if (!item.is_string()) continue;
+            const auto id = item.as<std::string>();
+            if (!is_achievement_id(id)) continue;
+            if (joined.find(id) != std::string::npos) continue;
+            if (!joined.empty()) joined.push_back(',');
+            joined += id;
+            count += 1;
+        }
+        Manager::User::set_showcase(uuid, joined);
+    }
+
+    // 回读保存结果，前端据此刷新展示柜
+    int64_t ai_games = 0;
+    std::string showcase;
+    Manager::User::get_profile_stats(uuid, ai_games, showcase);
+
+    jsoncons::json result = jsoncons::json::object();
+    result["ai_games"]     = ai_games;
+    result["showcase"]     = split_showcase(showcase);
+
+    std::string buffer;
+    api_end("user_stats_update", true, result, buffer);
     response.set_status_and_content(cinatra::status_type::ok, buffer);
 };
 
@@ -565,6 +747,8 @@ void load(cinatra::coro_http_server& server) noexcept {
     server.set_http_handler<cinatra::POST>("/user/update", user_update);
     server.set_http_handler<cinatra::POST>("/user/set_color", user_set_color);
     server.set_http_handler<cinatra::POST>("/user/colors", user_colors);
+    server.set_http_handler<cinatra::POST>("/user/profile", user_profile);
+    server.set_http_handler<cinatra::POST>("/user/stats", user_stats_update);
     server.set_http_handler<cinatra::POST>("/user/set_pass", user_set_pass);
     server.set_http_handler<cinatra::POST>("/user/set_account", user_set_account);
     server.set_http_handler<cinatra::POST>("/user/unlock_level", user_unlock_level);

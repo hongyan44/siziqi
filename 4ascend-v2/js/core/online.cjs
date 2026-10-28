@@ -1484,6 +1484,9 @@ const run_once = async () => {
 
     game_redraw();
 
+    // 成就：首次进入真人对局
+    if (typeof window.achievement_event === 'function') window.achievement_event('online_enter');
+
     // gl_cf_client.stop_resend(900);
     // gl_cf_client.stop_resend(901);
     // gl_cf_client.stop_resend(906);
@@ -1721,6 +1724,8 @@ const run_once = async () => {
             gl_wins = true;
             if (gl_ui) gl_ui.set_turn_flash(false);
             winner_color = win;
+            // 成就：赢下真人对局
+            if (win === my_color && typeof window.achievement_event === 'function') window.achievement_event('online_win');
             game_msg.innerText = win === my_color ? `🏆|${my_name}|胜利${my_icon}` : `💀|${foe_name}|胜利${foe_icon}`;
             span_end_win.innerText = win === my_color ? my_name : foe_name;
             break;
@@ -1776,6 +1781,8 @@ const run_once = async () => {
     if (gl_leave && !gl_wins) {
         span_end_win.innerText = `${my_name}`;
         game_msg.innerText = `🏆|${my_name}|胜利${my_icon}`;
+        // 成就：对方离开判胜同样计入真人对局胜场
+        if (typeof window.achievement_event === 'function') window.achievement_event('online_win');
     }
 
     // 结算画面（开启重赛共识窗口）

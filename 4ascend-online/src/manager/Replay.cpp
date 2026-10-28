@@ -27,6 +27,7 @@ sqlite3_stmt* p_delete          = nullptr;
 sqlite3_stmt* p_delete_record   = nullptr;
 sqlite3_stmt* p_query_player    = nullptr;
 sqlite3_stmt* p_select_data     = nullptr;
+sqlite3_stmt* p_stats_player    = nullptr;
 
 namespace {
 void bind_text(sqlite3_stmt* statement, int index, std::string_view value) noexcept {
@@ -187,6 +188,15 @@ void init() noexcept {
         &p_select_data,
         nullptr
     );
+    sqlite3_prepare_v2(
+        db,
+        "SELECT COUNT(*), COALESCE(SUM(CASE WHEN (r.result = 'A' AND r.black_uuid = ?) OR (r.result = 'B' AND r.white_uuid = ?) THEN 1 ELSE 0 END), 0) "
+        "FROM (SELECT r.result, r.black_uuid, r.white_uuid FROM replay r INNER JOIN replay_players p ON p.replay_id = r.id "
+        "WHERE p.player_uuid = ? ORDER BY r.time DESC, r.id DESC LIMIT ?) AS r",
+        -1,
+        &p_stats_player,
+        nullptr
+    );
 };
 
 // 关闭
@@ -200,6 +210,7 @@ void close() noexcept {
     sqlite3_finalize(p_delete_record);
     sqlite3_finalize(p_query_player);
     sqlite3_finalize(p_select_data);
+    sqlite3_finalize(p_stats_player);
 
     p_select_existing = nullptr;
     p_insert          = nullptr;
@@ -210,6 +221,7 @@ void close() noexcept {
     p_delete_record   = nullptr;
     p_query_player    = nullptr;
     p_select_data     = nullptr;
+    p_stats_player    = nullptr;
 
     if (db) sqlite3_close(db);
     db = nullptr;
@@ -406,6 +418,25 @@ bool get_replay(uint64_t id, std::string_view player, std::string& result) noexc
     result.assign(reinterpret_cast<const char*>(data), static_cast<size_t>(size));
     reset(p_select_data);
     return true;
+};
+// 统计玩家最近 limit 场真实对局的场次与胜利数
+bool stats_player(std::string_view player, int64_t limit, int64_t& games, int64_t& wins) noexcept {
+    games = 0;
+    wins  = 0;
+    if (!db || !p_stats_player || player.empty() || limit <= 0) return false;
+
+    bind_text(p_stats_player, 1, player);
+    bind_text(p_stats_player, 2, player);
+    bind_text(p_stats_player, 3, player);
+    sqlite3_bind_int64(p_stats_player, 4, limit);
+
+    const int rc = sqlite3_step(p_stats_player);
+    if (rc == SQLITE_ROW) {
+        games = sqlite3_column_int64(p_stats_player, 0);
+        wins  = sqlite3_column_int64(p_stats_player, 1);
+    }
+    reset(p_stats_player);
+    return rc == SQLITE_ROW;
 };
 } // namespace Replay
 } // namespace Manager

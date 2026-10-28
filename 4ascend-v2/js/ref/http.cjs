@@ -218,6 +218,35 @@ window.http_user_colors = async (uuids) => {
 };
 
 /**
+ * @description: 玩家公开资料（昵称/头像/等级/最近登录/真实对局与近100场胜率/AI 场次/展示成就）
+ * @param {string} uuid
+ * @param {Uint8Array | null} [token] 可选，携带时附带与查看者的好友关系
+ * @return {Promise<Object | undefined>}
+ */
+window.http_user_profile = async (uuid, token = null) => {
+    const params = token ? { uuid, token } : { uuid };
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/profile`, params);
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+/**
+ * @description: 同步玩家展示数据（AI 对局场次 / 展示的成就，最多 3 个）
+ * @param {string} token
+ * @param {number | null} ai_games
+ * @param {string[] | null} showcase
+ * @return {Promise<{ai_games: number, showcase: string[]} | undefined>}
+ */
+window.http_user_stats_update = async (token, ai_games = null, showcase = null) => {
+    const params = { token };
+    if (typeof ai_games === 'number') params.ai_games = ai_games;
+    if (Array.isArray(showcase)) params.showcase = showcase.slice(0, 3);
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/stats`, params);
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+/**
  * @description: 设置/修改登录密码（需验证码校验，验证码发往已绑定的邮箱或手机号）
  * @param {string} token
  * @param {string} code

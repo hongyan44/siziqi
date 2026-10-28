@@ -44,6 +44,10 @@ sqlite3_stmt* p_consume_level_key = nullptr;
 sqlite3_stmt* p_get_name_color = nullptr;
 sqlite3_stmt* p_set_name_color = nullptr;
 
+sqlite3_stmt* p_get_profile_stats = nullptr;
+sqlite3_stmt* p_set_ai_games      = nullptr;
+sqlite3_stmt* p_set_showcase      = nullptr;
+
 sqlite3_stmt* p_friend_id_user   = nullptr;
 sqlite3_stmt* p_friend_id_uuid   = nullptr;
 sqlite3_stmt* p_friend_id_set    = nullptr;
@@ -200,6 +204,8 @@ void init() noexcept {
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN pass TEXT NOT NULL DEFAULT '';", nullptr, nullptr, nullptr);
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN friend_id TEXT NOT NULL DEFAULT '';", nullptr, nullptr, nullptr);
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN name_color TEXT NOT NULL DEFAULT '';", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "ALTER TABLE users ADD COLUMN ai_games INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "ALTER TABLE users ADD COLUMN showcase TEXT NOT NULL DEFAULT '';", nullptr, nullptr, nullptr);
 
     // 没有索引则创建
     sqlite3_exec(db, "CREATE INDEX IF NOT EXISTS idx_users_mail ON users (mail)", nullptr, nullptr, nullptr);
@@ -269,6 +275,10 @@ void init() noexcept {
     sqlite3_prepare_v2(db, "SELECT level FROM users WHERE uuid = ?;", -1, &p_get_level, nullptr);
     sqlite3_prepare_v2(db, "SELECT name_color FROM users WHERE uuid = ?;", -1, &p_get_name_color, nullptr);
     sqlite3_prepare_v2(db, "UPDATE users SET name_color = ? WHERE uuid = ?;", -1, &p_set_name_color, nullptr);
+    sqlite3_prepare_v2(db, "SELECT ai_games, showcase FROM users WHERE uuid = ?;", -1, &p_get_profile_stats, nullptr);
+    // 仅当新值更大时写入，多端上报互相覆盖也不会让场次回退。
+    sqlite3_prepare_v2(db, "UPDATE users SET ai_games = ? WHERE uuid = ? AND ai_games < ?;", -1, &p_set_ai_games, nullptr);
+    sqlite3_prepare_v2(db, "UPDATE users SET showcase = ? WHERE uuid = ?;", -1, &p_set_showcase, nullptr);
     sqlite3_prepare_v2(
         db,
         "UPDATE level_keys SET used_at = strftime('%s','now') WHERE digest = ? AND used_at = 0 AND level BETWEEN 2 AND 4",
@@ -307,6 +317,9 @@ void close() noexcept {
     sqlite3_finalize(p_consume_level_key);
     sqlite3_finalize(p_get_name_color);
     sqlite3_finalize(p_set_name_color);
+    sqlite3_finalize(p_get_profile_stats);
+    sqlite3_finalize(p_set_ai_games);
+    sqlite3_finalize(p_set_showcase);
     sqlite3_finalize(p_all_user);
     sqlite3_finalize(p_friend_id_user);
     sqlite3_finalize(p_friend_id_uuid);
@@ -739,6 +752,47 @@ bool set_name_color(std::string_view uuid, std::string_view color) noexcept {
     const int changed = sqlite3_changes(db);
     reset(p_set_name_color);
     return rc == SQLITE_DONE && changed == 1;
+};
+
+// 查询玩家展示统计：AI 对局场次与成就展示
+bool get_profile_stats(std::string_view uuid, int64_t& ai_games, std::string& showcase) noexcept {
+    ai_games = 0;
+    showcase.clear();
+    if (!db || !p_get_profile_stats || uuid.empty()) return false;
+
+    bind_text(p_get_profile_stats, 1, uuid);
+    const int rc = sqlite3_step(p_get_profile_stats);
+    if (rc == SQLITE_ROW) {
+        ai_games = sqlite3_column_int64(p_get_profile_stats, 0);
+        if (const char* text = reinterpret_cast<const char*>(sqlite3_column_text(p_get_profile_stats, 1))) showcase = text;
+    }
+    reset(p_get_profile_stats);
+    return rc == SQLITE_ROW;
+};
+
+// 写入 AI 对局场次：仅允许增大
+bool set_ai_games(std::string_view uuid, int64_t ai_games) noexcept {
+    if (!db || !p_set_ai_games || uuid.empty() || ai_games < 0) return false;
+
+    sqlite3_bind_int64(p_set_ai_games, 1, ai_games);
+    bind_text(p_set_ai_games, 2, uuid);
+    sqlite3_bind_int64(p_set_ai_games, 3, ai_games);
+
+    const int rc = sqlite3_step(p_set_ai_games);
+    reset(p_set_ai_games);
+    return rc == SQLITE_DONE;
+};
+
+// 设置成就展示
+bool set_showcase(std::string_view uuid, std::string_view showcase) noexcept {
+    if (!db || !p_set_showcase || uuid.empty()) return false;
+
+    bind_text(p_set_showcase, 1, showcase);
+    bind_text(p_set_showcase, 2, uuid);
+
+    const int rc = sqlite3_step(p_set_showcase);
+    reset(p_set_showcase);
+    return rc == SQLITE_DONE;
 };
 } // namespace User
 } // namespace Manager

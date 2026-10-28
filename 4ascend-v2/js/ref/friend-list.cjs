@@ -148,6 +148,21 @@
         return `${date.getFullYear()}-${day} ${time}`;
     };
 
+    /**
+     * @description: 胜率文案（无对局时显示占位）
+     * @param {number} games 对局数
+     * @param {number} wins 胜利数
+     * @return {string}
+     */
+    const format_win_rate = (games, wins) => {
+        const total = Math.max(0, Number(games) || 0);
+        if (total <= 0) return '暂无记录';
+        const win = Math.min(total, Math.max(0, Number(wins) || 0));
+        const rate = (win / total) * 100;
+        const text = rate === 0 || rate === 100 ? rate.toFixed(0) : rate.toFixed(1);
+        return `${text}%`;
+    };
+
     return {
         ID_ALPHABET,
         ROOM_ALPHABET,
@@ -157,6 +172,7 @@
         sort_friends,
         format_last_seen,
         format_presence,
+        format_win_rate,
         relation_label,
         is_admin,
         display_name,

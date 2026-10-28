@@ -292,8 +292,10 @@ const render_leaderboard = (data, my_id) => {
     let my_rank_ext = '未上榜';
     let my_score_text = '-';
 
-    // 用于拼接所有行 HTML 的数组
-    const list_html_array = [];
+    // 昵称颜色批量着色（uuid → 昵称节点）
+    const color_pairs = [];
+
+    leaderboard_list.innerHTML = '';
 
     sorted_data.forEach((player, index) => {
         const rank = index + 1;
@@ -331,26 +333,61 @@ const render_leaderboard = (data, my_id) => {
             rankStyle = rank <= 3 ? rankStyle : "text-primary fw-bold"; // 前三名保留前三名颜色，其余用蓝色
         }
 
-        // 3. 拼接单行 HTML
-        const row_html = `
-            <div class="d-flex justify-content-between align-items-center p-2 px-3 rounded-2 border ${rowClass}">
-                <div class="d-flex align-items-center gap-3">
-                    <div class="text-center ${rankStyle}" style="width: 32px;">${rankDisplay}</div>
-                    <div class="text-dark">
-                        ${player.name}
-                        ${is_me ? "<sl-tag size='small' variant='primary' pill class='ms-2'>我</sl-tag>" : ""}
-                    </div>
-                </div>
-                <div class="fw-bold text-monospace ${is_me ? 'fs-6' : 'text-muted'}">${player.score}</div>
-            </div>
-        `;
+        // 3. 构建单行（文本一律走 textContent，避免昵称注入）
+        const row = document.createElement('div');
+        row.className = `d-flex justify-content-between align-items-center p-2 px-3 rounded-2 border ${rowClass}`;
 
-        list_html_array.push(row_html);
+        const left = document.createElement('div');
+        left.className = 'd-flex align-items-center gap-3';
+
+        const rank_node = document.createElement('div');
+        rank_node.className = `text-center ${rankStyle}`;
+        rank_node.style.width = '32px';
+        rank_node.textContent = rankDisplay;
+
+        const avatar_node = document.createElement('sl-avatar');
+        avatar_node.style.setProperty('--size', '1.75rem');
+        if (player.avatar) avatar_node.setAttribute('image', player.avatar);
+        else avatar_node.setAttribute('initials', String(player.name || '?').slice(0, 1).toUpperCase());
+
+        const name_wrap = document.createElement('div');
+        name_wrap.className = 'text-dark d-flex align-items-center gap-2';
+
+        const name_node = document.createElement('span');
+        name_node.className = 'leaderboard-name fw-semibold';
+        name_node.title = '查看玩家资料';
+        name_node.textContent = player.name || '无名氏';
+        if (player.uuid) {
+            name_node.addEventListener('click', () => {
+                if (typeof window.player_profile_open === 'function') window.player_profile_open(player.uuid);
+            });
+            color_pairs.push({ 'uuid': player.uuid, 'node': name_node });
+        }
+        name_wrap.append(name_node);
+
+        if (is_me) {
+            const me_tag = document.createElement('sl-tag');
+            me_tag.setAttribute('size', 'small');
+            me_tag.setAttribute('variant', 'primary');
+            me_tag.setAttribute('pill', '');
+            me_tag.textContent = '我';
+            name_wrap.append(me_tag);
+        }
+
+        left.append(rank_node, avatar_node, name_wrap);
+
+        const score_node = document.createElement('div');
+        score_node.className = `fw-bold text-monospace ${is_me ? 'fs-6' : 'text-muted'}`;
+        score_node.textContent = `${player.score}`;
+
+        row.append(left, score_node);
+        leaderboard_list.append(row);
     });
 
-    // 一次性渲染整个列表
-    // 使用 .join('\n') 将数组连成一整个大字符串，并用 \n 换行符隔离（方便 F12 查看结构）
-    leaderboard_list.innerHTML = list_html_array.join('\n');
+    // 昵称彩色渲染（与好友列表、对局界面保持一致）
+    if (color_pairs.length && typeof window.name_color_apply_pair === 'function') {
+        window.name_color_apply_pair(color_pairs);
+    }
 
     // 塞入底部挂底的“我”面板中
     my_rank_val.innerText = my_rank_ext;

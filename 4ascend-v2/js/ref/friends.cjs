@@ -55,6 +55,21 @@ const FriendList = require('./friend-list.cjs');
     // 管理员标识徽章（权限等级 4 才渲染）
     const admin_badge = () => h('sl-badge', { variant: 'warning', pill: '', text: '管理员' });
 
+    // ---------- 玩家昵称 ----------
+    // 好友列表、在线玩家、搜索结果与排行榜共用：昵称可点击，按 uuid 打开玩家资料卡。
+    const name_node = (user, extra_class) => {
+        const node = h('span', {
+            class: `player-name fw-semibold text-truncate ${extra_class || ''}`.trim(),
+            title: '查看玩家资料'
+        });
+        node.textContent = FriendList.display_name(user && user.name);
+        node.addEventListener('click', (event) => {
+            event.stopPropagation();
+            if (user && user.uuid) open_profile(user.uuid);
+        });
+        return node;
+    };
+
     const drawer = () => document.getElementById('friend_drawer');
     const drawer_open = () => { const node = drawer(); return Boolean(node && node.classList.contains('open')); };
 
@@ -168,6 +183,160 @@ const FriendList = require('./friend-list.cjs');
         window.location.href = `${FRIEND_PAGE}?room=${code}`;
     };
 
+    // ---------- 玩家资料卡 ----------
+    let profile_dialog = null;
+
+    const profile_ensure_style = () => {
+        if (document.getElementById('style_player_profile')) return;
+        const style = document.createElement('style');
+        style.id = 'style_player_profile';
+        style.textContent = `
+.player-name{cursor:pointer;transition:color .15s ease}
+.player-name:hover,.player-name:focus-visible{color:var(--sl-color-primary-600);text-decoration:underline}
+.player-profile-head{display:flex;align-items:center;gap:.85rem}
+.player-profile-name{font-size:1.15rem;font-weight:700;min-width:0;word-break:break-word}
+.player-profile-level{font-size:.72rem;color:var(--sl-color-neutral-500)}
+.player-profile-rows{display:flex;flex-direction:column;gap:.35rem}
+.player-profile-row{display:flex;align-items:center;justify-content:space-between;gap:.75rem;padding:.45rem .6rem;border:1px solid var(--sl-color-neutral-200);border-radius:.6rem;background:var(--sl-color-neutral-50)}
+.player-profile-row .label{font-size:.8rem;color:var(--sl-color-neutral-600)}
+.player-profile-row .value{font-size:.85rem;font-weight:600;color:var(--sl-color-neutral-800);text-align:right}
+.player-profile-showcase{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem}
+.player-profile-ach{display:flex;flex-direction:column;align-items:center;gap:.15rem;padding:.45rem .3rem;border:1px solid var(--sl-color-neutral-200);border-radius:.6rem;background:#fff;text-align:center}
+.player-profile-ach-art{width:2.2rem;height:2.2rem;display:flex;align-items:center;justify-content:center}
+.player-profile-ach-art svg{width:100%;height:100%;display:block}
+.player-profile-ach-name{font-size:.72rem;font-weight:600;color:var(--sl-color-neutral-700);word-break:break-word}
+.player-profile-ach.empty{opacity:.55;font-size:.72rem;color:var(--sl-color-neutral-500);justify-content:center;min-height:4.4rem}
+`;
+        document.head.appendChild(style);
+    };
+
+    const profile_row = (label, value) => h('div', { class: 'player-profile-row' }, [
+        h('span', { class: 'label', text: label }),
+        h('span', { class: 'value', text: value })
+    ]);
+
+    const profile_ach_card = (id) => {
+        const def = typeof window.achievement_find === 'function' ? window.achievement_find(id) : null;
+        if (!def) {
+            const missing = h('div', { class: 'player-profile-ach empty', text: '未设置' });
+            return missing;
+        }
+        const art = h('div', { class: 'player-profile-ach-art' });
+        if (def.art) art.innerHTML = def.art;
+        else art.append(h('sl-icon', { name: def.icon || 'trophy' }));
+        return h('div', { class: 'player-profile-ach', title: def.desc || '' }, [
+            art,
+            h('div', { class: 'player-profile-ach-name', text: def.name || id })
+        ]);
+    };
+
+    const profile_action = (data, action) => {
+        if (!action) return null;
+
+        const button = h('sl-button', { variant: 'primary', text: data.relation === 'incoming' ? '接受申请' : '添加好友' });
+        button.addEventListener('click', async () => {
+            button.disabled = true;
+            try {
+                if (data.relation === 'incoming') {
+                    const ok = await window.http_friend_accept(token(), data.uuid);
+                    if (!ok) return notify('error', '接受失败');
+                    notify('success', '已添加好友');
+                } else {
+                    const outcome = await window.http_friend_request(token(), data.friend_id);
+                    if (!outcome) return notify('error', '发送申请失败');
+                    notify('success', outcome.relation === 'friend' ? '你们已成为好友' : '好友申请已发送');
+                }
+                button.textContent = '已发送';
+                refresh_list();
+            } finally {
+                button.disabled = true;
+            }
+        });
+        return button;
+    };
+
+    const profile_render = (body, footer, data) => {
+        const name = h('span', { class: 'player-profile-name', text: FriendList.display_name(data.name) });
+        window.name_color_apply(name, data.name_color || '');
+
+        const name_line = h('div', { class: 'd-flex align-items-center gap-2' }, [name]);
+        if (FriendList.is_admin(data)) name_line.append(admin_badge());
+
+        const head = h('div', { class: 'player-profile-head' }, [
+            avatar(data, '4rem'),
+            h('div', { class: 'd-flex flex-column gap-1 min-w-0' }, [
+                name_line,
+                // 等级暂未实装，先展示占位文案
+                h('div', { class: 'player-profile-level', text: '等级：即将开放' })
+            ])
+        ]);
+
+        const games = Number(data.real_games) || 0;
+        const wins = Number(data.real_wins) || 0;
+        const rate = FriendList.format_win_rate(games, wins);
+        const rows = h('div', { class: 'player-profile-rows' }, [
+            profile_row('最近登录', FriendList.format_presence(data, Date.now())),
+            profile_row('账号对局', `${games} 场`),
+            profile_row('AI 对局', `${Number(data.ai_games) || 0} 场`),
+            profile_row('近100场胜率', games > 0 ? `${rate}（${wins}/${games}）` : rate)
+        ]);
+
+        const ids = Array.isArray(data.achievements) ? data.achievements.slice(0, 3) : [];
+        const showcase = h('div', { class: 'player-profile-showcase' });
+        for (let index = 0; index < 3; index++) showcase.append(profile_ach_card(ids[index]));
+
+        body.append(
+            head,
+            rows,
+            h('div', { class: 'text-secondary small', text: '展示的成就' }),
+            showcase
+        );
+
+        const action = profile_action(data, data.relation === 'incoming' ? 'accept' : data.relation === 'none' ? 'add' : null);
+        if (action && footer.firstChild) footer.insertBefore(action, footer.firstChild);
+    };
+
+    const open_profile = async (uuid) => {
+        if (!uuid) return;
+        try {
+            if (!customElements.get('sl-dialog')) await customElements.whenDefined('sl-dialog');
+        } catch (_) {
+            return;
+        }
+
+        profile_ensure_style();
+        if (profile_dialog) {
+            profile_dialog.remove();
+            profile_dialog = null;
+        }
+
+        const dialog = h('sl-dialog', { label: '玩家资料', class: 'player-profile-dialog' });
+        const body = h('div', { class: 'd-flex flex-column gap-3' }, [
+            h('div', { class: 'text-secondary small', text: '加载中...' })
+        ]);
+        const close = h('sl-button', { variant: 'neutral', text: '关闭' });
+        const footer = h('div', { slot: 'footer', class: 'gap-2' }, [close]);
+        dialog.append(body, footer);
+        document.body.append(dialog);
+        profile_dialog = dialog;
+
+        close.addEventListener('click', () => dialog.hide());
+        dialog.addEventListener('sl-after-hide', () => {
+            if (profile_dialog === dialog) profile_dialog = null;
+            dialog.remove();
+        });
+        dialog.show();
+
+        const data = await window.http_user_profile(uuid, logged_in() ? token() : null);
+        if (profile_dialog !== dialog) return;
+        if (!data) {
+            body.replaceChildren(h('div', { class: 'text-secondary small', text: '无法加载该玩家资料' }));
+            return;
+        }
+        body.replaceChildren();
+        profile_render(body, footer, data);
+    };
+
     // ---------- 抽屉 ----------
     const open_drawer = () => {
         const node = drawer();
@@ -213,7 +382,7 @@ const FriendList = require('./friend-list.cjs');
             avatar(user, '2rem'),
             h('div', { class: 'flex-grow-1 min-w-0' }, [
                 h('div', { class: 'd-flex align-items-center gap-1' }, [
-                    h('span', { class: 'fw-semibold text-truncate', text: FriendList.display_name(user.name) }),
+                    name_node(user),
                     FriendList.is_admin(user) ? admin_badge() : null
                 ])
             ]),
@@ -258,7 +427,7 @@ const FriendList = require('./friend-list.cjs');
             avatar(friend, '2.2rem'),
             h('div', { class: 'flex-grow-1 min-w-0' }, [
                 h('div', { class: 'd-flex align-items-center gap-1' }, [
-                    h('span', { class: 'fw-semibold text-truncate', text: FriendList.display_name(friend.name) }),
+                    name_node(friend),
                     FriendList.is_admin(friend) ? admin_badge() : null,
                     h('span', { class: online ? 'friend-dot online' : 'friend-dot' })
                 ]),
@@ -306,7 +475,7 @@ const FriendList = require('./friend-list.cjs');
             avatar(player, '2.2rem'),
             h('div', { class: 'flex-grow-1 min-w-0' }, [
                 h('div', { class: 'd-flex align-items-center gap-1' }, [
-                    h('span', { class: 'fw-semibold text-truncate', text: FriendList.display_name(player.name) }),
+                    name_node(player),
                     FriendList.is_admin(player) ? admin_badge() : null,
                     h('span', { class: player.online ? 'friend-dot online' : 'friend-dot' })
                 ]),
@@ -489,7 +658,7 @@ const FriendList = require('./friend-list.cjs');
             avatar(result, '2rem'),
             h('div', { class: 'flex-grow-1 min-w-0' }, [
                 h('div', { class: 'd-flex align-items-center gap-1' }, [
-                    h('span', { class: 'fw-semibold text-truncate', text: FriendList.display_name(result.name) }),
+                    name_node(result),
                     FriendList.is_admin(result) ? admin_badge() : null
                 ]),
                 h('small', { class: 'text-secondary', text: result.friend_id || '' })
@@ -565,4 +734,9 @@ const FriendList = require('./friend-list.cjs');
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
     else start();
+
+    // 对外暴露：排行榜等页面点击昵称时复用同一张玩家资料卡
+    window.player_profile_open = open_profile;
+    // 账号信息更新头像后刷新好友列表，保证头像即时同步
+    window.friends_refresh = refresh_list;
 })();

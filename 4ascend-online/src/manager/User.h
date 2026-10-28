@@ -48,6 +48,13 @@ bool get_name_color(std::string_view uuid, std::string& out) noexcept;
 // 设置昵称颜色（空串表示清除）
 bool set_name_color(std::string_view uuid, std::string_view color) noexcept;
 
+// 查询玩家展示统计：AI 对局场次与成就展示（逗号分隔的成就 id，最多 3 个）
+bool get_profile_stats(std::string_view uuid, int64_t& ai_games, std::string& showcase) noexcept;
+// 写入 AI 对局场次（仅允许增大，避免多端上报时回退）
+bool set_ai_games(std::string_view uuid, int64_t ai_games) noexcept;
+// 设置成就展示（逗号分隔的成就 id）
+bool set_showcase(std::string_view uuid, std::string_view showcase) noexcept;
+
 // 查询用户专属短 ID（用于好友搜索）
 bool friend_id_user(std::string_view uuid, std::string& friend_id) noexcept;
 // 专属短 ID 反查用户标识

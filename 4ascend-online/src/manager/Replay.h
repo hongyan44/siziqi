@@ -59,5 +59,8 @@ bool add_replay(
 bool delete_replay(uint64_t id) noexcept;
 bool query_replay(std::string_view player, std::vector<Record>& result) noexcept;
 bool get_replay(uint64_t id, std::string_view player, std::string& result) noexcept;
+
+// 统计玩家最近 limit 场真实对局的场次与胜利数（回放按玩家只保留最近 100 场）
+bool stats_player(std::string_view player, int64_t limit, int64_t& games, int64_t& wins) noexcept;
 } // namespace Replay
 } // namespace Manager
