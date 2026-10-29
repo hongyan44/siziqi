@@ -107,7 +107,7 @@ const room_join = async (id, server) => {
         const token = window.get_token();
 
         if (game_ws) game_ws.close();
-        game_ws = new GameClient(`${window.ws_protocol}${server}/game/ws`);
+        game_ws = new GameClient(`${window.ws_protocol}${window.game_server_host(server)}/game/ws`);
         game_ws.connect();
         game_ws.reconnect();
 

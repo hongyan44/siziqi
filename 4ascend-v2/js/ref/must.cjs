@@ -422,3 +422,11 @@ window.name_color_apply_pair = async (pairs) => {
 
     localStorage.setItem('data', JSON.stringify({ server }));
 })();
+
+// 对局服务器跟随当前线路：默认公共节点按当前页面线路解析（国际线路走 online.glb.siziqi.net）。
+// 其他节点（本地测试等）保持用户原有选择。
+window.game_server_host = (server) => {
+    const value = String(server || '').trim();
+    if (!value || value === 'online.siziqi.net') return window.online_api || 'online.siziqi.net';
+    return value;
+};

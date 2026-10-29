@@ -16,7 +16,22 @@ window.ws_protocol = window.http_protocol === 'http://' ? 'ws://' : 'wss://';
 // window.online_api = `online.${location.host}`;
 const local_api_hosts = new Set(['127.0.0.1', 'localhost', '10.162.51.92', '192.168.1.151']);
 const public_api_host = 'online.siziqi.net';
-window.online_api = local_api_hosts.has(location.hostname) ? `${location.hostname}:50001` : public_api_host;
+
+// 联机域名必须跟随当前线路：国际线路 glb.siziqi.net 走 online.glb.siziqi.net。
+// 旧实现写死 online.siziqi.net，导致国际线路的每一笔请求都回源国内节点，延迟高且频繁超时。
+const resolve_api_host = () => {
+    const host = (location.hostname || '').toLowerCase();
+    if (local_api_hosts.has(host)) return `${host}:50001`;
+    if (!host || /^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return public_api_host;
+
+    const base = host.replace(/^www\./, '');
+    if (base.startsWith('online.')) return base;
+
+    // 仅映射已部署的线路域名，未知域名仍回退到默认节点，避免解析到不存在的联机域名。
+    const is_line = base === 'siziqi.net' || base.endsWith('.siziqi.net') || base === 'siziqi.cc.cd' || base.endsWith('.siziqi.cc.cd');
+    return is_line ? `online.${base}` : public_api_host;
+};
+window.online_api = resolve_api_host();
 
 
 /**
@@ -604,13 +619,18 @@ window.http_story_expression_add = async (token, character_id, name, image) => {
 };
 
 
+// 好友接口超时：跨线路/跨境网络握手与重传开销大，默认 5s 会让心跳与接受申请被客户端主动中断（nginx 499）。
+const FRIEND_TIMEOUT = 12000;
+// 长轮询：服务端最多挂起 3s，客户端留足网络余量。
+const FRIEND_WAIT_TIMEOUT = 15000;
+
 /**
  * @description: 好友心跳（更新在线时间，返回待处理申请数与最新对战邀请）
  * @param {string} token
  * @return {Promise<{requests: number, invite: object | null} | void>}
  */
 window.http_friend_heartbeat = async (token) => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/heartbeat`, { token });
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/heartbeat`, { token }, FRIEND_TIMEOUT);
     if (!rjson || !rjson.status) return;
     return rjson.result;
 };
@@ -622,7 +642,7 @@ window.http_friend_heartbeat = async (token) => {
  * @return {Promise<{version: number, requests: number, invite: object | null} | void>}
  */
 window.http_friend_wait = async (token, version) => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/wait`, { token, version: String(version || 0) });
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/wait`, { token, version: String(version || 0) }, FRIEND_WAIT_TIMEOUT);
     if (!rjson || !rjson.status) return;
     return rjson.result;
 };
@@ -633,7 +653,7 @@ window.http_friend_wait = async (token, version) => {
  * @return {Promise<{friend_id: string, friends: object[], incoming: object[], outgoing: object[]} | void>}
  */
 window.http_friend_list = async (token) => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/list`, { token });
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/list`, { token }, FRIEND_TIMEOUT);
     if (!rjson || !rjson.status) return;
     return rjson.result;
 };
@@ -645,7 +665,7 @@ window.http_friend_list = async (token) => {
  * @return {Promise<{friend_id: string, found: boolean, relation: string, uuid?: string, name?: string, avatar?: string} | void>}
  */
 window.http_friend_search = async (token, friend_id) => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/search`, { token, friend_id });
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/search`, { token, friend_id }, FRIEND_TIMEOUT);
     if (!rjson || !rjson.status) return;
     return rjson.result;
 };
@@ -657,7 +677,7 @@ window.http_friend_search = async (token, friend_id) => {
  * @return {Promise<{relation: string} | void>}
  */
 window.http_friend_request = async (token, friend_id) => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/request`, { token, friend_id });
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/request`, { token, friend_id }, FRIEND_TIMEOUT);
     if (!rjson || !rjson.status) return;
     return rjson.result;
 };
@@ -668,7 +688,7 @@ window.http_friend_request = async (token, friend_id) => {
  * @return {Promise<{uuid: string, players: object[]} | void>}
  */
 window.http_friend_online = async (token) => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/online`, { token });
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/online`, { token }, FRIEND_TIMEOUT);
     if (!rjson || !rjson.status) return;
     return rjson.result;
 };
@@ -680,7 +700,7 @@ window.http_friend_online = async (token) => {
  * @return {Promise<boolean>}
  */
 window.http_friend_accept = async (token, from) => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/accept`, { token, from });
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/accept`, { token, from }, FRIEND_TIMEOUT);
     return Boolean(rjson && rjson.status);
 };
 
@@ -691,7 +711,7 @@ window.http_friend_accept = async (token, from) => {
  * @return {Promise<boolean>}
  */
 window.http_friend_reject = async (token, from) => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/reject`, { token, from });
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/reject`, { token, from }, FRIEND_TIMEOUT);
     return Boolean(rjson && rjson.status);
 };
 
@@ -702,7 +722,7 @@ window.http_friend_reject = async (token, from) => {
  * @return {Promise<boolean>}
  */
 window.http_friend_settings = async (token, mode) => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/settings`, { token, mode });
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/settings`, { token, mode }, FRIEND_TIMEOUT);
     return Boolean(rjson && rjson.status);
 };
 
@@ -713,7 +733,7 @@ window.http_friend_settings = async (token, mode) => {
  * @return {Promise<boolean>}
  */
 window.http_friend_remove = async (token, uuid) => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/remove`, { token, uuid });
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/remove`, { token, uuid }, FRIEND_TIMEOUT);
     return Boolean(rjson && rjson.status);
 };
 
@@ -725,7 +745,7 @@ window.http_friend_remove = async (token, uuid) => {
  * @return {Promise<boolean>}
  */
 window.http_friend_challenge = async (token, uuid, room) => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/challenge`, { token, uuid, room });
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/challenge`, { token, uuid, room }, FRIEND_TIMEOUT);
     return Boolean(rjson && rjson.status);
 };
 
@@ -736,7 +756,7 @@ window.http_friend_challenge = async (token, uuid, room) => {
  * @return {Promise<boolean>}
  */
 window.http_friend_invite_clear = async (token, from) => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/invite_clear`, { token, from });
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/invite_clear`, { token, from }, FRIEND_TIMEOUT);
     return Boolean(rjson && rjson.status);
 };
 
@@ -748,7 +768,7 @@ window.http_friend_invite_clear = async (token, from) => {
  * @return {Promise<boolean>}
  */
 window.http_friend_message_send = async (token, uuid, content) => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/message_send`, { token, uuid, content });
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/message_send`, { token, uuid, content }, FRIEND_TIMEOUT);
     return Boolean(rjson && rjson.status);
 };
 
@@ -759,7 +779,7 @@ window.http_friend_message_send = async (token, uuid, content) => {
  * @return {Promise<{messages: Array<{mine: boolean, content: string, created_at: number}>, unread: number} | void>}
  */
 window.http_friend_message_list = async (token, uuid) => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/message_list`, { token, uuid });
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/friend/message_list`, { token, uuid }, FRIEND_TIMEOUT);
     if (!rjson || !rjson.status) return;
     return rjson.result;
 };

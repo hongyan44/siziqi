@@ -339,6 +339,10 @@ void user_info(cinatra::coro_http_request& request, cinatra::coro_http_response&
     info["exp_level"] = Manager::User::exp_level(exp);
     info["exp_cur"]   = Manager::User::exp_within(exp);
     info["exp_need"]  = Manager::User::exp_need(Manager::User::exp_level(exp));
+    // 背包消耗品：单局投稿券数量，账号信息与商店读取。
+    int64_t tickets = 0;
+    Manager::User::get_tickets(uuid, tickets);
+    info["tickets"] = tickets;
     // 密码以 HMAC 摘要存储，无法还原明文，这里只暴露“是否已设置”，供前端展示密码状态。
     info["has_pass"] = has_pass;
     // 昵称颜色：老数据行可能没有该列值，读取失败时回退为空串，不阻断信息返回。
@@ -356,12 +360,13 @@ void user_info(cinatra::coro_http_request& request, cinatra::coro_http_response&
     info["ai_games"] = ai_games;
     info["showcase"] = split_showcase(showcase);
     // 已购皮肤：仅本人读取，用于在本机替换棋子 / 草 / 棋盘的外观（不影响对手）。
-    bool skin_piece = false, skin_grass = false, skin_board = false;
-    if (!Manager::User::get_skins(uuid, skin_piece, skin_grass, skin_board)) return api_http_error("user_info", response);
+    bool skin_piece = false, skin_grass = false, skin_board = false, skin_theme = false;
+    if (!Manager::User::get_skins(uuid, skin_piece, skin_grass, skin_board, skin_theme)) return api_http_error("user_info", response);
     jsoncons::json skins = jsoncons::json::array();
     if (skin_piece) skins.push_back(std::string("piece"));
     if (skin_grass) skins.push_back(std::string("grass"));
     if (skin_board) skins.push_back(std::string("board"));
+    if (skin_theme) skins.push_back(std::string("theme"));
     info["skins"] = skins;
     api_end("user_info", true, info, buffer);
     response.set_status_and_content(cinatra::status_type::ok, buffer);
@@ -422,8 +427,10 @@ void user_shop_buy(cinatra::coro_http_request& request, cinatra::coro_http_respo
 
     int target_level = 0;
     int64_t price    = 0;
-    // 皮肤定价：棋子（黑白合并）2000 棋币，草 1000 棋币，棋盘 2000 棋币；风格 UI 尚未实装。
+    // 皮肤定价：棋子（黑白合并）2000 棋币，草 1000 棋币，棋盘 2000 棋币，风格 UI 5000 棋币。
     int64_t skin_price = 0;
+    // 消耗品定价：单局投稿券 100 棋币。
+    int64_t ticket_price = 0;
     if (item == "level2") {
         target_level = 2;
         price        = 1000;
@@ -436,38 +443,51 @@ void user_shop_buy(cinatra::coro_http_request& request, cinatra::coro_http_respo
         skin_price = 1000;
     } else if (item == "board") {
         skin_price = 2000;
+    } else if (item == "theme") {
+        skin_price = 5000;
+    } else if (item == "ticket") {
+        ticket_price = 100;
     } else {
         return api_http_error("shop_buy", response);
     }
 
     int level          = 1;
     int64_t coin       = 0;
+    int64_t tickets    = 0;
     bool skin_owned    = false;
-    const int purchase = skin_price > 0
-                             ? Manager::User::purchase_skin(uuid, item, skin_price, skin_owned, coin)
-                             : Manager::User::purchase_level(uuid, target_level, price, level, coin);
+    int purchase       = -1;
+    if (ticket_price > 0) {
+        purchase = Manager::User::purchase_ticket(uuid, ticket_price, tickets, coin);
+    } else if (skin_price > 0) {
+        purchase = Manager::User::purchase_skin(uuid, item, skin_price, skin_owned, coin);
+    } else {
+        purchase = Manager::User::purchase_level(uuid, target_level, price, level, coin);
+    }
     if (purchase < 0) return api_http_error("shop_buy", response);
     if (!Manager::User::get_level(uuid, level)) return api_http_error("shop_buy", response);
 
     int64_t exp = 0;
     Manager::User::get_wallet(uuid, coin, exp);
+    if (ticket_price > 0 && !Manager::User::get_tickets(uuid, tickets)) return api_http_error("shop_buy", response);
 
     jsoncons::json result = jsoncons::json::object();
     result["ok"]        = purchase == 0;
     result["reason"]    = purchase == 1 ? "owned" : purchase == 2 ? "coin" : "";
     result["level"]     = level;
     result["coin"]      = coin;
+    result["tickets"]   = tickets;
     result["exp_level"] = Manager::User::exp_level(exp);
     result["exp_cur"]   = Manager::User::exp_within(exp);
     result["exp_need"]  = Manager::User::exp_need(Manager::User::exp_level(exp));
 
     // 回传最新皮肤清单，前端据此刷新本机皮肤缓存（仅自己可见）。
-    bool skin_piece = false, skin_grass = false, skin_board = false;
-    if (!Manager::User::get_skins(uuid, skin_piece, skin_grass, skin_board)) return api_http_error("shop_buy", response);
+    bool skin_piece = false, skin_grass = false, skin_board = false, skin_theme = false;
+    if (!Manager::User::get_skins(uuid, skin_piece, skin_grass, skin_board, skin_theme)) return api_http_error("shop_buy", response);
     jsoncons::json skins = jsoncons::json::array();
     if (skin_piece) skins.push_back(std::string("piece"));
     if (skin_grass) skins.push_back(std::string("grass"));
     if (skin_board) skins.push_back(std::string("board"));
+    if (skin_theme) skins.push_back(std::string("theme"));
     result["skins"] = skins;
 
     std::string buffer;
@@ -604,13 +624,22 @@ void user_profile(cinatra::coro_http_request& request, cinatra::coro_http_respon
     const auto now = Libs::Only::Time::timestamp_ms();
     const bool online = has_seen && last_seen > 0 && now - last_seen <= 60 * 1000;
 
-    // 真实对局场次与近 100 场胜率：直接由回放统计（每个玩家最多保留 100 场）
-    int64_t real_games = 0, real_wins = 0;
-    Manager::Replay::stats_player(uuid, static_cast<int64_t>(Manager::Replay::MAX_PLAYER_REPLAYS), real_games, real_wins);
+    // 账号对局：回放本体只保留最近 100 局，但累计场次由 player_stats 持续统计，不受 100 局限制。
+    int64_t retained_games = 0, retained_wins = 0;
+    Manager::Replay::stats_player(uuid, static_cast<int64_t>(Manager::Replay::MAX_PLAYER_REPLAYS), retained_games, retained_wins);
+
+    int64_t total_games = 0, total_wins = 0, total_ai = 0;
+    const bool has_total = Manager::Replay::stats_total(uuid, total_games, total_wins, total_ai);
+    (void)total_wins; // 总胜场暂不展示，胜率仍按最近 100 场计算
+    const int64_t real_games = has_total && total_games > retained_games ? total_games : retained_games;
+    const int64_t real_wins  = retained_wins;
 
     int64_t ai_games = 0;
     std::string showcase;
     Manager::User::get_profile_stats(uuid, ai_games, showcase);
+    // AI 场次同时参考服务端累计值与客户端上报值，取较大者，上限远高于 10000。
+    if (total_ai > ai_games) ai_games = total_ai;
+    if (ai_games > Manager::Replay::MAX_STAT_GAMES) ai_games = Manager::Replay::MAX_STAT_GAMES;
 
     // 好友关系：未登录或 token 失效时按陌生人处理
     std::string relation = "none";
@@ -653,6 +682,9 @@ void user_profile(cinatra::coro_http_request& request, cinatra::coro_http_respon
     result["last_seen"]    = last_seen;
     result["real_games"]   = real_games;
     result["real_wins"]    = real_wins;
+    // 胜率基数单独返回：累计场次可能超过 100，但胜率仍只统计最近 100 场。
+    result["recent_games"] = retained_games;
+    result["recent_wins"]  = retained_wins;
     result["ai_games"]     = ai_games;
     result["achievements"] = split_showcase(showcase);
     result["relation"]     = relation;

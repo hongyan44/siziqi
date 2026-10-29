@@ -165,6 +165,7 @@ void replay_update(cinatra::coro_http_request& request, cinatra::coro_http_respo
     const auto result_code = json_string(rjson, "result").empty() ? std::string("none") : json_string(rjson, "result");
 
     uint64_t id = 0;
+    bool created = false;
     const auto status = Manager::Replay::add_replay(
         uploader,
         opponent,
@@ -182,6 +183,7 @@ void replay_update(cinatra::coro_http_request& request, cinatra::coro_http_respo
         result_code,
         hash,
         data,
+        created,
         id
     );
 
@@ -231,6 +233,9 @@ void replay_ai_reward(cinatra::coro_http_request& request, cinatra::coro_http_re
     std::string token;
     std::string uuid;
     if (!token_uuid(rjson, token, uuid)) return api_http_error("replay_ai_reward", response);
+
+    // AI 对局累计统计：每完成一局人机对战（无论奖励是否触发）都记一场。
+    Manager::Replay::bump_ai_game(uuid);
 
     const int64_t seconds = std::max<int64_t>(0, json_i64(rjson, "duration"));
     const bool win        = json_i64(rjson, "win") != 0;

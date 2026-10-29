@@ -180,13 +180,14 @@ void puzzle_delete(cinatra::coro_http_request& request, cinatra::coro_http_respo
 }
 
 // 投稿残局（2 级及以上）：提交后进入待审核队列，由 3/4 级用户审核。
+// 等级不足 2 的账号可凭「单局投稿券」投稿一次，校验通过后立即消耗一张。
 void puzzle_submit(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
     auto body = api_body(request.get_body());
     if (!body) return api_http_error("puzzle_submit", response);
     auto value = body.value();
     std::string creator;
     int level = 0;
-    if (!token_level(value, creator, level) || level < 2) return api_http_error("puzzle_submit", response);
+    if (!token_level(value, creator, level)) return api_http_error("puzzle_submit", response);
 
     const auto target = json_string(value, "target");
     const auto title = json_string(value, "title");
@@ -201,12 +202,23 @@ void puzzle_submit(cinatra::coro_http_request& request, cinatra::coro_http_respo
         if (sub_level < 1 || sub_level > 100) return api_http_error("puzzle_submit", response);
     }
 
+    // 等级不足时改为消耗一张单局投稿券：先确认持有，插入成功后再扣券，避免无效投稿浪费。
+    const bool use_ticket = level < 2;
+    if (use_ticket) {
+        int64_t held = 0;
+        if (!Manager::User::get_tickets(creator, held) || held < 1) return api_http_error("puzzle_submit", response);
+    }
+
     uint64_t id = 0;
     if (!Manager::Puzzle::add_submission(target, sub_level, title, code, creator, static_cast<uint64_t>(Libs::Only::Time::timestamp_ms()), id))
         return api_http_error("puzzle_submit", response);
+    if (use_ticket) Manager::User::consume_ticket(creator);
 
     jsoncons::json result = jsoncons::json::object();
     result["id"] = id;
+    result["ticket_used"] = use_ticket;
+    int64_t tickets = 0;
+    if (Manager::User::get_tickets(creator, tickets)) result["tickets"] = tickets;
     std::string buffer;
     api_end("puzzle_submit", true, result, buffer);
     response.set_status_and_content(cinatra::status_type::ok, buffer);

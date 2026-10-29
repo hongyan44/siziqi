@@ -313,7 +313,7 @@ const FriendList = require('./friend-list.cjs');
             button.disabled = true;
             try {
                 if (label.kind === 'accept') {
-                    const ok = await window.http_friend_accept(token(), data.uuid);
+                    const ok = await accept_friend(data.uuid);
                     if (!ok) return notify('error', '接受失败');
                     notify('success', '已添加好友');
                 } else {
@@ -347,14 +347,16 @@ const FriendList = require('./friend-list.cjs');
         ]);
 
         // 经济隐私：他人资料只展示经验等级，不展示棋币与经验进度
+        // 账号对局为累计场次（可超过 100）；胜率仍以服务端保留的最近 100 场为基数。
         const games = Number(data.real_games) || 0;
-        const wins = Number(data.real_wins) || 0;
-        const rate = FriendList.format_win_rate(games, wins);
+        const recentGames = Number(data.recent_games != null ? data.recent_games : Math.min(games, 100)) || 0;
+        const wins = Number(data.recent_wins != null ? data.recent_wins : data.real_wins) || 0;
+        const rate = FriendList.format_win_rate(recentGames, wins);
         const rows = h('div', { class: 'player-profile-rows' }, [
             profile_row('最近登录', FriendList.format_presence(data, Date.now())),
             profile_row('账号对局', `${games} 场`),
             profile_row('AI 对局', `${Number(data.ai_games) || 0} 场`),
-            profile_row('近100场胜率', games > 0 ? `${rate}（${wins}/${games}）` : rate)
+            profile_row('近100场胜率', recentGames > 0 ? `${rate}（${wins}/${recentGames}）` : rate)
         ]);
 
         const ids = Array.isArray(data.achievements) ? data.achievements.slice(0, 3) : [];
@@ -480,6 +482,7 @@ const FriendList = require('./friend-list.cjs');
 
     let latest_incoming = [];
     let latest_outgoing = [];
+    let latest_friends = [];
 
     const render_requests_page_by_state = () => {
         render_requests_page(latest_incoming);
@@ -496,6 +499,7 @@ const FriendList = require('./friend-list.cjs');
         state.request_mode = result.request_mode || 'manual';
         latest_incoming = result.incoming || [];
         latest_outgoing = result.outgoing || [];
+        latest_friends = result.friends || [];
         render_requests_page(latest_incoming);
         render_outgoing_page(latest_outgoing);
         render_friends(result.friends || []);
@@ -506,6 +510,15 @@ const FriendList = require('./friend-list.cjs');
             const select = byId('select_friend_request_mode');
             if (select) select.value = state.request_mode;
         }
+    };
+
+    // 接受好友申请：跨线路网络抖动时请求可能已成功但响应丢失，
+    // 此时以服务端最新好友列表为准判定结果，避免误报「接受失败」。
+    const accept_friend = async (uuid) => {
+        if (!uuid) return false;
+        if (await window.http_friend_accept(token(), uuid)) return true;
+        await refresh_list();
+        return latest_friends.some((friend) => friend && friend.uuid === uuid);
     };
 
     const request_item = (user) => {
@@ -561,7 +574,7 @@ const FriendList = require('./friend-list.cjs');
     };
 
     const accept_user = async (user) => {
-        const ok = await window.http_friend_accept(token(), user.uuid);
+        const ok = await accept_friend(user.uuid);
         if (!ok) return notify('error', '接受失败');
         notify('success', '已添加好友');
         refresh_list();
@@ -852,7 +865,7 @@ const FriendList = require('./friend-list.cjs');
             if (outcome.relation === 'denied') return notify('info', '对方不接受好友申请');
             notify('success', outcome.relation === 'friend' ? '你们已成为好友' : '好友申请已发送');
         } else if (action === 'accept') {
-            const ok = await window.http_friend_accept(token(), result.uuid);
+            const ok = await accept_friend(result.uuid);
             if (!ok) return notify('error', '接受失败');
             notify('success', '已添加好友');
         }

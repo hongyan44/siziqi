@@ -28,6 +28,9 @@ sqlite3_stmt* p_delete_record   = nullptr;
 sqlite3_stmt* p_query_player    = nullptr;
 sqlite3_stmt* p_select_data     = nullptr;
 sqlite3_stmt* p_stats_player    = nullptr;
+sqlite3_stmt* p_bump_player     = nullptr;
+sqlite3_stmt* p_total_player    = nullptr;
+sqlite3_stmt* p_bump_ai_player  = nullptr;
 
 namespace {
 void bind_text(sqlite3_stmt* statement, int index, std::string_view value) noexcept {
@@ -123,6 +126,32 @@ void init() noexcept {
         return;
     }
 
+    // 累计对局统计：回放本体只保留最近 100 局，但总场次 / 总胜场 / AI 场次在这里持续累加。
+    if (!exec(
+            "CREATE TABLE IF NOT EXISTS player_stats ("
+            "player_uuid TEXT PRIMARY KEY, "
+            "online_games INTEGER NOT NULL DEFAULT 0, "
+            "online_wins INTEGER NOT NULL DEFAULT 0, "
+            "ai_games INTEGER NOT NULL DEFAULT 0"
+            ") STRICT"
+        )) {
+        std::cerr << "对局统计表初始化失败" << std::endl;
+        close();
+        return;
+    }
+
+    // 旧数据基线：只给尚无统计行的玩家按当前保留的回放补一次，已有累计值不会被覆盖。
+    const auto seed_stats = [&]() {
+        exec(
+            "INSERT OR IGNORE INTO player_stats (player_uuid, online_games, online_wins) "
+            "SELECT p.player_uuid, COUNT(*), "
+            "COALESCE(SUM(CASE WHEN (r.result = 'A' AND r.black_uuid = p.player_uuid) "
+            "OR (r.result = 'B' AND r.white_uuid = p.player_uuid) THEN 1 ELSE 0 END), 0) "
+            "FROM replay_players p INNER JOIN replay r ON r.id = p.replay_id "
+            "GROUP BY p.player_uuid"
+        );
+    };
+
     // 把旧版 replay.a/replay.b 转成玩家关联，避免升级后历史记录消失。
     exec(
         "INSERT OR IGNORE INTO replay_players (player_uuid, replay_id, time) "
@@ -132,6 +161,8 @@ void init() noexcept {
         "INSERT OR IGNORE INTO replay_players (player_uuid, replay_id, time) "
         "SELECT b, id, time FROM replay WHERE b <> ''"
     );
+
+    seed_stats();
 
     const auto prepare = [](const char* sql, sqlite3_stmt** statement) {
         return sqlite3_prepare_v2(db, sql, -1, statement, nullptr) == SQLITE_OK;
@@ -197,6 +228,31 @@ void init() noexcept {
         &p_stats_player,
         nullptr
     );
+    sqlite3_prepare_v2(
+        db,
+        "INSERT INTO player_stats (player_uuid, online_games, online_wins, ai_games) VALUES (?, 1, ?, 0) "
+        "ON CONFLICT(player_uuid) DO UPDATE SET "
+        "online_games = MIN(online_games + 1, 1000000000), "
+        "online_wins = MIN(online_wins + excluded.online_wins, 1000000000)",
+        -1,
+        &p_bump_player,
+        nullptr
+    );
+    sqlite3_prepare_v2(
+        db,
+        "SELECT online_games, online_wins, ai_games FROM player_stats WHERE player_uuid = ?",
+        -1,
+        &p_total_player,
+        nullptr
+    );
+    sqlite3_prepare_v2(
+        db,
+        "INSERT INTO player_stats (player_uuid, online_games, online_wins, ai_games) VALUES (?, 0, 0, 1) "
+        "ON CONFLICT(player_uuid) DO UPDATE SET ai_games = MIN(ai_games + 1, 1000000000)",
+        -1,
+        &p_bump_ai_player,
+        nullptr
+    );
 };
 
 // 关闭
@@ -211,6 +267,9 @@ void close() noexcept {
     sqlite3_finalize(p_query_player);
     sqlite3_finalize(p_select_data);
     sqlite3_finalize(p_stats_player);
+    sqlite3_finalize(p_bump_player);
+    sqlite3_finalize(p_total_player);
+    sqlite3_finalize(p_bump_ai_player);
 
     p_select_existing = nullptr;
     p_insert          = nullptr;
@@ -222,6 +281,9 @@ void close() noexcept {
     p_query_player    = nullptr;
     p_select_data     = nullptr;
     p_stats_player    = nullptr;
+    p_bump_player     = nullptr;
+    p_total_player    = nullptr;
+    p_bump_ai_player  = nullptr;
 
     if (db) sqlite3_close(db);
     db = nullptr;
@@ -245,9 +307,11 @@ bool add_replay(
     std::string_view result,
     std::string_view hash,
     std::string_view data,
+    bool& created,
     uint64_t& id
 ) noexcept {
     id = 0;
+    created = false;
     if (!db || player_a.empty() || player_b.empty() || player_a == player_b || hash.empty() || data.empty()) return false;
     if (black_uuid.empty() || white_uuid.empty() || black_uuid == white_uuid) return false;
     if ((black_uuid != player_a && black_uuid != player_b) || (white_uuid != player_a && white_uuid != player_b)) return false;
@@ -300,6 +364,7 @@ bool add_replay(
             return false;
         }
         id = static_cast<uint64_t>(sqlite3_last_insert_rowid(db));
+        created = true;
     }
 
     for (const auto& uuid : {std::string_view(pair_a), std::string_view(pair_b)}) {
@@ -320,6 +385,19 @@ bool add_replay(
         if (rc != SQLITE_DONE) {
             exec("ROLLBACK");
             return false;
+        }
+
+        // 累计统计只在新回放入库时增加一次，双方重复上传同一局不会重复计数。
+        if (created) {
+            const bool win = (result == "A" && black_uuid == uuid) || (result == "B" && white_uuid == uuid);
+            bind_text(p_bump_player, 1, uuid);
+            sqlite3_bind_int64(p_bump_player, 2, win ? 1 : 0);
+            rc = sqlite3_step(p_bump_player);
+            reset(p_bump_player);
+            if (rc != SQLITE_DONE) {
+                exec("ROLLBACK");
+                return false;
+            }
         }
     }
 
@@ -437,6 +515,34 @@ bool stats_player(std::string_view player, int64_t limit, int64_t& games, int64_
     }
     reset(p_stats_player);
     return rc == SQLITE_ROW;
+};
+
+// 读取累计统计：在线总场次 / 总胜场 / AI 总场次
+bool stats_total(std::string_view player, int64_t& games, int64_t& wins, int64_t& ai_games) noexcept {
+    games    = 0;
+    wins     = 0;
+    ai_games = 0;
+    if (!db || !p_total_player || player.empty()) return false;
+
+    bind_text(p_total_player, 1, player);
+    const int rc = sqlite3_step(p_total_player);
+    if (rc == SQLITE_ROW) {
+        games    = sqlite3_column_int64(p_total_player, 0);
+        wins     = sqlite3_column_int64(p_total_player, 1);
+        ai_games = sqlite3_column_int64(p_total_player, 2);
+    }
+    reset(p_total_player);
+    return rc == SQLITE_ROW;
+};
+
+// AI 对局计数：人机对战结算时调用，累计场次只增不减
+bool bump_ai_game(std::string_view player) noexcept {
+    if (!db || !p_bump_ai_player || player.empty()) return false;
+
+    bind_text(p_bump_ai_player, 1, player);
+    const int rc = sqlite3_step(p_bump_ai_player);
+    reset(p_bump_ai_player);
+    return rc == SQLITE_DONE;
 };
 } // namespace Replay
 } // namespace Manager

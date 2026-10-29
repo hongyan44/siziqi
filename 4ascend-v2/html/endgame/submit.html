@@ -289,7 +289,7 @@
             <div id='submit_hint' class='card editor-card shadow-sm mt-3'>
                 <div class='card-body d-flex align-items-center gap-3 p-3'>
                     <sl-icon name='lock' class='text-secondary' style='font-size: 1.35rem;'></sl-icon>
-                    <div class='text-secondary small'>投稿到服务器需要权限等级 2，请登录并提升权限等级后再提交。</div>
+                    <div class='text-secondary small'>投稿到服务器需要权限等级 2；等级不足时可在棋币商店购买「单局投稿券」，凭券投稿一次。</div>
                 </div>
             </div>
 
@@ -340,7 +340,7 @@
                 </div>
             </div>
         </main>
-        <footer class='text-center text-muted py-1' style='font-size: 0.74rem;'>残局投稿编辑器 · 等级 ≥ 2 可投稿，等级 ≥ 3 可审核投稿</footer>
+        <footer class='text-center text-muted py-1' style='font-size: 0.74rem;'>残局投稿编辑器 · 等级 ≥ 2 或持单局投稿券可投稿，等级 ≥ 3 可审核投稿</footer>
     </div>
 
     <script>
@@ -897,8 +897,10 @@
             }
         });
 
-        // ---------- 服务端投稿（等级 ≥ 2） ----------
+        // ---------- 服务端投稿（等级 ≥ 2，或持单局投稿券） ----------
         const submit_level = () => (submit_user ? clamp(Number(submit_user.level) || 1, 1, 4) : 0);
+        // 背包消耗品：单局投稿券数量，等级不足 2 时凭券可投稿一次。
+        const submit_tickets = () => (submit_user ? Math.max(0, Math.trunc(Number(submit_user.tickets) || 0)) : 0);
         const syncSubmitLevelVisibility = () => {
             const target = document.getElementById('submit_target').value;
             document.getElementById('submit_level_wrap').classList.toggle('d-none', target !== 'level');
@@ -914,6 +916,9 @@
             const title = (document.getElementById('submit_title').value || '').trim();
             const level = target === 'level' ? clamp(Math.floor(Number(document.getElementById('submit_level').value) || 1), 1, 100) : 0;
             if (!Array.from(title).length || Array.from(title).length > 10) { setSubmitFeedback('残局名称不能为空，且最多10个中文字符。', 'danger'); return; }
+            // 等级不足 2 时必须持有一张单局投稿券，否则服务端会拒绝。
+            const current_level = submit_level();
+            if (current_level < 2 && submit_tickets() < 1) { setSubmitFeedback('等级不足 2，需要先在棋币商店购买单局投稿券。', 'danger'); return; }
             // 允许无正着残局投稿；若已填写正着，仍要求黑白手数一致。
             if (blackBook.length !== sequence.length) { setSubmitFeedback('黑方正着与白方预案手数必须一致。', 'danger'); return; }
             const token = window.get_token();
@@ -923,8 +928,13 @@
                 const code = EndgameArchive.encode(exportData());
                 const success = await window.http_puzzle_submit(token, target, level, title, code);
                 if (!success) throw new Error('服务端拒绝了本次投稿');
+                // 等级不足 2 的投稿已由服务端成功扣券，这里同步本地券数并刷新卡片状态。
+                if (current_level < 2 && submit_user) {
+                    submit_user.tickets = Math.max(0, submit_tickets() - 1);
+                    applySubmitAccount(submit_user);
+                }
                 setSubmitFeedback(target === 'daily' ? '投稿已提交，等待审核（每日残局）' : `投稿已提交，等待审核（第 ${level} 关）`, 'success');
-                showAlert('投稿已提交，等待审核');
+                showAlert(current_level < 2 ? '投稿已提交，已消耗 1 张单局投稿券' : '投稿已提交，等待审核');
             } catch (error) {
                 setSubmitFeedback(error.message || '投稿失败，请稍后重试。', 'danger');
                 showAlert(`投稿失败：${error.message || '未知错误'}`, 'danger');
@@ -1014,10 +1024,16 @@
         const applySubmitAccount = (info) => {
             submit_user = info || null;
             const level = submit_level();
-            document.getElementById('submit_card').classList.toggle('d-none', level < 2);
-            document.getElementById('submit_hint').classList.toggle('d-none', level >= 2);
+            const tickets = submit_tickets();
+            // 等级 ≥ 2 正常投稿；等级不足 2 时持单局投稿券也可投稿一次。
+            const allow = level >= 2 || tickets > 0;
+            document.getElementById('submit_card').classList.toggle('d-none', !allow);
+            document.getElementById('submit_hint').classList.toggle('d-none', allow);
             document.getElementById('review_card').classList.toggle('d-none', level < 3);
-            if (level >= 2) syncSubmitLevelVisibility();
+            const badge = document.getElementById('submit_level_badge');
+            badge.textContent = level >= 2 ? '等级 ≥ 2 可投稿' : `单局投稿券 ×${tickets}`;
+            badge.setAttribute('variant', level >= 2 ? 'primary' : 'warning');
+            if (allow) syncSubmitLevelVisibility();
             if (level >= 3) refresh_review();
         };
         const loadSubmitUser = async () => {

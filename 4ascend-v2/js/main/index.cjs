@@ -54,10 +54,12 @@ const range_click_level = document.getElementById('range_click_level');
 const switch_skin_piece = document.getElementById('switch_skin_piece');
 const switch_skin_grass = document.getElementById('switch_skin_grass');
 const switch_skin_board = document.getElementById('switch_skin_board');
+const switch_skin_theme = document.getElementById('switch_skin_theme');
 
 const text_skin_piece = document.getElementById('text_skin_piece');
 const text_skin_grass = document.getElementById('text_skin_grass');
 const text_skin_board = document.getElementById('text_skin_board');
+const text_skin_theme = document.getElementById('text_skin_theme');
 
 
 const dialog_user = document.getElementById('dialog_user');
@@ -474,8 +476,8 @@ const user_info = async (token) => {
         render_user_pass_status(has_pass);
         user_ident = mail || phone || '';
         render_user_level(level);
-        // 经济系统：经验等级与棋币余额
-        if (block_user_wallet && window.WalletUI) window.WalletUI.render_panel(block_user_wallet, info);
+        // 经济系统：经验等级与「我的背包」入口（棋币与道具都在背包中查看）
+        if (block_user_wallet && window.WalletUI) window.WalletUI.render_panel(block_user_wallet, info, { backpack: true });
         // 账号已购皮肤同步到本机缓存，供本地设置的皮肤开关识别
         if (Skins && Array.isArray(info.skins)) {
             try {
@@ -483,10 +485,12 @@ const user_info = async (token) => {
                     piece: info.skins.includes('piece'),
                     grass: info.skins.includes('grass'),
                     board: info.skins.includes('board'),
+                    theme: info.skins.includes('theme'),
                 }));
             } catch (_) {
                 // 隐私模式下 localStorage 可能不可用，忽略即可
             }
+            Skins.apply_theme();
         }
         user_avatar_data = info.avatar || '';
         render_user_avatar();
@@ -889,6 +893,7 @@ const SKIN_ROWS = [
     { id: 'piece', switch_el: switch_skin_piece, text_el: text_skin_piece, desc: '半写实球体，同时替换黑白双方棋子' },
     { id: 'grass', switch_el: switch_skin_grass, text_el: text_skin_grass, desc: '中心蓝色高亮，外圈黑红交替渐变环' },
     { id: 'board', switch_el: switch_skin_board, text_el: text_skin_board, desc: '半写实青玉棋盘' },
+    { id: 'theme', switch_el: switch_skin_theme, text_el: text_skin_theme, desc: '蓝黑主调的星际舰桥界面，红色警示点缀' },
 ];
 
 const render_skin_settings = () => {
@@ -905,6 +910,218 @@ const render_skin_settings = () => {
         if (row.text_el) row.text_el.innerText = has ? row.desc : '未拥有，可在棋币商店购买';
     });
 };
+
+
+// ===== 我的背包 =====
+const backpack_drawer = document.getElementById('backpack_drawer');
+const backpack_backdrop = document.getElementById('backpack_backdrop');
+const backpack_coin = document.getElementById('backpack_coin');
+const backpack_pane = document.getElementById('backpack_pane');
+const backpack_tabs = Array.from(document.querySelectorAll('.backpack-tab'));
+const button_backpack_close = document.getElementById('button_backpack_close');
+
+const BAG_SKIN_NAMES = {
+    piece: '棋子皮肤',
+    grass: '反曲点皮肤',
+    board: '棋盘皮肤',
+    theme: '风格 UI · 虚空舰队',
+};
+
+let backpack_tab = 'consume';
+let backpack_info = null;
+
+/**
+ * @description: 背包外观图标（四种皮肤各一套迷你图形）
+ * @param {string} id
+ * @return {string}
+ */
+const backpack_skin_icon = (id) => {
+    if (id === 'piece') {
+        return `<svg viewBox='0 0 32 32' aria-hidden='true'><circle cx='11' cy='16' r='8' fill='#26303c'/><circle cx='21' cy='16' r='8' fill='#f1eee5' stroke='#c3bcaa'/></svg>`;
+    }
+    if (id === 'grass') {
+        return `<svg viewBox='0 0 32 32' aria-hidden='true'><circle cx='16' cy='16' r='12' fill='none' stroke='#c92b3e' stroke-width='3'/><circle cx='16' cy='16' r='6' fill='#3fa8f5'/></svg>`;
+    }
+    if (id === 'board') {
+        return `<svg viewBox='0 0 32 32' aria-hidden='true'><rect x='4' y='4' width='24' height='24' rx='3' fill='#d7ebdd' stroke='#6f9c83'/><path d='M12 4v24M20 4v24M4 12h24M4 20h24' stroke='rgba(42,86,64,.45)'/></svg>`;
+    }
+    return `<svg viewBox='0 0 32 32' aria-hidden='true'><rect x='3' y='3' width='26' height='26' rx='4' fill='#0a1526' stroke='#4a9dff'/><circle cx='9' cy='9' r='2' fill='#f04056'/><path d='M9 17h14M9 22h9' stroke='#5eaaff' stroke-width='2'/></svg>`;
+};
+
+/**
+ * @description: 渲染背包顶部棋币信息
+ * @param {number} coin
+ * @return {void}
+ */
+const backpack_render_coin = (coin) => {
+    if (!backpack_coin) return;
+    const icon = window.WalletUI ? window.WalletUI.coin_svg(34) : '';
+    backpack_coin.innerHTML = `
+<div class='bag-coin'>
+    <span class='bag-coin-icon'>${icon}</span>
+    <div class='bag-coin-main'>
+        <div class='bag-coin-label'>棋币</div>
+        <div class='bag-coin-value'>${Math.max(0, Math.trunc(Number(coin) || 0))}</div>
+    </div>
+</div>`;
+};
+
+/**
+ * @description: 渲染消耗品类
+ * @return {void}
+ */
+const backpack_render_consume = () => {
+    if (!backpack_pane) return;
+    const tickets = Math.max(0, Math.trunc(Number(backpack_info && backpack_info.tickets) || 0));
+    backpack_pane.innerHTML = `
+<div class='bag-item'>
+    <div class='bag-ticket-icon'><span>投稿</span><i>单局</i></div>
+    <div class='bag-item-main'>
+        <div class='bag-item-name'>单局投稿券<span class='bag-count'>×${tickets}</span></div>
+        <div class='bag-item-desc'>等级不足 2 时，可在残局投稿页凭券提交一次投稿。</div>
+    </div>
+    ${tickets > 0 ? '' : `<sl-button size='small' variant='primary' outline href='/pages/user/shop.html' target='_self'>去商店购买</sl-button>`}
+</div>`;
+};
+
+/**
+ * @description: 渲染成就类
+ * @return {Promise<void>}
+ */
+const backpack_render_achievements = async () => {
+    if (!backpack_pane) return;
+    let items = [];
+    try {
+        items = typeof window.achievement_list === 'function' ? await window.achievement_list() : [];
+    } catch (_) {
+        items = [];
+    }
+    if (!items.length) {
+        backpack_pane.innerHTML = `
+<div class='bag-empty'>
+    <sl-icon name='trophy'></sl-icon>
+    <span>还没有获得成就，去完成对局与残局挑战吧</span>
+</div>`;
+        return;
+    }
+    backpack_pane.innerHTML = `
+<div class='bag-ach-grid'>
+    ${items.map((item) => `
+    <div class='bag-ach'>
+        <div class='bag-ach-art'>${item.art || `<sl-icon name='${item.icon || 'trophy'}'></sl-icon>`}</div>
+        <div class='bag-ach-main'>
+            <div class='bag-ach-name'>${item.name || item.id}</div>
+            <div class='bag-ach-desc'>${item.desc || ''}</div>
+        </div>
+    </div>`).join('')}
+</div>`;
+};
+
+/**
+ * @description: 渲染外观类（已拥有的皮肤可在此开关）
+ * @return {void}
+ */
+const backpack_render_skins = () => {
+    if (!backpack_pane) return;
+    const owned = Skins ? Skins.owned() : {};
+    const prefs = Skins ? Skins.prefs() : {};
+    const rows = SKIN_ROWS.filter((row) => owned[row.id]);
+    if (!rows.length) {
+        backpack_pane.innerHTML = `
+<div class='bag-empty'>
+    <sl-icon name='palette'></sl-icon>
+    <span>还没有外观道具，去棋币商店挑选喜欢的皮肤吧</span>
+    <sl-button size='small' variant='primary' outline href='/pages/user/shop.html' target='_self'>去商店</sl-button>
+</div>`;
+        return;
+    }
+    backpack_pane.innerHTML = rows.map((row) => `
+<div class='bag-item'>
+    <div class='bag-item-icon'>${backpack_skin_icon(row.id)}</div>
+    <div class='bag-item-main'>
+        <div class='bag-item-name'>${BAG_SKIN_NAMES[row.id] || row.id}</div>
+        <div class='bag-item-desc'>${row.desc}</div>
+    </div>
+    <sl-switch data-bag-skin='${row.id}' size='small' ${prefs[row.id] ? 'checked' : ''}></sl-switch>
+</div>`).join('');
+
+    backpack_pane.querySelectorAll('[data-bag-skin]').forEach((node) => {
+        node.addEventListener('sl-change', () => {
+            if (!Skins) return;
+            const id = node.dataset.bagSkin;
+            const next = Skins.prefs();
+            next[id] = Boolean(node.checked);
+            Skins.write_prefs(next);
+            Skins.apply_theme();
+            render_skin_settings();
+        });
+    });
+};
+
+/**
+ * @description: 按当前分类渲染背包内容
+ * @return {Promise<void>}
+ */
+const backpack_render = async () => {
+    backpack_tabs.forEach((tab) => tab.classList.toggle('active', tab.dataset.tab === backpack_tab));
+    if (!backpack_pane) return;
+    if (backpack_tab === 'achieve') return backpack_render_achievements();
+    if (backpack_tab === 'skin') return backpack_render_skins();
+    return backpack_render_consume();
+};
+
+/**
+ * @description: 拉取最新账号数据并刷新背包
+ * @return {Promise<void>}
+ */
+const backpack_refresh = async () => {
+    let info = null;
+    try {
+        info = await window.http_user_info(window.get_token());
+    } catch (_) {
+        info = null;
+    }
+    if (!info) {
+        backpack_info = null;
+        if (backpack_coin) backpack_coin.innerHTML = '';
+        if (backpack_pane) backpack_pane.innerHTML = `<div class='bag-empty'>数据加载失败，请稍后重试</div>`;
+        return;
+    }
+    backpack_info = info;
+    backpack_render_coin(info.coin);
+    await backpack_render();
+};
+
+/**
+ * @description: 打开我的背包
+ * @return {Promise<void>}
+ */
+const backpack_open = async () => {
+    if (!backpack_drawer || !require_login()) return;
+    backpack_tab = 'consume';
+    backpack_drawer.classList.add('open');
+    await backpack_refresh();
+};
+
+/**
+ * @description: 关闭我的背包
+ * @return {void}
+ */
+const backpack_close = () => {
+    if (backpack_drawer) backpack_drawer.classList.remove('open');
+};
+
+if (block_user_wallet) {
+    block_user_wallet.addEventListener('click', (event) => {
+        if (event.target.closest('#button_user_bag')) backpack_open();
+    });
+}
+backpack_tabs.forEach((tab) => tab.addEventListener('click', () => {
+    backpack_tab = tab.dataset.tab || 'consume';
+    backpack_render();
+}));
+if (button_backpack_close) button_backpack_close.addEventListener('click', backpack_close);
+if (backpack_backdrop) backpack_backdrop.addEventListener('click', backpack_close);
 
 
 // 本地设置，对话框
@@ -971,6 +1188,8 @@ button_local_submit.addEventListener('click', () => {
             if (owned[row.id] && row.switch_el) prefs[row.id] = !!row.switch_el.checked;
         });
         Skins.write_prefs(prefs);
+        // 主题开关变化立即反映到当前页面
+        Skins.apply_theme();
     }
 
     dialog_local.hide();
