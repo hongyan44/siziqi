@@ -51,6 +51,14 @@ const span_music_count = document.getElementById('span_music_count');
 const range_click_time = document.getElementById('range_click_time');
 const range_click_level = document.getElementById('range_click_level');
 
+const switch_skin_piece = document.getElementById('switch_skin_piece');
+const switch_skin_grass = document.getElementById('switch_skin_grass');
+const switch_skin_board = document.getElementById('switch_skin_board');
+
+const text_skin_piece = document.getElementById('text_skin_piece');
+const text_skin_grass = document.getElementById('text_skin_grass');
+const text_skin_board = document.getElementById('text_skin_board');
+
 
 const dialog_user = document.getElementById('dialog_user');
 const input_user_name = document.getElementById('input_user_name');
@@ -105,7 +113,7 @@ const dialog_clear = document.getElementById('dialog_clear');
 const button_clear_submit = document.getElementById('button_clear_submit');
 
 
-const { ShToast } = window.UiExports;
+const { ShToast, Skins } = window.UiExports;
 const toast = new ShToast();
 const button_music_toggle = document.getElementById('button_music_toggle');
 const icon_music_toggle = document.getElementById('icon_music_toggle');
@@ -468,6 +476,18 @@ const user_info = async (token) => {
         render_user_level(level);
         // 经济系统：经验等级与棋币余额
         if (block_user_wallet && window.WalletUI) window.WalletUI.render_panel(block_user_wallet, info);
+        // 账号已购皮肤同步到本机缓存，供本地设置的皮肤开关识别
+        if (Skins && Array.isArray(info.skins)) {
+            try {
+                localStorage.setItem('4a_skins', JSON.stringify({
+                    piece: info.skins.includes('piece'),
+                    grass: info.skins.includes('grass'),
+                    board: info.skins.includes('board'),
+                }));
+            } catch (_) {
+                // 隐私模式下 localStorage 可能不可用，忽略即可
+            }
+        }
         user_avatar_data = info.avatar || '';
         render_user_avatar();
         user_color_name = name || '';
@@ -864,9 +884,34 @@ button_clear_submit.addEventListener('pointerdown', async (event) => {
 });
 
 
+// 皮肤开关：只有已购皮肤可以切换，未拥有时禁用并提示去棋币商店购买
+const SKIN_ROWS = [
+    { id: 'piece', switch_el: switch_skin_piece, text_el: text_skin_piece, desc: '半写实球体，同时替换黑白双方棋子' },
+    { id: 'grass', switch_el: switch_skin_grass, text_el: text_skin_grass, desc: '中心蓝色高亮，外圈黑红交替渐变环' },
+    { id: 'board', switch_el: switch_skin_board, text_el: text_skin_board, desc: '半写实青玉棋盘' },
+];
+
+const render_skin_settings = () => {
+    if (!Skins) return;
+
+    const owned = Skins.owned();
+    const prefs = Skins.prefs();
+
+    SKIN_ROWS.forEach((row) => {
+        if (!row.switch_el) return;
+        const has = !!owned[row.id];
+        row.switch_el.disabled = !has;
+        row.switch_el.checked = has && prefs[row.id];
+        if (row.text_el) row.text_el.innerText = has ? row.desc : '未拥有，可在棋币商店购买';
+    });
+};
+
+
 // 本地设置，对话框
 const open_local_settings = () => {
     const { bgmv, stonev, plantv, matchv, tickv, annihilationv, hitv, orbitv, flyv, click_time, click_level } = JSON.parse(localStorage.getItem('opt'));
+
+    render_skin_settings();
 
     select_music_mode.value = window.MusicPlaylist.get_mode();
     render_music_playlist();
@@ -917,6 +962,16 @@ button_local_submit.addEventListener('click', () => {
 
     localStorage.setItem('opt', JSON.stringify({ bgmv, stonev, plantv, matchv, tickv, annihilationv, hitv, orbitv, flyv, click_time, click_level }));
     window.MusicPlaylist.set_mode(select_music_mode.value);
+
+    // 只保存已购皮肤的开关状态，未拥有的保持原值，避免购买后皮肤默认关闭
+    if (Skins) {
+        const owned = Skins.owned();
+        const prefs = Skins.prefs();
+        SKIN_ROWS.forEach((row) => {
+            if (owned[row.id] && row.switch_el) prefs[row.id] = !!row.switch_el.checked;
+        });
+        Skins.write_prefs(prefs);
+    }
 
     dialog_local.hide();
     toast.success('设置保存成功！');

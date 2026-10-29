@@ -224,6 +224,104 @@ void bracket_register(cinatra::coro_http_request& request, cinatra::coro_http_re
         // 满员
         if (static_cast<int64_t>(players.size()) >= maxPlayers) return api_http_error("bracket_register", response);
 
+        // 晋级校验：只允许在前一个方块中获胜的选手报名下一轮。
+        // 单人组视为轮空直接晋级；双人组必须已按 BO 目标胜局分出胜负且胜者为当前身份。
+        if (bracket.contains("edges") && bracket.at("edges").is_array()) {
+            const auto find_node = [&nodes](const std::string& id) -> jsoncons::json {
+                for (auto& item : nodes.array_range()) {
+                    if (!item.is_object()) continue;
+                    if (json_string(item, "id") == id) return item;
+                }
+                return jsoncons::json::null();
+            };
+            bool has_parent = false;
+            bool advanced = false;
+            for (const auto& edge : bracket.at("edges").array_range()) {
+                if (!edge.is_object()) continue;
+                if (json_string(edge, "to") != node_id) continue;
+                auto parent = find_node(json_string(edge, "from"));
+                if (!parent.is_object()) continue;
+                has_parent = true;
+
+                const auto parent_max = json_i64(parent, "maxPlayers", 0);
+                const auto parent_players = (parent.contains("players") && parent.at("players").is_array())
+                    ? parent.at("players") : jsoncons::json::array();
+                // 前置方块尚未满员抽签，暂不判定晋级
+                if (parent_max > 0 && static_cast<int64_t>(parent_players.size()) < parent_max) continue;
+
+                const auto parent_groups = (parent.contains("groups") && parent.at("groups").is_array())
+                    ? parent.at("groups") : jsoncons::json::array();
+                const auto parent_uuids = (parent.contains("player_uuids") && parent.at("player_uuids").is_object())
+                    ? parent.at("player_uuids") : jsoncons::json::object();
+                const auto parent_results = (parent.contains("results") && parent.at("results").is_object())
+                    ? parent.at("results") : jsoncons::json::object();
+
+                // 定位该身份在前置方块中的分组下标
+                int64_t group_index = -1;
+                int64_t group_size = 0;
+                for (size_t gi = 0; gi < parent_groups.size() && group_index < 0; ++gi) {
+                    if (!parent_groups[gi].is_array()) continue;
+                    for (auto& member : parent_groups[gi].array_range()) {
+                        std::string member_name;
+                        try { member_name = member.as<std::string>(); } catch (...) { continue; }
+                        std::string member_uuid;
+                        if (parent_uuids.contains(member_name)) {
+                            try { member_uuid = parent_uuids.at(member_name).as<std::string>(); } catch (...) { member_uuid.clear(); }
+                        }
+                        const bool matched = member_uuid.empty() ? (member_name == name) : (member_uuid == uuid);
+                        if (!matched) continue;
+                        group_index = static_cast<int64_t>(gi);
+                        group_size = static_cast<int64_t>(parent_groups[gi].size());
+                        break;
+                    }
+                }
+                // 该路径上未报名，交由其它前置路径判定
+                if (group_index < 0) continue;
+                // 单人组轮空晋级；超过两人的组无法按 BO 判定胜负，不做拦截
+                if (group_size <= 1 || group_size > 2) { advanced = true; continue; }
+
+                const auto key = std::to_string(group_index);
+                if (!parent_results.contains(key)) continue;
+                auto entry = parent_results.at(key);
+                if (!entry.is_object()) continue;
+                int64_t parent_bo = json_i64(parent, "bo", 3);
+                if (parent_bo < 1) parent_bo = 3;
+                if (parent_bo % 2 == 0) parent_bo += 1;
+                const int64_t parent_target = parent_bo / 2 + 1;
+
+                const auto wins = (entry.contains("wins") && entry.at("wins").is_object())
+                    ? entry.at("wins") : jsoncons::json::object();
+                std::string winner;
+                if (entry.contains("winner_uuid")) {
+                    try { winner = entry.at("winner_uuid").as<std::string>(); } catch (...) { winner.clear(); }
+                }
+
+                bool decided = false;
+                std::string decided_winner;
+                int64_t my_wins = 0;
+                if (wins.contains(uuid)) {
+                    try { my_wins = wins.at(uuid).as<int64_t>(); } catch (...) { my_wins = 0; }
+                }
+                if (my_wins >= parent_target) {
+                    decided = true;
+                    decided_winner = uuid;
+                } else if (!winner.empty()) {
+                    int64_t winner_wins = 0;
+                    if (wins.contains(winner)) {
+                        try { winner_wins = wins.at(winner).as<int64_t>(); } catch (...) { winner_wins = 0; }
+                    }
+                    if (winner_wins >= parent_target) {
+                        decided = true;
+                        decided_winner = winner;
+                    }
+                }
+                // 未分出胜负：暂不能报名
+                if (!decided) continue;
+                if (!decided_winner.empty() && decided_winner == uuid) advanced = true;
+            }
+            if (has_parent && !advanced) return api_http_error("bracket_register", response);
+        }
+
         // 随机找未满组。使用密码学安全随机 + 拒绝采样，避免 std::rand() 低位规律与取模偏差。
         if (!node.contains("groups") || !node.at("groups").is_array()) return api_http_error("bracket_register", response);
         auto groups = node.at("groups");

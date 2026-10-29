@@ -175,6 +175,7 @@
             <div class='d-flex justify-content-between align-items-center p-3 bg-light rounded shadow-sm'><span class='text-secondary small'>获胜者</span><span id='challenge_result_winner' class='fw-bold text-dark'>黑方</span></div>
             <div class='d-flex justify-content-between align-items-center p-3 bg-light rounded shadow-sm'><span class='text-secondary small'>最终血量</span><span id='challenge_result_hp' class='fw-bold text-dark'>6 vs 6</span></div>
             <div class='d-flex justify-content-between align-items-center p-3 bg-light rounded shadow-sm'><span class='text-secondary small'>挑战用时</span><span id='challenge_result_time' class='fw-bold text-dark'>+00:00</span></div>
+            <div id='challenge_result_reward' class='d-flex d-none justify-content-between align-items-center p-3 bg-light rounded shadow-sm'><span class='text-secondary small'>首次通关奖励</span><span id='challenge_result_reward_value' class='fw-bold text-success'>+50 经验 · +50 棋币</span></div>
         </div>
         <div class='d-flex flex-column gap-2'><sl-button id='challenge_result_restart' variant='primary'><sl-icon slot='prefix' name='arrow-repeat'></sl-icon>再试一次</sl-button><sl-button id='challenge_result_back' variant='default'><sl-icon slot='prefix' name='arrow-left'></sl-icon>返回残局系统</sl-button></div>
     </sl-dialog>
@@ -195,6 +196,22 @@
                 records[String(challengeLevel)] = { ...current, completed: true };
                 localStorage.setItem(LEVEL_STORAGE_KEY, JSON.stringify(records));
             } catch (_) { /* 本机进度记录失败不影响对局 */ }
+        };
+        // 首次通关奖励：登录后由服务端判定是否首次，重复通关不再发奖。
+        const claimClearReward = async () => {
+            const token = typeof window.get_token === 'function' ? window.get_token() : null;
+            if (!token || !importedArchive || typeof window.http_puzzle_claim_clear !== 'function') return;
+            const target = isCodeChallenge ? 'level' : 'daily';
+            if (target === 'level' && (!Number.isInteger(challengeLevel) || challengeLevel < 1 || challengeLevel > 100)) return;
+            try {
+                const result = await window.http_puzzle_claim_clear(token, target, target === 'level' ? challengeLevel : 0);
+                if (!result || !result.first) return;
+                const row = document.getElementById('challenge_result_reward');
+                const value = document.getElementById('challenge_result_reward_value');
+                if (!row || !value) return;
+                value.textContent = `+${result.exp} 经验 · +${result.coin} 棋币`;
+                row.classList.remove('d-none');
+            } catch (_) { /* 领奖失败不影响对局结算 */ }
         };
         const { EndgameArchive, create_guide, create_ai_preset } = window.EndgameExports;
         const { GameNormal, GameBlight, GameNight, Board, State, RulesRuntime, PLAYER_ENUM, STONE_ENUM, PLANT_ENUM, ASCEND_ENUM, OVER_ENUM, RandAIC, RandUnity } = window.FAscendExports;
@@ -260,7 +277,10 @@
             document.getElementById('challenge_result_winner').textContent = playerWon ? '黑方 · 我方' : '白方 · 每日挑战';
             document.getElementById('challenge_result_hp').textContent = `${blackHp} vs ${whiteHp}`;
             document.getElementById('challenge_result_time').textContent = formatElapsed(elapsed);
+            const rewardRow = document.getElementById('challenge_result_reward');
+            if (rewardRow) rewardRow.classList.add('d-none');
             dialog.show();
+            if (playerWon) claimClearReward();
         };
         const setStatus = (message, variant = 'primary') => { const status = document.getElementById('challenge_status'); status.className = `alert alert-${variant} py-2 mb-0 small challenge-loading`; status.textContent = message; };
         const formatElapsed = (elapsed) => { const total = Math.max(0, Math.floor(elapsed / 1000)); return `+${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`; };

@@ -177,6 +177,25 @@ const login_profile_self = async () => {
 };
 
 /**
+ * @description: 人机对战奖励结算（仅登录玩家；服务端按对局时长标准值发放，胜方双倍、向上取整）
+ * @param {number} duration 对局时长（秒）
+ * @param {boolean} win 玩家是否获胜
+ * @return {Promise<void>}
+ */
+const reward_ai = async (duration, win) => {
+    const token = typeof window.get_token === 'function' ? window.get_token() : null;
+    if (!token || typeof window.http_ai_reward !== 'function') return;
+    try {
+        const result = await window.http_ai_reward(token, duration, win);
+        const coin = Number(result && result.reward) || 0;
+        const exp = Number(result && result.exp_reward) || 0;
+        if (coin > 0 || exp > 0) toast.success(`本局获得 ${coin} 棋币 · ${exp} 经验`);
+    } catch (_) {
+        // 结算失败不影响对局结算画面
+    }
+};
+
+/**
  * @description: 游戏文字重置
  * @return {void}
  */
@@ -926,6 +945,7 @@ const run = async () => {
     let foe_stone, foe_icon, foe_label, foe_index;
     let first_color, first_icon, first_index;
     let game, board, state, timer;
+    let my_wins = false;
 
     let seed_aic = Date.now();
     let seed_unity = Math.floor(Date.now() / 1000) ^ crypto.getRandomValues(new Uint32Array(1))[0];
@@ -1290,6 +1310,7 @@ const run = async () => {
         const win = game.ed_win();
         if (win) {
             gl_wins = true;
+            my_wins = win === my_color;
             if (gl_ui) gl_ui.set_turn_flash(false);
             // 成就：赢下 AI（入门难度为 0，其余均视为简单及以上）；败局也计入 AI 对局场次
             if (typeof window.achievement_event === 'function') {
@@ -1329,8 +1350,12 @@ const run = async () => {
     const my_hp = my_color === PLAYER_ENUM.BLACK ? state.hp[0] : state.hp[1];
     const foe_hp = foe_color === PLAYER_ENUM.BLACK ? state.hp[0] : state.hp[1];
 
-    span_end_time.innerText = format_ms(Date.now() - time);
+    const duration_ms = Math.max(0, Date.now() - time);
+    span_end_time.innerText = format_ms(duration_ms);
     span_end_hp.innerText = `${my_hp} vs ${foe_hp}`;
+
+    // 棋币与经验结算：仅登录玩家，服务端按对局时长标准值发放，胜方双倍、向上取整
+    await reward_ai(Math.floor(duration_ms / 1000), my_wins);
 
     // 结算画面
     dialog_end.classList.remove('d-none');

@@ -355,6 +355,14 @@ void user_info(cinatra::coro_http_request& request, cinatra::coro_http_response&
     Manager::User::get_profile_stats(uuid, ai_games, showcase);
     info["ai_games"] = ai_games;
     info["showcase"] = split_showcase(showcase);
+    // 已购皮肤：仅本人读取，用于在本机替换棋子 / 草 / 棋盘的外观（不影响对手）。
+    bool skin_piece = false, skin_grass = false, skin_board = false;
+    if (!Manager::User::get_skins(uuid, skin_piece, skin_grass, skin_board)) return api_http_error("user_info", response);
+    jsoncons::json skins = jsoncons::json::array();
+    if (skin_piece) skins.push_back(std::string("piece"));
+    if (skin_grass) skins.push_back(std::string("grass"));
+    if (skin_board) skins.push_back(std::string("board"));
+    info["skins"] = skins;
     api_end("user_info", true, info, buffer);
     response.set_status_and_content(cinatra::status_type::ok, buffer);
 };
@@ -399,7 +407,7 @@ void user_unlock_level(cinatra::coro_http_request& request, cinatra::coro_http_r
     response.set_status_and_content(cinatra::status_type::ok, buffer);
 };
 
-// 商店购买：目前仅上架 2 级 / 3 级权限码，购买后立即解锁对应权限等级
+// 商店购买：2 级 / 3 级权限码，以及棋子 / 草 / 棋盘皮肤（皮肤仅本人本机生效）
 void user_shop_buy(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
     auto body = api_body(request.get_body());
     if (!body) return api_http_error("shop_buy", response);
@@ -414,21 +422,32 @@ void user_shop_buy(cinatra::coro_http_request& request, cinatra::coro_http_respo
 
     int target_level = 0;
     int64_t price    = 0;
+    // 皮肤定价：棋子（黑白合并）2000 棋币，草 1000 棋币，棋盘 2000 棋币；风格 UI 尚未实装。
+    int64_t skin_price = 0;
     if (item == "level2") {
         target_level = 2;
         price        = 1000;
     } else if (item == "level3") {
         target_level = 3;
-        price        = 2000;
+        price        = 5000;
+    } else if (item == "piece") {
+        skin_price = 2000;
+    } else if (item == "grass") {
+        skin_price = 1000;
+    } else if (item == "board") {
+        skin_price = 2000;
     } else {
-        // 棋盘皮肤 / 棋子样式 / 草样式 / 风格 UI 尚未实现，暂不支持购买
         return api_http_error("shop_buy", response);
     }
 
-    int level      = 1;
-    int64_t coin   = 0;
-    const int purchase = Manager::User::purchase_level(uuid, target_level, price, level, coin);
+    int level          = 1;
+    int64_t coin       = 0;
+    bool skin_owned    = false;
+    const int purchase = skin_price > 0
+                             ? Manager::User::purchase_skin(uuid, item, skin_price, skin_owned, coin)
+                             : Manager::User::purchase_level(uuid, target_level, price, level, coin);
     if (purchase < 0) return api_http_error("shop_buy", response);
+    if (!Manager::User::get_level(uuid, level)) return api_http_error("shop_buy", response);
 
     int64_t exp = 0;
     Manager::User::get_wallet(uuid, coin, exp);
@@ -441,6 +460,15 @@ void user_shop_buy(cinatra::coro_http_request& request, cinatra::coro_http_respo
     result["exp_level"] = Manager::User::exp_level(exp);
     result["exp_cur"]   = Manager::User::exp_within(exp);
     result["exp_need"]  = Manager::User::exp_need(Manager::User::exp_level(exp));
+
+    // 回传最新皮肤清单，前端据此刷新本机皮肤缓存（仅自己可见）。
+    bool skin_piece = false, skin_grass = false, skin_board = false;
+    if (!Manager::User::get_skins(uuid, skin_piece, skin_grass, skin_board)) return api_http_error("shop_buy", response);
+    jsoncons::json skins = jsoncons::json::array();
+    if (skin_piece) skins.push_back(std::string("piece"));
+    if (skin_grass) skins.push_back(std::string("grass"));
+    if (skin_board) skins.push_back(std::string("board"));
+    result["skins"] = skins;
 
     std::string buffer;
     api_end("shop_buy", true, result, buffer);
@@ -615,11 +643,9 @@ void user_profile(cinatra::coro_http_request& request, cinatra::coro_http_respon
     result["name"]         = name;
     result["avatar"]       = avatar;
     result["level"]        = level;
-    // 经济系统：公开资料只展示棋币余额与经验等级；
-    // 当前经验值与升级所需经验仅本人可在「账号信息」中查看（见 user_info）。
+    // 公开资料只展示经验等级：棋币余额与经验进度仅本人可在「账号信息」中查看。
     int64_t coin = 0, exp = 0;
     Manager::User::get_wallet(uuid, coin, exp);
-    result["coin"]      = coin;
     result["exp_level"] = Manager::User::exp_level(exp);
     result["name_color"]   = name_color;
     result["friend_id"]    = friend_id;

@@ -67,6 +67,15 @@ int64_t reward_base(uint64_t seconds) noexcept {
     return 15;
 }
 
+// 人机对战专用：档位与在线对局一致，区间内按标准值向上取整
+int64_t reward_base_up(uint64_t seconds) noexcept {
+    if (seconds < 60) return 0;
+    if (seconds < 300) return 1 + static_cast<int64_t>(((seconds - 60) * 6 + 238) / 239);
+    if (seconds < 600) return 8 + static_cast<int64_t>(((seconds - 300) * 2 + 298) / 299);
+    if (seconds < 900) return 11 + static_cast<int64_t>(((seconds - 600) * 3 + 298) / 299);
+    return 15;
+}
+
 // 模式倍率：房间号对战 1 倍；排位棋币 ×3、经验 ×2；赛事棋币 ×5、经验 ×3
 int64_t coin_rate(std::string_view category) noexcept {
     if (category == "ranked") return 3;
@@ -212,6 +221,47 @@ void replay_update(cinatra::coro_http_request& request, cinatra::coro_http_respo
     response.set_status_and_content(cinatra::status_type::ok, buffer);
 };
 
+// 人机对战结算：仅登录玩家有效，按对局时长对应的标准值发放棋币与经验（胜方双倍、向上取整）
+// 为避免重复上报刷奖励，同一账号每个自然分钟最多结算一局。
+void replay_ai_reward(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
+    auto body = api_body(request.get_body());
+    if (!body) return api_http_error("replay_ai_reward", response);
+    auto rjson = body.value();
+
+    std::string token;
+    std::string uuid;
+    if (!token_uuid(rjson, token, uuid)) return api_http_error("replay_ai_reward", response);
+
+    const int64_t seconds = std::max<int64_t>(0, json_i64(rjson, "duration"));
+    const bool win        = json_i64(rjson, "win") != 0;
+    const int64_t base    = reward_base_up(static_cast<uint64_t>(seconds));
+    const int64_t amount  = win ? base * 2 : base;
+
+    int64_t reward     = 0;
+    int64_t exp_reward = 0;
+    const int64_t bucket = Libs::Only::Time::timestamp_s() / 60;
+    if (amount > 0 && Manager::User::claim_coin_match(uuid, "ai", bucket)) {
+        if (Manager::User::add_coin(uuid, amount)) reward = amount;
+        if (Manager::User::add_exp(uuid, amount)) exp_reward = amount;
+    }
+
+    int64_t coin = 0;
+    int64_t exp  = 0;
+    Manager::User::get_wallet(uuid, coin, exp);
+
+    jsoncons::json result = jsoncons::json::object();
+    result["reward"]     = reward;
+    result["exp_reward"] = exp_reward;
+    result["coin"]       = coin;
+    result["exp"]        = exp;
+    result["exp_level"]  = Manager::User::exp_level(exp);
+    result["exp_cur"]    = Manager::User::exp_within(exp);
+    result["exp_need"]   = Manager::User::exp_need(Manager::User::exp_level(exp));
+    std::string buffer;
+    api_end("replay_ai_reward", true, result, buffer);
+    response.set_status_and_content(cinatra::status_type::ok, buffer);
+};
+
 // 获取回放。必须是该回放关联的玩家。
 void replay_get(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
     auto body = api_body(request.get_body());
@@ -255,6 +305,7 @@ void replay_query(cinatra::coro_http_request& request, cinatra::coro_http_respon
 // 装载所有路由
 void load(cinatra::coro_http_server& server) noexcept {
     server.set_http_handler<cinatra::POST>("/replay/update", replay_update);
+    server.set_http_handler<cinatra::POST>("/replay/ai_reward", replay_ai_reward);
     server.set_http_handler<cinatra::POST>("/replay/get", replay_get);
     server.set_http_handler<cinatra::POST>("/replay/query", replay_query);
 };

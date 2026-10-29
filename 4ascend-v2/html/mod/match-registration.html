@@ -209,6 +209,29 @@
             font-size: 1rem;
         }
 
+        /* 决赛方块：金色描边 + 冠军横条 */
+        .bracket-node.final-node {
+            border-color: rgba(201, 145, 30, 0.78);
+            box-shadow: 0 0.25rem 0.9rem rgba(201, 145, 30, 0.16);
+        }
+
+        .bracket-node.final-node:hover,
+        .bracket-node.final-node:focus-visible {
+            border-color: rgba(201, 145, 30, 1);
+            box-shadow: 0 0.4rem 1.2rem rgba(201, 145, 30, 0.24);
+        }
+
+        .bracket-node-final {
+            margin-top: 0.45rem;
+            padding: 0.16rem 0.5rem;
+            border-radius: 999px;
+            background: linear-gradient(135deg, #fde68a, #eab308);
+            color: #78350f;
+            font-size: 0.74rem;
+            font-weight: 700;
+            text-align: center;
+        }
+
         .bracket-node-body {
             padding: 0.55rem 0.75rem 0.65rem;
         }
@@ -615,7 +638,8 @@
                     <sl-input id='edit_texts_dialog_hint_login' label='未登录说明'></sl-input>
                     <sl-input id='edit_texts_dialog_hint_registered' label='已报名说明'></sl-input>
                     <sl-input id='edit_texts_dialog_hint_parent' label='前置未报名说明' help-text='用 {name} 表示前置方块名'></sl-input>
-                    <sl-input id='edit_texts_dialog_hint_parent_wait' label='前置未满员说明' help-text='用 {name} 表示前置方块名'></sl-input>
+                    <sl-input id='edit_texts_dialog_hint_parent_wait' label='前置未分出胜负说明' help-text='用 {name} 表示前置方块名'></sl-input>
+                    <sl-input id='edit_texts_dialog_hint_parent_lose' label='前置未晋级说明' help-text='用 {name} 表示前置方块名'></sl-input>
                     <sl-input id='edit_texts_dialog_hint_joining' label='报名中提示'></sl-input>
                     <sl-input id='edit_texts_dialog_hint_failed' label='报名失败提示'></sl-input>
                 </div>
@@ -848,7 +872,8 @@
                 hint_login: '请先在主页登录账号，报名将与账号绑定。',
                 hint_registered: '您已报名该方块，每个账号仅可报名一次。',
                 hint_parent: '只有报名了前一个方块「{name}」的选手才能报名该方块。',
-                hint_parent_wait: '前一个方块「{name}」尚未满员抽签，暂不能报名该方块。',
+                hint_parent_wait: '前一个方块「{name}」的比赛尚未分出胜负，暂不能报名该方块。',
+                hint_parent_lose: '只有在前一个方块「{name}」获胜晋级的选手才能报名该方块。',
                 hint_joining: '报名中…',
                 hint_failed: '报名失败，可能已报过名或该方块已满员，请刷新重试。'
             },
@@ -891,6 +916,7 @@
                     hint_registered: pick('dialog', 'hint_registered'),
                     hint_parent: pick('dialog', 'hint_parent'),
                     hint_parent_wait: pick('dialog', 'hint_parent_wait'),
+                    hint_parent_lose: pick('dialog', 'hint_parent_lose'),
                     hint_joining: pick('dialog', 'hint_joining'),
                     hint_failed: pick('dialog', 'hint_failed')
                 },
@@ -966,6 +992,7 @@
             ['edit_texts_dialog_hint_registered', 'dialog', 'hint_registered'],
             ['edit_texts_dialog_hint_parent', 'dialog', 'hint_parent'],
             ['edit_texts_dialog_hint_parent_wait', 'dialog', 'hint_parent_wait'],
+            ['edit_texts_dialog_hint_parent_lose', 'dialog', 'hint_parent_lose'],
             ['edit_texts_dialog_hint_joining', 'dialog', 'hint_joining'],
             ['edit_texts_dialog_hint_failed', 'dialog', 'hint_failed'],
             ['edit_texts_footer_back', 'footer', 'back_text']
@@ -1231,6 +1258,13 @@
                 const more = node.players.length > 6
                     ? `<span class='bracket-node-chip more'>+${node.players.length - 6}</span>` : '';
                 const empty = node.players.length ? '' : `<span class='bracket-node-chip more'>${escape_text(texts.bracket.empty_hint)}</span>`;
+                // 最后一次抽签的方块即决赛，胜者夺冠
+                const is_final = node.id === finalNodeId();
+                const final_winner = is_final ? final_winner_name(node) : '';
+                const final_badge = is_final ? `<sl-badge variant='warning' pill>决赛</sl-badge>` : '';
+                const final_line = is_final
+                    ? `<div class='bracket-node-final'>${final_winner ? `冠军：${escape_text(final_winner)}` : '待决出冠军'}</div>` : '';
+                if (is_final) el.classList.add('final-node');
 
                 el.innerHTML = `
                     <div class='bracket-node-head'>
@@ -1238,6 +1272,7 @@
                         <div class='bracket-node-meta'>
                             <sl-badge variant='neutral' pill>BO${normalize_bo(node.bo)}</sl-badge>
                             <sl-badge variant='${status.variant}' pill>${status.text}</sl-badge>
+                            ${final_badge}
                             <span class='node-actions d-none'>
                                 ${node.main ? '' : `<sl-icon-button class='node-delete' name='x-lg' label='删除方块'></sl-icon-button>`}
                                 <sl-icon-button class='node-link' name='link-45deg' label='连接方块'></sl-icon-button>
@@ -1248,6 +1283,7 @@
                     <div class='bracket-node-body'>
                         <div class='bracket-node-count'>${normalize_bo(node.bo)} 局制 · ${node.groupCount} 组 · 已报名 ${node.players.length} / ${node.maxPlayers} 人</div>
                         <div class='bracket-node-players'>${chips}${more}${empty}</div>
+                        ${final_line}
                     </div>
                 `;
                 if (linkingSourceId === node.id) el.classList.add('linking');
@@ -1392,6 +1428,39 @@
         // 方块是否已完成抽签：报名满员即视为该方块抽签分组完成
         const isNodeDrawn = (node) => node.players.length >= node.maxPlayers;
 
+        // 决赛方块：最后一个抽签方块（无出边且有入边的最深终点）
+        const finalNodeId = () => {
+            if (state.nodes.length < 2) return null;
+            const indeg = {};
+            const outdeg = {};
+            state.nodes.forEach((node) => { indeg[node.id] = 0; outdeg[node.id] = 0; });
+            state.edges.forEach((edge) => {
+                if (indeg[edge.to] === undefined || outdeg[edge.from] === undefined) return;
+                indeg[edge.to] += 1;
+                outdeg[edge.from] += 1;
+            });
+            const terminals = state.nodes.filter((node) => indeg[node.id] > 0 && outdeg[node.id] === 0);
+            if (!terminals.length) return null;
+            // 按深度取最靠后的终点；同深度取列表中靠后的方块
+            const depth = {};
+            const visiting = {};
+            const walk = (id) => {
+                if (depth[id] !== undefined) return depth[id];
+                if (visiting[id]) return 0;
+                visiting[id] = true;
+                let value = 0;
+                state.edges.forEach((edge) => {
+                    if (edge.to === id) value = Math.max(value, walk(edge.from) + 1);
+                });
+                visiting[id] = false;
+                depth[id] = value;
+                return value;
+            };
+            let best = terminals[0];
+            terminals.forEach((node) => { if (walk(node.id) >= walk(best.id)) best = node; });
+            return best.id;
+        };
+
         // 取某组的小分数据（wins 按标识码累计，为权威分数）
         const group_entry = (node, index) => {
             const results = node.results && typeof node.results === 'object' ? node.results : {};
@@ -1451,6 +1520,86 @@
                 entry.completed = completed;
                 entry.winner_uuid = winner_uuid;
             });
+        };
+
+        // 身份所在的分组下标（优先按标识码，历史数据缺失时回退昵称）
+        const group_of_player = (node, uuid, name) => {
+            const map = node.player_uuids && typeof node.player_uuids === 'object' ? node.player_uuids : {};
+            for (let i = 0; i < node.groups.length; i++) {
+                const group = node.groups[i] || [];
+                for (const player of group) {
+                    if (uuid && map[player] === uuid) return i;
+                    if (!uuid && name && player === name) return i;
+                }
+            }
+            return -1;
+        };
+
+        // 组内胜者：达到 BO 目标胜局者胜出；未分出胜负返回空串
+        const group_winner_uuid = (node, index) => {
+            const entry = group_entry(node, index);
+            const bo = normalize_bo(node.bo);
+            const target = Math.floor(bo / 2) + 1;
+            const wins = entry.wins && typeof entry.wins === 'object' ? entry.wins : {};
+            const player_uuids = node.player_uuids && typeof node.player_uuids === 'object' ? node.player_uuids : {};
+            const group = node.groups[index] || [];
+            let best = -1;
+            let best_uuid = '';
+            group.forEach((player) => {
+                const uuid = player_uuids[player];
+                if (!uuid) return;
+                const score = Number(wins[uuid]) || 0;
+                if (score > best) { best = score; best_uuid = uuid; }
+            });
+            if (best < target) return '';
+            // 平分时沿用服务端写回的胜者，避免前后端判定不一致
+            if (entry.winner_uuid && Number(wins[entry.winner_uuid]) >= target) return entry.winner_uuid;
+            return best_uuid;
+        };
+
+        // 某身份在前置方块中的晋级状态：wait 未定 / lose 未获胜 / ok 已晋级
+        const parent_advance_state = (parent, uuid, name) => {
+            if (!isNodeDrawn(parent)) return 'wait';
+            const index = group_of_player(parent, uuid, name);
+            if (index < 0) return 'lose';
+            const group = parent.groups[index] || [];
+            // 单人组视为轮空直接晋级
+            if (group.length <= 1) return 'ok';
+            // 超过两人的组无法按 BO 判定胜负，不做拦截
+            if (group.length > 2) return 'ok';
+            const winner = group_winner_uuid(parent, index);
+            if (!winner) return 'wait';
+            const map = parent.player_uuids && typeof parent.player_uuids === 'object' ? parent.player_uuids : {};
+            if (uuid) return winner === uuid ? 'ok' : 'lose';
+            const winner_name = Object.keys(map).find((key) => map[key] === winner) || '';
+            return winner_name === name ? 'ok' : 'lose';
+        };
+
+        // 报名前置条件：必须在前置方块中获胜晋级（多条前置路径任一晋级即可）
+        const parent_gate = (node, uuid, name) => {
+            const parents = parentNodes(node);
+            if (!parents.length) return { state: 'free', names: [] };
+            const entered = parents.filter((parent) => is_registered(parent, uuid, name));
+            if (!entered.length) return { state: 'unregistered', names: parents.map((parent) => parent.name) };
+            const results = entered.map((parent) => ({ name: parent.name, state: parent_advance_state(parent, uuid, name) }));
+            if (results.some((item) => item.state === 'ok')) return { state: 'ok', names: results.map((item) => item.name) };
+            if (results.some((item) => item.state === 'wait')) {
+                return { state: 'wait', names: results.filter((item) => item.state === 'wait').map((item) => item.name) };
+            }
+            return { state: 'lose', names: results.map((item) => item.name) };
+        };
+
+        // 决赛方块的冠军昵称（未决出返回空串）
+        const final_winner_name = (node) => {
+            if (node.id !== finalNodeId()) return '';
+            const map = node.player_uuids && typeof node.player_uuids === 'object' ? node.player_uuids : {};
+            for (let i = 0; i < node.groups.length; i++) {
+                const winner = group_winner_uuid(node, i);
+                if (!winner) continue;
+                const found = Object.keys(map).find((key) => map[key] === winner);
+                if (found) return found;
+            }
+            return '';
         };
 
         // 渲染某组的小分（管理员可编辑）；非双人组或缺少标识码时返回 null
@@ -1531,20 +1680,22 @@
                 return;
             }
 
-            // 前置检验：有前置方块时，必须已报名且前置方块已完成抽签
-            const parents = parentNodes(node);
-            if (parents.length) {
-                const entered = parents.filter((p) => is_registered(p, accountUuid, accountName));
-                if (!entered.length) {
-                    joinButton.disabled = true;
-                    registerHint.textContent = fill_name(texts.dialog.hint_parent, parents.map((p) => p.name).join('、'));
-                    return;
-                }
-                if (!entered.some((p) => isNodeDrawn(p))) {
-                    joinButton.disabled = true;
-                    registerHint.textContent = fill_name(texts.dialog.hint_parent_wait, entered.map((p) => p.name).join('、'));
-                    return;
-                }
+            // 前置检验：必须在前置方块中获胜晋级，未分出胜负时等待
+            const gate = parent_gate(node, accountUuid, accountName);
+            if (gate.state === 'unregistered') {
+                joinButton.disabled = true;
+                registerHint.textContent = fill_name(texts.dialog.hint_parent, gate.names.join('、'));
+                return;
+            }
+            if (gate.state === 'wait') {
+                joinButton.disabled = true;
+                registerHint.textContent = fill_name(texts.dialog.hint_parent_wait, gate.names.join('、'));
+                return;
+            }
+            if (gate.state === 'lose') {
+                joinButton.disabled = true;
+                registerHint.textContent = fill_name(texts.dialog.hint_parent_lose, gate.names.join('、'));
+                return;
             }
 
             joinButton.disabled = false;
@@ -1637,12 +1788,9 @@
             if (!name) return;
             // 报名条件：当前账号的 uuid 是否已进入分组，未进入才允许报名
             if (is_registered(node, uuid, name)) return;
-            // 前置检验：有前置方块时，必须已报名且前置方块已完成抽签
-            const parents = parentNodes(node);
-            if (parents.length) {
-                const entered = parents.filter((p) => is_registered(p, uuid, name));
-                if (!entered.length || !entered.some((p) => isNodeDrawn(p))) return;
-            }
+            // 前置检验：必须在前置方块中获胜晋级
+            const gate = parent_gate(node, uuid, name);
+            if (gate.state === 'unregistered' || gate.state === 'wait' || gate.state === 'lose') return;
             const token = window.get_token();
             if (!token) return;
             joinButton.disabled = true;

@@ -285,6 +285,64 @@ void puzzle_submission_review(cinatra::coro_http_request& request, cinatra::coro
     response.set_status_and_content(cinatra::status_type::ok, buffer);
 }
 
+// 首次通关领奖：同一账号在同一关卡/同一每日残局版本下只发一次 50 经验 + 50 棋币。
+void puzzle_claim_clear(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
+    auto body = api_body(request.get_body());
+    if (!body) return api_http_error("puzzle_claim_clear", response);
+    auto value = body.value();
+    std::string uuid;
+    if (!token_uuid(value, uuid)) return api_http_error("puzzle_claim_clear", response);
+
+    constexpr int64_t reward_coin = 50;
+    constexpr int64_t reward_exp  = 50;
+    const auto target = json_string(value, "target");
+    int64_t ref = 0;
+
+    if (target == "daily") {
+        // 每日残局以当前发布版本（updated_at）作为去重键，换新题后可再次首通领奖。
+        Manager::Puzzle::DailyRecord daily{};
+        if (!Manager::Puzzle::query_daily(daily) || daily.code.empty()) return api_http_error("puzzle_claim_clear", response);
+        ref = static_cast<int64_t>(daily.updated_at);
+    } else if (target == "level") {
+        uint32_t level = 0;
+        try { level = value.at("level").as<uint32_t>(); } catch (...) { return api_http_error("puzzle_claim_clear", response); }
+        if (level < 1 || level > 100) return api_http_error("puzzle_claim_clear", response);
+
+        // 只允许对已发布的关卡领奖，避免伪造不存在关卡。
+        std::vector<Manager::Puzzle::Record> records;
+        if (!Manager::Puzzle::query_puzzles(records)) return api_http_error("puzzle_claim_clear", response);
+        bool published = false;
+        for (const auto& record : records) {
+            if (record.level == level) {
+                published = true;
+                break;
+            }
+        }
+        if (!published) return api_http_error("puzzle_claim_clear", response);
+        ref = static_cast<int64_t>(level);
+    } else {
+        return api_http_error("puzzle_claim_clear", response);
+    }
+
+    const bool first = Manager::Puzzle::claim_clear(
+        uuid, target, ref, static_cast<uint64_t>(Libs::Only::Time::timestamp_ms())
+    );
+    int64_t coin = 0;
+    int64_t exp  = 0;
+    if (first) {
+        if (Manager::User::add_coin(uuid, reward_coin)) coin = reward_coin;
+        if (Manager::User::add_exp(uuid, reward_exp)) exp = reward_exp;
+    }
+
+    jsoncons::json result = jsoncons::json::object();
+    result["first"] = first;
+    result["coin"]  = coin;
+    result["exp"]   = exp;
+    std::string buffer;
+    api_end("puzzle_claim_clear", true, result, buffer);
+    response.set_status_and_content(cinatra::status_type::ok, buffer);
+}
+
 void load(cinatra::coro_http_server& server) noexcept {
     server.set_http_handler<cinatra::POST>("/puzzle/query", puzzle_query);
     server.set_http_handler<cinatra::POST>("/puzzle/daily_query", puzzle_daily_query);
@@ -295,6 +353,7 @@ void load(cinatra::coro_http_server& server) noexcept {
     server.set_http_handler<cinatra::POST>("/puzzle/submit", puzzle_submit);
     server.set_http_handler<cinatra::POST>("/puzzle/submission_query", puzzle_submission_query);
     server.set_http_handler<cinatra::POST>("/puzzle/submission_review", puzzle_submission_review);
+    server.set_http_handler<cinatra::POST>("/puzzle/claim_clear", puzzle_claim_clear);
 }
 } // namespace Puzzle
 } // namespace Http

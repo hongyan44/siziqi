@@ -84,6 +84,31 @@ ok('规范化：空串返回空串', FriendList.normalize_friend_id('   ') === '
     ok('设置：未知回退需要同意', FriendList.request_mode_label(undefined) === '好友申请需要同意');
 })();
 
+// ---------- profile_action_label ----------
+(() => {
+    const friend = FriendList.profile_action_label('friend', 'manual');
+    ok('资料卡：好友显示发送消息', friend.text === '发送消息' && friend.kind === 'chat' && friend.disabled === false);
+    const incoming = FriendList.profile_action_label('incoming', 'manual');
+    ok('资料卡：收到申请显示接受', incoming.text === '接受申请' && incoming.kind === 'accept');
+    const outgoing = FriendList.profile_action_label('outgoing', 'manual');
+    ok('资料卡：已发送禁用', outgoing.text === '已发送' && outgoing.disabled === true);
+    const stranger = FriendList.profile_action_label('none', 'manual');
+    ok('资料卡：陌生人添加好友', stranger.text === '添加好友' && stranger.kind === 'request' && stranger.disabled === false);
+    const denied = FriendList.profile_action_label('none', 'deny');
+    ok('资料卡：对方拒绝申请时禁用', denied.text === '对方不接受申请' && denied.disabled === true);
+    ok('资料卡：自己无操作按钮', FriendList.profile_action_label('self', 'manual') === null);
+    ok('资料卡：未知关系无操作按钮', FriendList.profile_action_label(undefined, undefined) === null);
+})();
+
+// ---------- battle_label ----------
+(() => {
+    const online = FriendList.battle_label(true);
+    ok('对战：在线可发起', online.disabled === false && online.title === '邀请对方对战');
+    const offline = FriendList.battle_label(false);
+    ok('对战：离线灰置', offline.disabled === true && offline.title === '对方不在线，无法发起对战');
+    ok('对战：缺省按离线处理', FriendList.battle_label(undefined).disabled === true);
+})();
+
 // ---------- display_name ----------
 ok('昵称：空回退无名氏', FriendList.display_name('') === '无名氏');
 ok('昵称：空白回退无名氏', FriendList.display_name('   ') === '无名氏');

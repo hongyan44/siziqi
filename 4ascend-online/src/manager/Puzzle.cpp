@@ -31,6 +31,8 @@ sqlite3_stmt* p_sub_list_all       = nullptr;
 sqlite3_stmt* p_sub_load_pending   = nullptr;
 sqlite3_stmt* p_sub_review         = nullptr;
 
+sqlite3_stmt* p_claim_clear        = nullptr;
+
 void bind_text(sqlite3_stmt* statement, int index, std::string_view value) noexcept {
     sqlite3_bind_text(statement, index, value.data(), static_cast<int>(value.size()), SQLITE_TRANSIENT);
 }
@@ -142,6 +144,28 @@ void init() noexcept {
         nullptr
     );
     sqlite3_prepare_v2(db, "UPDATE puzzle_submissions SET status = ?, reviewer = ?, reviewed_at = ? WHERE id = ? AND status = 0", -1, &p_sub_review, nullptr);
+
+    // 首次通关记录：同一账号在同一关卡/同一每日残局版本下只记一次。
+    sqlite3_exec(
+        db,
+        "CREATE TABLE IF NOT EXISTS puzzle_clears ("
+        "uuid TEXT NOT NULL, "
+        "target TEXT NOT NULL, "
+        "ref INTEGER NOT NULL, "
+        "cleared_at INTEGER NOT NULL, "
+        "PRIMARY KEY(uuid, target, ref)"
+        ") STRICT",
+        nullptr,
+        nullptr,
+        nullptr
+    );
+    sqlite3_prepare_v2(
+        db,
+        "INSERT OR IGNORE INTO puzzle_clears(uuid, target, ref, cleared_at) VALUES (?, ?, ?, ?)",
+        -1,
+        &p_claim_clear,
+        nullptr
+    );
 }
 
 void close() noexcept {
@@ -156,6 +180,7 @@ void close() noexcept {
     sqlite3_finalize(p_sub_list_all);
     sqlite3_finalize(p_sub_load_pending);
     sqlite3_finalize(p_sub_review);
+    sqlite3_finalize(p_claim_clear);
     p_insert = nullptr;
     p_update = nullptr;
     p_delete = nullptr;
@@ -167,6 +192,7 @@ void close() noexcept {
     p_sub_list_all = nullptr;
     p_sub_load_pending = nullptr;
     p_sub_review = nullptr;
+    p_claim_clear = nullptr;
     if (db) sqlite3_close(db);
     db = nullptr;
 }
@@ -377,6 +403,21 @@ bool review_submission(uint64_t id, bool approve, std::string_view reviewer, uin
     const int rc = sqlite3_step(p_sub_review);
     const int changed = sqlite3_changes(db);
     reset(p_sub_review);
+    return rc == SQLITE_DONE && changed == 1;
+}
+
+bool claim_clear(std::string_view uuid, std::string_view target, int64_t ref, uint64_t cleared_at) noexcept {
+    if (!db || !p_claim_clear || uuid.empty() || (target != "daily" && target != "level") || ref <= 0) return false;
+
+    bind_text(p_claim_clear, 1, uuid);
+    bind_text(p_claim_clear, 2, target);
+    sqlite3_bind_int64(p_claim_clear, 3, static_cast<sqlite3_int64>(ref));
+    sqlite3_bind_int64(p_claim_clear, 4, static_cast<sqlite3_int64>(cleared_at));
+
+    const int rc      = sqlite3_step(p_claim_clear);
+    const int changed = sqlite3_changes(db);
+    reset(p_claim_clear);
+    // INSERT OR IGNORE 只有真正插入新记录时 changed 才为 1。
     return rc == SQLITE_DONE && changed == 1;
 }
 } // namespace Puzzle

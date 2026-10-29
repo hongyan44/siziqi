@@ -75,7 +75,7 @@ const BaseZalgo = window.UtilsExports.BaseZalgo;
 const toast = new ShToast();
 
 const { verify_foe_identity } = require('./contest-verify.cjs');
-const { locate_pair_by_uuid, series_view, next_first_hand } = require('./contest-series.cjs');
+const { locate_pair_by_uuid, series_view, next_first_hand, final_node_id } = require('./contest-series.cjs');
 
 
 // 赛事系列赛上下文（按 uuid 定位分组后填充）
@@ -321,7 +321,7 @@ const render_series = () => {
     series_bo_opt.textContent = `BO${bo}`;
     series_round_opt.textContent = round_text;
     series_score_opt.textContent = score;
-    series_note_opt.textContent = `我方 ${contest_ctx.my_name} vs 对方 ${contest_ctx.foe_name}（先赢 ${contest_ctx.target} 局者胜）`;
+    series_note_opt.textContent = `我方 ${contest_ctx.my_name} vs 对方 ${contest_ctx.foe_name}（先赢 ${contest_ctx.target} 局者胜）${contest_ctx.is_final ? ' · 决赛' : ''}`;
 
     series_game.classList.add('show');
     series_bo_game.textContent = `BO${bo}`;
@@ -339,7 +339,10 @@ const render_series_end = () => {
     series_end.classList.add('show');
     series_end_bo.textContent = `BO${contest_ctx.bo}`;
     series_end_score.textContent = `${contest_ctx.mine} : ${contest_ctx.foe}`;
-    series_end_result.textContent = `下一局为第 ${contest_ctx.next_index} 局`;
+    const decided = contest_ctx.mine >= contest_ctx.target || contest_ctx.foe >= contest_ctx.target;
+    series_end_result.textContent = (contest_ctx.is_final && decided)
+        ? '决赛结束 · 冠军已产生'
+        : `下一局为第 ${contest_ctx.next_index} 局`;
 };
 
 /**
@@ -385,13 +388,17 @@ const sync_contest = async () => {
         const located = locate_pair_by_uuid(bracket, info.uuid);
         if (!located || !located.foe_uuid) return false;
 
+        // 地图最后一个抽签方块即决赛；本组位于决赛且分出胜负时授予冠军成就
+        const final_id = final_node_id(bracket);
+
         contest_ctx = {
             node_id: located.node.id,
             group_index: located.group_index,
             my_uuid: info.uuid,
             my_name: info.name,
             foe_name: located.foe_name,
-            foe_uuid: located.foe_uuid
+            foe_uuid: located.foe_uuid,
+            is_final: Boolean(final_id) && final_id === located.node.id
         };
         refresh_series_from_node(located.node);
         render_series();
@@ -401,6 +408,38 @@ const sync_contest = async () => {
     } catch (error) {
         console.error(error);
         return false;
+    }
+};
+
+/**
+ * @description: 读取报名页文案里的赛事名（用于冠军成就命名）
+ * @return {Promise<string>}
+ */
+const contest_event_name = async () => {
+    try {
+        const remote = await window.http_contest_signup_query();
+        if (!remote || !remote.data) return '赛事';
+        const data = JSON.parse(remote.data);
+        const title = data && data.event && data.event.title;
+        const name = String(title == null ? '' : title).trim();
+        return name || '赛事';
+    } catch (_) {
+        return '赛事';
+    }
+};
+
+/**
+ * @description: 决赛获胜后授予「赛事名：冠军」金色成就（仅获胜方本地记录）
+ * @param {string} node_id 决赛方块 id
+ * @return {Promise<void>}
+ */
+const grant_champion = async (node_id) => {
+    if (typeof window.achievement_champion_grant !== 'function') return;
+    try {
+        const event_name = await contest_event_name();
+        await window.achievement_champion_grant({ event_name, node_id });
+    } catch (error) {
+        console.error(error);
     }
 };
 
@@ -421,7 +460,11 @@ const handle_contest_end = (payload) => {
         const token = window.get_token();
         if (!token) return;
 
-        const result = await window.http_contest_match_report(token, contest_ctx.node_id, contest_ctx.group_index, payload.replay_id);
+        const node_id = contest_ctx.node_id;
+        const is_final = Boolean(contest_ctx.is_final);
+        const my_uuid = contest_ctx.my_uuid;
+
+        const result = await window.http_contest_match_report(token, node_id, contest_ctx.group_index, payload.replay_id);
         if (!result) return;
 
         contest_ctx.mine = Number(result.wins && result.wins[contest_ctx.my_uuid]) || 0;
@@ -435,9 +478,13 @@ const handle_contest_end = (payload) => {
         // 依局号与记录预置下一局先手（与重赛按钮的交换结果一致）
         apply_next_first();
 
-        // 本组 BO 已分出胜负：按最新签表重新定位，晋级后可直接确认下一轮的对手并开赛
+        // BO 已分出胜负时先判断是否决赛：获胜方授予「赛事名：冠军」金色成就
         const completed = contest_ctx.mine >= contest_ctx.target || contest_ctx.foe >= contest_ctx.target;
-        if (completed) await sync_contest();
+        if (completed) {
+            if (is_final && result.winner_uuid === my_uuid) await grant_champion(node_id);
+            // 按最新签表重新定位，晋级后可直接确认下一轮（或新赛事）的对手并开赛
+            await sync_contest();
+        }
     };
 
     end_report_chain = end_report_chain.then(task, task);

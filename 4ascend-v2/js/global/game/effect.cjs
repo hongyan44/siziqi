@@ -246,15 +246,17 @@ class Effect {
 
 
     /**
-     * @description: 草生成特效（绿色圆圈向内收缩）
+     * @description: 草生成特效（圆圈向内收缩）
      * @param {number} x 像素坐标
      * @param {number} y 像素坐标
      * @param {number} r 草的绘制半径
      * @param {number} count 草的数量
+     * @param {boolean} skinned 是否启用反曲点皮肤（启用时使用蓝色光晕）
      * @return {void}
      */
-    plant(x, y, r, count = 1) {
+    plant(x, y, r, count = 1, skinned = false) {
         const pip_count = Math.min(2, Math.max(1, Number(count) || 1));
+        const color = skinned ? '#4aa6ff' : '#2ecc71';
         const centers = pip_count === 2
             ? [x - r * 1.3, x + r * 1.3]
             : [x];
@@ -272,9 +274,9 @@ class Effect {
                     ctx.save();
                     ctx.beginPath();
                     ctx.arc(center_x, y, radius, 0, Math.PI * 2);
-                    ctx.strokeStyle = rgba('#2ecc71', alpha);
+                    ctx.strokeStyle = rgba(color, alpha);
                     ctx.lineWidth = Math.max(1.5, r * 0.18 * (1 - k * 0.35));
-                    ctx.shadowColor = rgba('#2ecc71', alpha);
+                    ctx.shadowColor = rgba(color, alpha);
                     ctx.shadowBlur = r * 0.35;
                     ctx.stroke();
                     ctx.closePath();

@@ -265,33 +265,54 @@ const FriendList = require('./friend-list.cjs');
         ]);
     };
 
-    // 资料卡操作按钮：接受申请 / 添加好友；对方不允许申请时禁用
-    const profile_action = (data) => {
-        if (!data) return null;
-
-        let label = null;
-        let disabled = false;
-        if (data.relation === 'incoming') {
-            label = '接受申请';
-        } else if (data.relation === 'outgoing') {
-            label = '已发送';
-            disabled = true;
-        } else if (data.relation === 'none') {
-            if (data.request_mode === 'deny') {
-                label = '对方不接受申请';
-                disabled = true;
-            } else {
-                label = '添加好友';
-            }
+    // 打开与资料玩家的私信：好友栏内直接切到会话；独立资料弹窗（排行榜等）跳主页好友栏
+    const profile_open_chat = (data, embedded) => {
+        if (embedded && drawer()) {
+            open_chat({ uuid: data.uuid, name: data.name, name_color: data.name_color });
+            return;
         }
+        if (!logged_in()) return notify('info', '登录后才能发送消息');
+        const uuid = typeof data.uuid === 'string' ? data.uuid.trim() : '';
+        if (!uuid) return;
+        window.location.href = `/?friend=${encodeURIComponent(uuid)}`;
+    };
+
+    // 从资料卡邀请对战：仅在线好友可发起
+    const profile_challenge = (data) => {
+        if (!data || !data.uuid) return;
+        if (!logged_in()) return notify('info', '登录后才能邀请对战');
+        if (!data.online) return notify('info', '对方不在线，无法发起对战');
+        challenge({ uuid: data.uuid, name: data.name, online: true });
+    };
+
+    // 资料卡操作按钮：已是好友 → 发送消息 + 对战（离线灰置）；接受申请 / 添加好友；对方不允许申请时禁用
+    const profile_action = (data, embedded) => {
+        const label = FriendList.profile_action_label(data && data.relation, data && data.request_mode);
         if (!label) return null;
 
-        const button = h('sl-button', { variant: 'primary', text: label });
-        if (disabled) button.setAttribute('disabled', '');
+        if (label.kind === 'chat') {
+            const chat_button = h('sl-button', { variant: 'primary', text: label.text });
+            chat_button.addEventListener('click', () => profile_open_chat(data, embedded));
+
+            const battle = FriendList.battle_label(data.online === true);
+            const battle_button = h('sl-button', {
+                variant: battle.disabled ? 'default' : 'primary',
+                outline: '',
+                text: battle.text,
+                title: battle.title
+            });
+            if (battle.disabled) battle_button.setAttribute('disabled', '');
+            else battle_button.addEventListener('click', () => profile_challenge(data));
+
+            return [chat_button, battle_button];
+        }
+
+        const button = h('sl-button', { variant: 'primary', text: label.text });
+        if (label.disabled) button.setAttribute('disabled', '');
         button.addEventListener('click', async () => {
             button.disabled = true;
             try {
-                if (data.relation === 'incoming') {
+                if (label.kind === 'accept') {
                     const ok = await window.http_friend_accept(token(), data.uuid);
                     if (!ok) return notify('error', '接受失败');
                     notify('success', '已添加好友');
@@ -310,7 +331,7 @@ const FriendList = require('./friend-list.cjs');
         return button;
     };
 
-    const profile_render = (body, actions, data) => {
+    const profile_render = (body, actions, data, embedded) => {
         const name = h('span', { class: 'player-profile-name', text: FriendList.display_name(data.name) });
         window.name_color_apply(name, data.name_color || '');
 
@@ -325,10 +346,7 @@ const FriendList = require('./friend-list.cjs');
             ])
         ]);
 
-        // 经济系统：公开资料只展示经验等级与棋币余额；经验进度仅本人可在账号信息中查看
-        const wallet = h('div', { class: 'player-profile-wallet' });
-        if (window.WalletUI) window.WalletUI.render_panel(wallet, data, { detail: false });
-
+        // 经济隐私：他人资料只展示经验等级，不展示棋币与经验进度
         const games = Number(data.real_games) || 0;
         const wins = Number(data.real_wins) || 0;
         const rate = FriendList.format_win_rate(games, wins);
@@ -345,14 +363,14 @@ const FriendList = require('./friend-list.cjs');
 
         body.append(
             head,
-            wallet,
             rows,
             h('div', { class: 'text-secondary small', text: '展示的成就' }),
             showcase
         );
 
-        const action = profile_action(data);
-        if (action) actions.append(action);
+        const action = profile_action(data, embedded);
+        if (Array.isArray(action)) actions.append(...action);
+        else if (action) actions.append(action);
     };
 
     // 弹窗内联资料：右侧详情区展示，返回按钮回到聊天或空态
@@ -378,7 +396,7 @@ const FriendList = require('./friend-list.cjs');
             body.append(h('div', { class: 'text-secondary small', text: '无法加载该玩家资料' }));
             return;
         }
-        profile_render(body, actions, data);
+        profile_render(body, actions, data, true);
     };
 
     // 无好友弹窗的页面（排行榜等）沿用独立资料弹窗
@@ -421,7 +439,7 @@ const FriendList = require('./friend-list.cjs');
             return;
         }
         body.replaceChildren();
-        profile_render(body, footer, data);
+        profile_render(body, footer, data, false);
     };
 
     // ---------- 弹窗开关 ----------
@@ -572,6 +590,7 @@ const FriendList = require('./friend-list.cjs');
 
     const friend_item = (friend, now) => {
         const online = Boolean(friend.online);
+        const battle = FriendList.battle_label(online);
         const item = h('div', { class: 'd-flex align-items-center gap-2 p-2 rounded border' }, [
             avatar(friend, '2.2rem'),
             h('div', { class: 'flex-grow-1 min-w-0' }, [
@@ -583,17 +602,25 @@ const FriendList = require('./friend-list.cjs');
                 h('small', { class: 'text-secondary', text: FriendList.format_presence(friend, now) })
             ]),
             h('sl-button', { size: 'small', variant: 'default', outline: '', text: '消息' }),
-            h('sl-button', { size: 'small', variant: 'primary', outline: '', text: '对战' }),
+            h('sl-button', {
+                size: 'small',
+                variant: online ? 'primary' : 'default',
+                outline: '',
+                text: battle.text,
+                title: battle.title
+            }),
             h('sl-button', { size: 'small', variant: 'danger', outline: '', title: '删除好友' }, [h('sl-icon', { name: 'trash' })])
         ]);
         const buttons = Array.from(item.querySelectorAll('sl-button'));
         buttons[0].addEventListener('click', () => open_chat(friend));
-        buttons[1].addEventListener('click', () => challenge(friend));
+        if (online) buttons[1].addEventListener('click', () => challenge(friend));
+        else buttons[1].setAttribute('disabled', '');
         buttons[2].addEventListener('click', () => remove_friend(friend));
         return item;
     };
 
     const challenge = async (friend) => {
+        if (!friend || !friend.online) return notify('info', '对方不在线，无法发起对战');
         const room = FriendList.make_room_code();
         const ok = await window.http_friend_challenge(token(), friend.uuid, room);
         if (!ok) return notify('error', '邀请失败');
@@ -923,9 +950,28 @@ const FriendList = require('./friend-list.cjs');
         });
     };
 
+    // 从其它页面点击「发送消息」跳转而来（?friend=uuid）：打开好友栏并直接进入与该玩家的会话
+    const open_chat_by_uuid = async (uuid) => {
+        if (!uuid || !window.http_friend_list) return;
+        const result = await window.http_friend_list(token());
+        const friend = ((result && result.friends) || []).find((item) => item && item.uuid === uuid);
+        open_drawer();
+        if (friend) open_chat(friend);
+        // 打开后清掉参数，避免刷新页面时重复弹出会话
+        try {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('friend');
+            window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+        } catch (_) { /* 旧浏览器不支持时忽略 */ }
+    };
+
     const start = () => {
         try { wire(); } catch (_) { /* 页面结构异常时不影响心跳 */ }
-        if (drawer() && logged_in()) refresh_list();
+        if (drawer() && logged_in()) {
+            const uuid = new URLSearchParams(window.location.search).get('friend');
+            if (uuid) open_chat_by_uuid(uuid);
+            else refresh_list();
+        }
         state.running = true;
         watch();
         document.addEventListener('visibilitychange', () => {

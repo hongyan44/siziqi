@@ -60,6 +60,11 @@ bool claim_coin_match(std::string_view uuid_a, std::string_view uuid_b, int64_t 
 // 棋币购买权限等级：返回 0 成功、1 已拥有更高等级、2 棋币不足、-1 失败
 int purchase_level(std::string_view uuid, int target_level, int64_t price, int& level, int64_t& coin) noexcept;
 
+// 查询已购皮肤：棋子（黑白合并）/ 草 / 棋盘（仅自己可见的外观光效）
+bool get_skins(std::string_view uuid, bool& piece, bool& grass, bool& board) noexcept;
+// 棋币购买皮肤：返回 0 成功、1 已拥有、2 棋币不足、-1 失败
+int purchase_skin(std::string_view uuid, std::string_view item, int64_t price, bool& owned, int64_t& coin) noexcept;
+
 // 经验曲线：1→2 级 100，2→3 级 120，此后每级按上一级 1.2 倍向下取整
 int exp_level(int64_t exp) noexcept;
 int64_t exp_need(int level) noexcept;

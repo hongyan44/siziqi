@@ -133,6 +133,62 @@ const locate_pair_by_uuid = (bracket, my_uuid) => {
 };
 
 /**
+ * @description: 地图里「最后一次抽签」的方块 id（即决赛）
+ *   判定：方块之间有连线时，入度 > 0 且出度 = 0 的终端方块才算决赛（主方块／小组赛没有前驱，不算）；
+ *   若存在多个终端（分支赛程），取从起点出发路径最深的那个，并列时取节点顺序靠后的一个。
+ * @param {object} bracket 签表数据（{ nodes: [...], edges: [...] }）
+ * @return {string | null}
+ */
+const final_node_id = (bracket) => {
+    if (!bracket || !Array.isArray(bracket.nodes) || bracket.nodes.length < 2) return null;
+
+    const nodes = bracket.nodes.filter((node) => node && typeof node.id === 'string');
+    if (nodes.length < 2) return null;
+
+    const edges = Array.isArray(bracket.edges) ? bracket.edges : [];
+    const indegree = {};
+    const outdegree = {};
+    nodes.forEach((node) => { indegree[node.id] = 0; outdegree[node.id] = 0; });
+    edges.forEach((edge) => {
+        if (!edge || typeof edge.from !== 'string' || typeof edge.to !== 'string') return;
+        if (!(edge.from in outdegree) || !(edge.to in indegree)) return;
+        outdegree[edge.from] += 1;
+        indegree[edge.to] += 1;
+    });
+
+    const depth = {};
+    const visiting = {};
+    const visit = (id) => {
+        if (typeof depth[id] === 'number') return depth[id];
+        if (visiting[id]) return 0;
+        visiting[id] = true;
+        let value = 0;
+        edges.forEach((edge) => {
+            if (!edge || edge.to !== id || !(edge.from in indegree)) return;
+            value = Math.max(value, visit(edge.from) + 1);
+        });
+        delete visiting[id];
+        depth[id] = value;
+        return value;
+    };
+    nodes.forEach((node) => visit(node.id));
+
+    const terminals = [];
+    nodes.forEach((node, index) => {
+        if (indegree[node.id] > 0 && outdegree[node.id] === 0) terminals.push({ id: node.id, index });
+    });
+    if (!terminals.length) return null;
+
+    let best = terminals[0];
+    terminals.forEach((item) => {
+        const item_depth = depth[item.id] || 0;
+        const best_depth = depth[best.id] || 0;
+        if (item_depth > best_depth || (item_depth === best_depth && item.index > best.index)) best = item;
+    });
+    return best.id;
+};
+
+/**
  * @description: 计算某分组的 BO 系列视图
  * @param {object} args
  * @param {object} args.node 签表节点
@@ -198,4 +254,4 @@ const next_first_hand = ({ rotate, index, my_uuid, foe_uuid, games, node, group_
     return leader === my_uuid ? 'my' : 'foe';
 };
 
-export { normalize_bo, series_target, locate_pair, locate_pair_by_uuid, series_view, group_is_completed, pick_current_round, next_first_hand };
+export { normalize_bo, series_target, locate_pair, locate_pair_by_uuid, series_view, group_is_completed, pick_current_round, next_first_hand, final_node_id };

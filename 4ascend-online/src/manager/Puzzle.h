@@ -55,5 +55,8 @@ bool update_daily(std::string_view title, std::string_view code, std::string_vie
 bool add_submission(std::string_view target, uint32_t level, std::string_view title, std::string_view code, std::string_view creator, uint64_t created_at, uint64_t& id) noexcept;
 bool list_submissions(std::string_view creator, int status_filter, std::vector<Submission>& out) noexcept;
 bool review_submission(uint64_t id, bool approve, std::string_view reviewer, uint64_t now, bool allow_overwrite, bool& slot_occupied) noexcept;
+
+// 记录首次通关：ref 为关卡号或每日残局版本，首次写入返回 true，重复通关返回 false
+bool claim_clear(std::string_view uuid, std::string_view target, int64_t ref, uint64_t cleared_at) noexcept;
 } // namespace Puzzle
 } // namespace Manager

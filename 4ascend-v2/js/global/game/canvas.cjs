@@ -5,6 +5,7 @@
  */
 import { Effect } from './effect.cjs';
 import { AscendFx } from './ascendfx.cjs';
+import { Skins } from './skin.cjs';
 
 class Canvas {
     /**
@@ -91,6 +92,11 @@ class Canvas {
         this.turn_flash_timer = null;
         this.turn_flash_phase = 0;
         this.turn_flash_start = null;
+
+        // 已购皮肤：只改变本机渲染，双方棋子与草都按皮肤绘制
+        this.skins = Skins.read();
+        // 动画层与棋盘共用同一份皮肤状态，避免动画期间重复读取缓存
+        this.ascendfx.skins = this.skins;
     };
 
     set_sound(sound) {
@@ -309,18 +315,103 @@ class Canvas {
 
 
     /**
+     * @description: 棋盘皮肤（半写实青玉）：温润玉底 + 云雾色斑 + 石纹脉络 + 内缘高光
+     * @param {CanvasRenderingContext2D} ctx
+     * @return {void}
+     */
+    draw_board_jade(ctx) {
+        const size = this.size;
+
+        // 玉底：左上受光的青玉渐变
+        const base = ctx.createLinearGradient(0, 0, size, size);
+        base.addColorStop(0, '#f1f9f2');
+        base.addColorStop(0.32, '#e0f1e4');
+        base.addColorStop(0.62, '#c8e5d3');
+        base.addColorStop(0.85, '#b3d6bf');
+        base.addColorStop(1, '#9cc6ab');
+        ctx.fillStyle = base;
+        ctx.fillRect(0, 0, size, size);
+
+        // 云雾状色斑：让玉面呈现温润的深浅层次
+        const patches = [
+            { x: 0.24, y: 0.18, r: 0.46, color: 'rgba(255, 255, 255, 0.55)' },
+            { x: 0.8, y: 0.32, r: 0.34, color: 'rgba(226, 246, 232, 0.6)' },
+            { x: 0.38, y: 0.86, r: 0.44, color: 'rgba(150, 200, 168, 0.28)' },
+            { x: 0.88, y: 0.82, r: 0.3, color: 'rgba(255, 255, 255, 0.32)' },
+        ];
+        patches.forEach((patch) => {
+            const glow = ctx.createRadialGradient(
+                size * patch.x,
+                size * patch.y,
+                0,
+                size * patch.x,
+                size * patch.y,
+                size * patch.r
+            );
+            glow.addColorStop(0, patch.color);
+            glow.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            ctx.fillStyle = glow;
+            ctx.fillRect(0, 0, size, size);
+        });
+
+        // 石纹脉络：固定种子，保证每次重绘的纹理保持一致
+        let seed = 20260928;
+        const next = () => {
+            seed = (seed * 1664525 + 1013904223) >>> 0;
+            return seed / 4294967296;
+        };
+        ctx.save();
+        ctx.lineCap = 'round';
+        for (let index = 0; index < 7; index++) {
+            const x0 = next() * size * 0.7;
+            const y0 = next() * size;
+            const x1 = x0 + size * (0.25 + next() * 0.45);
+            const y1 = y0 + size * (next() - 0.5) * 0.28;
+            const c1x = x0 + (x1 - x0) * 0.35;
+            const c1y = y0 + size * (next() - 0.5) * 0.16;
+            const c2x = x0 + (x1 - x0) * 0.7;
+            const c2y = y0 + size * (next() - 0.5) * 0.16;
+            ctx.beginPath();
+            ctx.moveTo(x0, y0);
+            ctx.bezierCurveTo(c1x, c1y, c2x, c2y, x1, y1);
+            ctx.strokeStyle = index % 3 === 0 ? 'rgba(255, 255, 255, 0.34)' : 'rgba(96, 150, 118, 0.16)';
+            ctx.lineWidth = size * (0.0016 + next() * 0.0022);
+            ctx.stroke();
+        }
+        ctx.restore();
+
+        // 内缘高光 + 右下暗角：勾勒玉石厚度
+        const bevel = size * 0.012;
+        ctx.save();
+        ctx.lineWidth = bevel;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.strokeRect(bevel / 2, bevel / 2, size - bevel, size - bevel);
+        ctx.restore();
+        const edge = ctx.createLinearGradient(0, 0, size, size);
+        edge.addColorStop(0, 'rgba(255, 255, 255, 0.14)');
+        edge.addColorStop(1, 'rgba(46, 96, 70, 0.16)');
+        ctx.fillStyle = edge;
+        ctx.fillRect(0, 0, size, size);
+    };
+
+    /**
      * @description: 绘制棋盘（保留完美布局，追加自适应数字坐标）
      * @return {void}
      */
     draw_board() {
         const ctx = this.canvas_board.getContext('2d');
 
-        // 清空背景
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, this.size, this.size);
+        if (this.skins.board) {
+            // 已购棋盘皮肤：半写实青玉桌面（仅本机可见）
+            this.draw_board_jade(ctx);
+        } else {
+            // 清空背景
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, this.size, this.size);
+        }
 
         // 绘制最外层粗描边
-        ctx.strokeStyle = '#333333';
+        ctx.strokeStyle = this.skins.board ? '#1f4a37' : '#333333';
         ctx.lineWidth = 4;
         ctx.strokeRect(0, 0, this.size, this.size);
 
@@ -339,7 +430,7 @@ class Canvas {
 
 
         // 绘制内部封闭网格线
-        ctx.strokeStyle = '#cccccc';
+        ctx.strokeStyle = this.skins.board ? 'rgba(31, 74, 55, 0.42)' : '#cccccc';
         ctx.lineWidth = 1;
 
         ctx.beginPath();
@@ -377,7 +468,7 @@ class Canvas {
         ctx.font = `bold ${font_size}px sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.55)'; 
+        ctx.fillStyle = this.skins.board ? 'rgba(24, 58, 43, 0.62)' : 'rgba(0, 0, 0, 0.55)'; 
 
         // 2. 动态计算文字居中的轴线位置
         // 左侧文字中轴线：死死居中在最外框 (0) 到 棋盘线起点 (padding) 的中间
@@ -514,16 +605,15 @@ class Canvas {
         // 设定棋子半径
         const radius = this.spacing * this.stone_radius;
 
+        // 棋子皮肤为一套：黑白子同时替换
+        if (Skins.draw_stone(ctx, x, y, radius, color, { skins: this.skins })) return;
 
-        ctx.beginPath();
         ctx.save();
-
+        ctx.beginPath();
         ctx.arc(x, y, radius, 0, Math.PI * 2); // 圆
 
         // 填充颜色
         ctx.fillStyle = color;
-        // ctx.fillStyle = '#2c3e50';
-        // ctx.fillStyle = '#ecf0f1';
         ctx.fill();
 
         // 绘制细描边
@@ -533,6 +623,7 @@ class Canvas {
 
         ctx.closePath();
         ctx.restore();
+        return;
     };
 
     /**
@@ -684,10 +775,12 @@ class Canvas {
         ctx.fill();
         ctx.closePath();
 
-        // 只在原位标记上显示草：无草不画绿色圈；一草/两草显示对应绿点
+        // 只在原位标记上显示草：无草不画绿色圈；一草/两草显示对应草点
         const pip_count = Math.min(2, Number(plant) || 0);
         for (let i = 0; i < pip_count; i++) {
             const px = x + (i - (pip_count - 1) / 2) * radius * 0.82;
+            // 已购草皮肤：原位标记上的草点同样替换
+            if (Skins.draw_grass(ctx, px, y, radius * 0.45, { skins: this.skins })) continue;
             ctx.beginPath();
             ctx.arc(px, y, radius * 0.24, 0, Math.PI * 2);
             ctx.fillStyle = '#2ecc71';
@@ -846,7 +939,8 @@ class Canvas {
         const y = this.offset + gy * this.spacing;
         const radius = this.spacing * this.plant_radius;
 
-        this.effect.plant(x, y, radius, count);
+        // 草生成特效：反曲点皮肤启用时同步使用蓝色光晕
+        this.effect.plant(x, y, radius, count, this.skins.grass);
     };
 
     /**
@@ -866,6 +960,8 @@ class Canvas {
         // 设定棋子半径
         const radius = this.spacing * this.plant_radius;
 
+        // 已购草皮肤：仅改变本机渲染
+        if (Skins.draw_grass(ctx, x, y, radius, { skins: this.skins })) return;
 
         ctx.beginPath();
         ctx.save();
@@ -901,6 +997,11 @@ class Canvas {
         // 设定棋子半径
         const radius = this.spacing * this.plant_radius;
 
+        // 已购草皮肤：仅改变本机渲染，双草同样替换
+        if (Skins.draw_grass(ctx, x - radius * 1.3, y, radius, { skins: this.skins })) {
+            Skins.draw_grass(ctx, x + radius * 1.3, y, radius, { skins: this.skins });
+            return;
+        }
 
         ctx.beginPath();
         ctx.save();

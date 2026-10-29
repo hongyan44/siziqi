@@ -54,6 +54,11 @@ sqlite3_stmt* p_add_coin         = nullptr;
 sqlite3_stmt* p_add_exp          = nullptr;
 sqlite3_stmt* p_claim_coin_match = nullptr;
 
+sqlite3_stmt* p_get_skins        = nullptr;
+sqlite3_stmt* p_buy_skin_piece   = nullptr;
+sqlite3_stmt* p_buy_skin_grass   = nullptr;
+sqlite3_stmt* p_buy_skin_board   = nullptr;
+
 sqlite3_stmt* p_friend_id_user   = nullptr;
 sqlite3_stmt* p_friend_id_uuid   = nullptr;
 sqlite3_stmt* p_friend_id_set    = nullptr;
@@ -214,6 +219,11 @@ void init() noexcept {
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN showcase TEXT NOT NULL DEFAULT '';", nullptr, nullptr, nullptr);
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN coin INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN exp INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
+    // 已购皮肤：棋子（黑白合并，沿用旧的黑白两列）/ 草 / 棋盘，仅影响本人客户端的渲染，不参与对局判定。
+    sqlite3_exec(db, "ALTER TABLE users ADD COLUMN skin_stone_white INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "ALTER TABLE users ADD COLUMN skin_stone_black INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "ALTER TABLE users ADD COLUMN skin_grass INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "ALTER TABLE users ADD COLUMN skin_board INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
 
     // 没有索引则创建
     sqlite3_exec(db, "CREATE INDEX IF NOT EXISTS idx_users_mail ON users (mail)", nullptr, nullptr, nullptr);
@@ -292,6 +302,30 @@ void init() noexcept {
     sqlite3_prepare_v2(db, "SELECT coin, exp FROM users WHERE uuid = ?;", -1, &p_get_wallet, nullptr);
     sqlite3_prepare_v2(db, "UPDATE users SET coin = MAX(0, coin + ?) WHERE uuid = ?;", -1, &p_add_coin, nullptr);
     sqlite3_prepare_v2(db, "UPDATE users SET exp = MAX(0, exp + ?) WHERE uuid = ?;", -1, &p_add_exp, nullptr);
+
+    // 皮肤：读取已购状态；购买时用条件 UPDATE 原子扣币并置位，避免并发重复购买。
+    sqlite3_prepare_v2(db, "SELECT skin_stone_white, skin_stone_black, skin_grass, skin_board FROM users WHERE uuid = ?;", -1, &p_get_skins, nullptr);
+    sqlite3_prepare_v2(
+        db,
+        "UPDATE users SET coin = coin - ?, skin_stone_white = 1, skin_stone_black = 1 WHERE uuid = ? AND coin >= ? AND skin_stone_white = 0 AND skin_stone_black = 0;",
+        -1,
+        &p_buy_skin_piece,
+        nullptr
+    );
+    sqlite3_prepare_v2(
+        db,
+        "UPDATE users SET coin = coin - ?, skin_grass = 1 WHERE uuid = ? AND coin >= ? AND skin_grass = 0;",
+        -1,
+        &p_buy_skin_grass,
+        nullptr
+    );
+    sqlite3_prepare_v2(
+        db,
+        "UPDATE users SET coin = coin - ?, skin_board = 1 WHERE uuid = ? AND coin >= ? AND skin_board = 0;",
+        -1,
+        &p_buy_skin_board,
+        nullptr
+    );
     sqlite3_exec(
         db,
         "CREATE TABLE IF NOT EXISTS coin_matches (pair_key TEXT NOT NULL, bucket INTEGER NOT NULL, "
@@ -346,6 +380,10 @@ void close() noexcept {
     sqlite3_finalize(p_add_coin);
     sqlite3_finalize(p_add_exp);
     sqlite3_finalize(p_claim_coin_match);
+    sqlite3_finalize(p_get_skins);
+    sqlite3_finalize(p_buy_skin_piece);
+    sqlite3_finalize(p_buy_skin_grass);
+    sqlite3_finalize(p_buy_skin_board);
     sqlite3_finalize(p_all_user);
     sqlite3_finalize(p_friend_id_user);
     sqlite3_finalize(p_friend_id_uuid);
@@ -928,6 +966,81 @@ int purchase_level(std::string_view uuid, int target_level, int64_t price, int& 
     }
 
     if (!get_level(uuid, level) || !get_wallet(uuid, coin, exp)) return -1;
+    return 0;
+};
+
+// 查询已购皮肤：棋子（黑白合并）/ 草 / 棋盘
+bool get_skins(std::string_view uuid, bool& piece, bool& grass, bool& board) noexcept {
+    piece = false;
+    grass = false;
+    board = false;
+    if (!db || !p_get_skins || uuid.empty()) return false;
+
+    bind_text(p_get_skins, 1, uuid);
+    const int rc = sqlite3_step(p_get_skins);
+    if (rc == SQLITE_ROW) {
+        // 旧版本黑白子分开购买：任意一列已购即视为拥有合并后的棋子皮肤
+        piece = sqlite3_column_int(p_get_skins, 0) != 0 || sqlite3_column_int(p_get_skins, 1) != 0;
+        grass = sqlite3_column_int(p_get_skins, 2) != 0;
+        board = sqlite3_column_int(p_get_skins, 3) != 0;
+    }
+    reset(p_get_skins);
+    return rc == SQLITE_ROW;
+};
+
+// 购买皮肤：先校验是否已拥有与棋币，再用条件 UPDATE 原子扣币并置位
+int purchase_skin(std::string_view uuid, std::string_view item, int64_t price, bool& owned, int64_t& coin) noexcept {
+    owned = false;
+    coin  = 0;
+    if (!db || uuid.empty() || price < 0) return -1;
+
+    bool piece = false, grass = false, board = false;
+    if (!get_skins(uuid, piece, grass, board)) return -1;
+
+    sqlite3_stmt* statement = nullptr;
+    bool current            = false;
+    if (item == "piece") {
+        statement = p_buy_skin_piece;
+        current   = piece;
+    } else if (item == "grass") {
+        statement = p_buy_skin_grass;
+        current   = grass;
+    } else if (item == "board") {
+        statement = p_buy_skin_board;
+        current   = board;
+    } else {
+        return -1;
+    }
+
+    int64_t exp = 0;
+    if (!get_wallet(uuid, coin, exp)) return -1;
+    if (current) {
+        owned = true;
+        return 1;
+    }
+    if (coin < price) return 2;
+
+    if (sqlite3_exec(db, "BEGIN IMMEDIATE TRANSACTION", nullptr, nullptr, nullptr) != SQLITE_OK) return -1;
+
+    sqlite3_bind_int64(statement, 1, price);
+    bind_text(statement, 2, uuid);
+    sqlite3_bind_int64(statement, 3, price);
+
+    const int step_rc = sqlite3_step(statement);
+    const int changed = sqlite3_changes(db);
+    reset(statement);
+
+    if (step_rc != SQLITE_DONE || changed != 1) {
+        sqlite3_exec(db, "ROLLBACK", nullptr, nullptr, nullptr);
+        return -1;
+    }
+    if (sqlite3_exec(db, "COMMIT", nullptr, nullptr, nullptr) != SQLITE_OK) {
+        sqlite3_exec(db, "ROLLBACK", nullptr, nullptr, nullptr);
+        return -1;
+    }
+
+    if (!get_wallet(uuid, coin, exp)) return -1;
+    owned = true;
     return 0;
 };
 

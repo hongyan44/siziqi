@@ -99,6 +99,19 @@ window.http_puzzle_daily_query = async () => {
 };
 
 /**
+ * @description: 首次通关领奖（关卡或每日挑战，服务端保证只发一次 50 经验 + 50 棋币）
+ * @param {string} token
+ * @param {'daily'|'level'} target
+ * @param {number} level 仅 target 为 level 时需要
+ * @return {Promise<{first: boolean, coin: number, exp: number} | void>}
+ */
+window.http_puzzle_claim_clear = async (token, target, level = 0) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/puzzle/claim_clear`, { token, target, level });
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+/**
  * @description: 管理员更新服务端每日挑战残局
  * @param {string} token
  * @param {string} code
@@ -283,10 +296,10 @@ window.http_user_unlock_level = async (token, secret) => {
 };
 
 /**
- * @description: 商店购买（目前仅 level2 / level3 权限码）
+ * @description: 商店购买（权限码 level2 / level3 与皮肤 piece / grass / board）
  * @param {string} token
- * @param {'level2'|'level3'} item
- * @return {Promise<{ok: boolean, reason: string, level: number, coin: number, exp_level: number, exp_cur: number, exp_need: number} | void>}
+ * @param {'level2'|'level3'|'piece'|'grass'|'board'} item
+ * @return {Promise<{ok: boolean, reason: string, level: number, coin: number, exp_level: number, exp_cur: number, exp_need: number, skins: string[]} | void>}
  */
 window.http_shop_buy = async (token, item) => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/shop_buy`, { token, item });
@@ -396,6 +409,24 @@ window.http_replay_update = async (token, opponent, data, meta = {}) => {
         opponent,
         data,
         ...meta
+    });
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+
+/**
+ * @description: 人机对战结算（仅登录玩家；按对局时长标准值发放棋币与经验，胜方双倍、向上取整）
+ * @param {string} token
+ * @param {number} duration 对局时长（秒）
+ * @param {boolean} win 玩家是否获胜
+ * @return {Promise<{reward: number, exp_reward: number, coin: number, exp: number, exp_level: number, exp_cur: number, exp_need: number} | void>}
+ */
+window.http_ai_reward = async (token, duration, win) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/replay/ai_reward`, {
+        token,
+        duration: Math.max(0, Math.trunc(Number(duration) || 0)),
+        win: win ? 1 : 0,
     });
     if (!rjson || !rjson.status) return;
     return rjson.result;

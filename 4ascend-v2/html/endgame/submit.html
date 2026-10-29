@@ -351,6 +351,8 @@
         const toast = window.UiExports && window.UiExports.ShToast
             ? new window.UiExports.ShToast(2600)
             : null;
+        // 本机皮肤（棋子 / 反曲点）：与对局共用同一份缓存
+        const Skins = window.UiExports && window.UiExports.Skins ? window.UiExports.Skins : null;
         const boardSize = 9;
         const cells = Array.from({ length: boardSize * boardSize }, () => ({ stone: 'none', plant: 0 }));
         // 两组落子预案都是有序队列，同一坐标可以重复出现多次。
@@ -428,8 +430,15 @@
         const displayPoint = (x, y) => `(${x + 1}, ${y + 1})`;
         const pointPixel = (x, y, pad, spacing) => [pad + x * spacing, pad + (boardSize - 1 - y) * spacing];
 
-        const drawPlant = (px, py, count, spacing) => {
+        const drawPlant = (px, py, count, spacing, skins) => {
             if (!count) return;
+            // 已购反曲点皮肤：草点同步替换（半径按编辑器棋子比例缩放）
+            if (Skins && skins && skins.grass) {
+                const radius = Math.max(2.4, spacing * 0.105);
+                const centers = count === 2 ? [px - radius * 1.3, px + radius * 1.3] : [px];
+                centers.forEach((center_x) => Skins.draw_grass(ctx, center_x, py, radius, { skins }));
+                return;
+            }
             ctx.fillStyle = '#2ecc71';
             ctx.shadowColor = '#2ecc71';
             ctx.shadowBlur = 6;
@@ -544,6 +553,7 @@
             ctx.fillRect(0, 0, size, size);
             const pad = size * 0.062;
             const spacing = (size - pad * 2) / (boardSize - 1);
+            const skins = Skins ? Skins.read() : { piece: false, grass: false, board: false };
             ctx.strokeStyle = '#333';
             ctx.lineWidth = 3;
             ctx.strokeRect(0.5, 0.5, size - 1, size - 1);
@@ -568,9 +578,12 @@
                 const y = Math.floor(index / boardSize);
                 const [px, py] = pointPixel(x, y, pad, spacing);
                 if (item.stone !== 'none') {
+                    const color = item.stone === 'black' ? '#2c3e50' : '#ecf0f1';
+                    // 已购棋子皮肤：编辑器盘面同样替换
+                    if (Skins && Skins.draw_stone(ctx, px, py, spacing * 0.36, color, { skins })) return;
                     ctx.beginPath();
                     ctx.arc(px, py, spacing * 0.36, 0, Math.PI * 2);
-                    ctx.fillStyle = item.stone === 'black' ? '#2c3e50' : '#ecf0f1';
+                    ctx.fillStyle = color;
                     ctx.shadowColor = item.stone === 'black' ? '#2c3e50' : '#adb5bd';
                     ctx.shadowBlur = 7;
                     ctx.fill();
@@ -584,7 +597,7 @@
                 const x = index % boardSize;
                 const y = Math.floor(index / boardSize);
                 const [px, py] = pointPixel(x, y, pad, spacing);
-                drawPlant(px, py, item.plant, spacing);
+                drawPlant(px, py, item.plant, spacing, skins);
             });
             const draw_marks = (moves, direction, color, text_color) => {
                 const grouped = new Map();

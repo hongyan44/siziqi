@@ -3,6 +3,7 @@
  * @Description: ASCEND 抵消动画（升起 → 盘旋 → 碰撞抵消 → 打血）
  * @Copyright (c) 2026 by CsVeryLoveXieWenLi, All Rights Reserved.
  */
+import { Skins } from './skin.cjs';
 
 /**
  * @description: 缓动函数
@@ -61,6 +62,7 @@ class AscendFx {
         // 由 Canvas 注入
         this.effect = null;      // Effect 引擎（碰撞粒子/冲击环）
         this.sound = null;       // Sound 引擎（ASCEND 专用音效）
+        this.skins = null;       // 本机皮肤状态（棋子 / 反曲点）
         this.offset = 0;
         this.spacing = 1;
         this.stone_radius = 0.41;
@@ -245,33 +247,38 @@ class AscendFx {
      */
     draw_stone(ctx, s) {
         const r = this.spacing * this.stone_radius;
+        const skins = this.skins || Skins.read();
 
         ctx.save();
         ctx.globalAlpha = s.alpha === undefined ? 1 : s.alpha;
 
-        // 发光棋子
-        ctx.beginPath();
-        ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
-        ctx.fillStyle = s.color;
-        ctx.shadowColor = s.color;
-        ctx.shadowBlur = 10;
-        ctx.fill();
-        ctx.closePath();
+        // 已购棋子皮肤：盘旋中的棋子同样替换（保留发光效果）
+        if (!Skins.draw_stone(ctx, s.x, s.y, r, s.color, { skins, glow: true, glow_blur: 10 })) {
+            // 发光棋子
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+            ctx.fillStyle = s.color;
+            ctx.shadowColor = s.color;
+            ctx.shadowBlur = 10;
+            ctx.fill();
+            ctx.closePath();
 
-        ctx.shadowBlur = 0;
+            ctx.shadowBlur = 0;
 
-        // 描边
-        ctx.beginPath();
-        ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-        ctx.closePath();
+            // 描边
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            ctx.closePath();
+        }
 
-        // 草粒（power-1 个绿点，标示额外战力）
+        // 草粒（power-1 个，标示额外战力）：反曲点皮肤启用时同步替换
         const pips = s.power - 1;
         for (let i = 0; i < pips; i++) {
             const px = s.x + (i - (pips - 1) / 2) * r * 0.85;
+            if (Skins.draw_grass(ctx, px, s.y, r * 0.26, { skins })) continue;
             ctx.beginPath();
             ctx.arc(px, s.y, r * 0.26, 0, Math.PI * 2);
             ctx.fillStyle = '#2ecc71';

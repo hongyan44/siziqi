@@ -10,8 +10,9 @@ const { Timer } = require('./timer.cjs');
 const { Sound } = require('./sound.cjs');
 const { Effect } = require('./effect.cjs');
 const { AscendFx } = require('./ascendfx.cjs');
+const { Skins } = require('./skin.cjs');
 const { MusicPlaylist } = require('../../ref/music.cjs');
 // const { Seed } = require('./seed.cjs');
 
 
-window.GameExports = { Canvas, Client, Message, Timer, Sound, Effect, AscendFx };
+window.GameExports = { Canvas, Client, Message, Timer, Sound, Effect, AscendFx, Skins };

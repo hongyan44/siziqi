@@ -102,6 +102,33 @@
     };
 
     /**
+     * @description: 玩家资料卡的操作按钮（好友 → 发送消息；收到申请 → 接受；陌生人 → 添加好友）
+     * @param {string} relation none / friend / incoming / outgoing
+     * @param {string} request_mode deny / manual / auto
+     * @return {{text: string, kind: string, disabled: boolean} | null}
+     */
+    const profile_action_label = (relation, request_mode) => {
+        switch (relation) {
+            case 'friend': return { text: '发送消息', kind: 'chat', disabled: false };
+            case 'incoming': return { text: '接受申请', kind: 'accept', disabled: false };
+            case 'outgoing': return { text: '已发送', kind: 'outgoing', disabled: true };
+            case 'none':
+                if (request_mode === 'deny') return { text: '对方不接受申请', kind: 'none', disabled: true };
+                return { text: '添加好友', kind: 'request', disabled: false };
+            default: return null;
+        }
+    };
+
+    /**
+     * @description: 对战按钮状态（离线灰置，禁止发起对战邀请）
+     * @param {boolean} online
+     * @return {{text: string, disabled: boolean, title: string}}
+     */
+    const battle_label = (online) => online
+        ? { text: '对战', disabled: false, title: '邀请对方对战' }
+        : { text: '对战', disabled: true, title: '对方不在线，无法发起对战' };
+
+    /**
      * @description: 好友申请设置文案
      * @param {string} mode deny / manual / auto
      * @return {string}
@@ -188,6 +215,8 @@
         format_presence,
         format_win_rate,
         relation_label,
+        profile_action_label,
+        battle_label,
         request_mode_label,
         is_admin,
         display_name,

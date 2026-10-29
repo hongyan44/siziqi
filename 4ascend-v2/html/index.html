@@ -449,28 +449,28 @@
                 <section>
                     <div class='category-title fw-bold'>额外功能</div>
                     <div class='row g-2 g-md-3'>
-                        <div class='col-6 col-md-4'>
+                        <div class='col-6 col-md-3'>
                             <sl-button variant='default' size='large' href='/pages/user/shop.html' target='_self' pill
                                 outline class='w-100'>
                                 <sl-icon slot='prefix' name='shop'></sl-icon>棋币商店
                             </sl-button>
                         </div>
 
-                        <div class='col-6 col-md-4'>
+                        <div class='col-6 col-md-3'>
                             <sl-button variant='default' size='large' href='/pages/mod/match.html' target='_self' pill outline
                                 class='w-100'>
                                 <sl-icon slot='prefix' name='diagram-3'></sl-icon>赛事相关
                             </sl-button>
                         </div>
 
-                        <div class='col-6 col-md-4'>
+                        <div class='col-6 col-md-3'>
                             <sl-button variant='default' size='large' href='/pages/endgame/index.html' pill outline
                                 class='w-100'>
                                 <sl-icon slot='prefix' name='puzzle'></sl-icon>残局系统
                             </sl-button>
                         </div>
 
-                        <div class='col-6 col-md-4'>
+                        <div class='col-6 col-md-3'>
                             <sl-button variant='default' size='large' href='/pages/online/replayonline.html' target='_self' pill outline
                                 class='w-100'>
                                 <sl-icon slot='prefix' name='clock-history'></sl-icon>所有回放
@@ -857,6 +857,36 @@
                                 size='small'></sl-range>
                         </div>
                     </div>
+                </div>
+
+                <div class='d-flex flex-column gap-3'>
+                    <span class='text-muted fw-bold'>皮肤设置</span>
+                    <div class='d-flex flex-column gap-2'>
+                        <div class='d-flex align-items-center justify-content-between gap-3 border rounded px-3 py-2'>
+                            <div class='min-w-0'>
+                                <div class='fw-bold'>棋子皮肤</div>
+                                <small id='text_skin_piece' class='text-secondary d-block'>半写实球体，同时替换黑白双方棋子</small>
+                            </div>
+                            <sl-switch id='switch_skin_piece' size='small' disabled></sl-switch>
+                        </div>
+
+                        <div class='d-flex align-items-center justify-content-between gap-3 border rounded px-3 py-2'>
+                            <div class='min-w-0'>
+                                <div class='fw-bold'>反曲点皮肤</div>
+                                <small id='text_skin_grass' class='text-secondary d-block'>中心蓝色高亮，外圈黑红交替渐变环</small>
+                            </div>
+                            <sl-switch id='switch_skin_grass' size='small' disabled></sl-switch>
+                        </div>
+
+                        <div class='d-flex align-items-center justify-content-between gap-3 border rounded px-3 py-2'>
+                            <div class='min-w-0'>
+                                <div class='fw-bold'>棋盘皮肤</div>
+                                <small id='text_skin_board' class='text-secondary d-block'>半写实青玉棋盘</small>
+                            </div>
+                            <sl-switch id='switch_skin_board' size='small' disabled></sl-switch>
+                        </div>
+                    </div>
+                    <small class='text-secondary'>未拥有的皮肤可在棋币商店购买；开关只影响本机棋盘显示。</small>
                 </div>
 
                 <div class='d-flex flex-column gap-3'>
