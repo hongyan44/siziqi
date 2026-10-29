@@ -549,29 +549,68 @@
             canvas.height = size * dpr;
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
             ctx.clearRect(0, 0, size, size);
-            ctx.fillStyle = '#fff';
-            ctx.fillRect(0, 0, size, size);
+            const skins = Skins ? Skins.read() : { piece: false, grass: false, board: false, board_gold: false };
+            // 棋盘风格：棋盘皮肤（青玉 / 玄金）> 虚空舰队主题 > 默认白底
+            const goldTheme = Boolean(Skins && skins.board_gold);
+            const jadeTheme = Boolean(Skins && !goldTheme && skins.board);
+            const voidTheme = Boolean(Skins && !goldTheme && !jadeTheme && Skins.theme_active());
+            if (voidTheme) {
+                Skins.draw_board_void(ctx, size);
+            } else if (goldTheme) {
+                Skins.draw_board_gold(ctx, size);
+            } else if (jadeTheme) {
+                Skins.draw_board_jade(ctx, size);
+            } else {
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(0, 0, size, size);
+            }
             const pad = size * 0.062;
             const spacing = (size - pad * 2) / (boardSize - 1);
-            const skins = Skins ? Skins.read() : { piece: false, grass: false, board: false };
-            ctx.strokeStyle = '#333';
+            ctx.strokeStyle = voidTheme ? 'rgba(255, 255, 255, 0.9)' : (goldTheme ? '#e6c16a' : (jadeTheme ? '#1f4a37' : '#333'));
             ctx.lineWidth = 3;
             ctx.strokeRect(0.5, 0.5, size - 1, size - 1);
-            ctx.strokeStyle = '#d0d0d0';
-            ctx.lineWidth = 1;
+            if (goldTheme) {
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(2, 2, size - 4, size - 4);
+            }
+            const draw_line = (x0, y0, x1, y1) => {
+                ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+            };
             for (let i = 0; i < boardSize; i++) {
                 const p = pad + i * spacing;
-                ctx.beginPath(); ctx.moveTo(p, pad); ctx.lineTo(p, pad + spacing * (boardSize - 1)); ctx.stroke();
-                ctx.beginPath(); ctx.moveTo(pad, p); ctx.lineTo(pad + spacing * (boardSize - 1), p); ctx.stroke();
+                if (goldTheme) {
+                    // 暗缝 + 亮金芯，复刻镌刻金线的双线观感
+                    ctx.strokeStyle = 'rgba(8, 10, 13, 0.5)';
+                    ctx.lineWidth = 2.6;
+                    draw_line(p, pad, p, pad + spacing * (boardSize - 1));
+                    draw_line(pad, p, pad + spacing * (boardSize - 1), p);
+                    ctx.strokeStyle = '#f1cb72';
+                    ctx.lineWidth = 1.1;
+                } else {
+                    ctx.strokeStyle = voidTheme
+                        ? 'rgba(255, 255, 255, 0.62)'
+                        : (jadeTheme ? 'rgba(31, 74, 55, 0.42)' : '#d0d0d0');
+                    ctx.lineWidth = 1;
+                }
+                draw_line(p, pad, p, pad + spacing * (boardSize - 1));
+                draw_line(pad, p, pad + spacing * (boardSize - 1), p);
             }
-            ctx.font = `bold ${Math.max(9, Math.floor(pad * 0.8))}px sans-serif`;
-            ctx.fillStyle = '#6f6f6f';
+            const labelSize = Math.max(8, Math.floor(pad * (goldTheme ? 0.5 : 0.8)));
+            ctx.font = goldTheme
+                ? `bold ${labelSize}px "Times New Roman", "Songti SC", Georgia, serif`
+                : `bold ${labelSize}px sans-serif`;
+            ctx.fillStyle = voidTheme
+                ? 'rgba(226, 238, 255, 0.72)'
+                : (goldTheme ? '#ffd77a' : (jadeTheme ? 'rgba(24, 58, 43, 0.62)' : '#6f6f6f'));
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
             for (let i = 0; i < boardSize; i++) {
                 const p = pad + i * spacing;
-                // 横轴从左到右 1~9，纵轴从下到上 1~9。
-                ctx.fillText(String(i + 1), p, size - pad * 0.42);
-                ctx.fillText(String(boardSize - i), pad * 0.42, p);
+                // 横轴从左到右 1~9，纵轴从下到上 1~9；玄金棋盘使用罗马数字。
+                const bottomLabel = goldTheme ? Skins.to_roman(i + 1) : String(i + 1);
+                const leftLabel = goldTheme ? Skins.to_roman(boardSize - i) : String(boardSize - i);
+                ctx.fillText(bottomLabel, p, size - pad * 0.42);
+                ctx.fillText(leftLabel, pad * (goldTheme ? 0.5 : 0.42), p);
             }
             cells.forEach((item, index) => {
                 const x = index % boardSize;

@@ -224,7 +224,7 @@ void replay_update(cinatra::coro_http_request& request, cinatra::coro_http_respo
 };
 
 // 人机对战结算：仅登录玩家有效，按对局时长对应的标准值发放棋币与经验（胜方双倍、向上取整）
-// 为避免重复上报刷奖励，同一账号每个自然分钟最多结算一局。
+// 为避免重复上报刷奖励，同一账号每 20 秒最多结算一局。
 void replay_ai_reward(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
     auto body = api_body(request.get_body());
     if (!body) return api_http_error("replay_ai_reward", response);
@@ -244,7 +244,7 @@ void replay_ai_reward(cinatra::coro_http_request& request, cinatra::coro_http_re
 
     int64_t reward     = 0;
     int64_t exp_reward = 0;
-    const int64_t bucket = Libs::Only::Time::timestamp_s() / 60;
+    const int64_t bucket = Libs::Only::Time::timestamp_s() / 20;
     if (amount > 0 && Manager::User::claim_coin_match(uuid, "ai", bucket)) {
         if (Manager::User::add_coin(uuid, amount)) reward = amount;
         if (Manager::User::add_exp(uuid, amount)) exp_reward = amount;

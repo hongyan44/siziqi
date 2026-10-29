@@ -60,6 +60,8 @@ const dialog_end = document.getElementById('dialog_end');
 const span_end_win = document.getElementById('span_end_win');
 const span_end_hp = document.getElementById('span_end_hp');
 const span_end_time = document.getElementById('span_end_time');
+const row_end_reward = document.getElementById('row_end_reward');
+const span_end_reward = document.getElementById('span_end_reward');
 
 const button_end_restart = document.getElementById('button_end_restart');
 const button_end_archive = document.getElementById('button_end_archive');
@@ -177,21 +179,36 @@ const login_profile_self = async () => {
 };
 
 /**
+ * @description 结算弹窗展示本局棋币与经验奖励（无奖励时隐藏该行，观战页无此节点）
+ * @param {number} coin 棋币数量
+ * @param {number} exp 经验数量
+ * @return {void}
+ */
+const set_end_reward = (coin, exp) => {
+    const c = Math.max(0, Math.trunc(Number(coin) || 0));
+    const e = Math.max(0, Math.trunc(Number(exp) || 0));
+    if (row_end_reward) row_end_reward.style.display = (c > 0 || e > 0) ? '' : 'none';
+    if (span_end_reward) span_end_reward.innerText = `${c} 棋币 · ${e} 经验`;
+};
+
+/**
  * @description: 人机对战奖励结算（仅登录玩家；服务端按对局时长标准值发放，胜方双倍、向上取整）
  * @param {number} duration 对局时长（秒）
  * @param {boolean} win 玩家是否获胜
- * @return {Promise<void>}
+ * @return {Promise<{coin:number, exp:number}>}
  */
 const reward_ai = async (duration, win) => {
     const token = typeof window.get_token === 'function' ? window.get_token() : null;
-    if (!token || typeof window.http_ai_reward !== 'function') return;
+    if (!token || typeof window.http_ai_reward !== 'function') return { 'coin': 0, 'exp': 0 };
     try {
         const result = await window.http_ai_reward(token, duration, win);
         const coin = Number(result && result.reward) || 0;
         const exp = Number(result && result.exp_reward) || 0;
         if (coin > 0 || exp > 0) toast.success(`本局获得 ${coin} 棋币 · ${exp} 经验`);
+        return { 'coin': coin, 'exp': exp };
     } catch (_) {
         // 结算失败不影响对局结算画面
+        return { 'coin': 0, 'exp': 0 };
     }
 };
 
@@ -1355,7 +1372,8 @@ const run = async () => {
     span_end_hp.innerText = `${my_hp} vs ${foe_hp}`;
 
     // 棋币与经验结算：仅登录玩家，服务端按对局时长标准值发放，胜方双倍、向上取整
-    await reward_ai(Math.floor(duration_ms / 1000), my_wins);
+    const ai_reward = await reward_ai(Math.floor(duration_ms / 1000), my_wins);
+    set_end_reward(ai_reward.coin, ai_reward.exp);
 
     // 结算画面
     dialog_end.classList.remove('d-none');

@@ -360,12 +360,14 @@ void user_info(cinatra::coro_http_request& request, cinatra::coro_http_response&
     info["ai_games"] = ai_games;
     info["showcase"] = split_showcase(showcase);
     // 已购皮肤：仅本人读取，用于在本机替换棋子 / 草 / 棋盘的外观（不影响对手）。
-    bool skin_piece = false, skin_grass = false, skin_board = false, skin_theme = false;
-    if (!Manager::User::get_skins(uuid, skin_piece, skin_grass, skin_board, skin_theme)) return api_http_error("user_info", response);
+    bool skin_piece = false, skin_grass = false, skin_grass_gold = false, skin_board = false, skin_board_gold = false, skin_theme = false;
+    if (!Manager::User::get_skins(uuid, skin_piece, skin_grass, skin_grass_gold, skin_board, skin_board_gold, skin_theme)) return api_http_error("user_info", response);
     jsoncons::json skins = jsoncons::json::array();
     if (skin_piece) skins.push_back(std::string("piece"));
     if (skin_grass) skins.push_back(std::string("grass"));
+    if (skin_grass_gold) skins.push_back(std::string("grass_gold"));
     if (skin_board) skins.push_back(std::string("board"));
+    if (skin_board_gold) skins.push_back(std::string("board_gold"));
     if (skin_theme) skins.push_back(std::string("theme"));
     info["skins"] = skins;
     api_end("user_info", true, info, buffer);
@@ -427,26 +429,30 @@ void user_shop_buy(cinatra::coro_http_request& request, cinatra::coro_http_respo
 
     int target_level = 0;
     int64_t price    = 0;
-    // 皮肤定价：棋子（黑白合并）2000 棋币，草 1000 棋币，棋盘 2000 棋币，风格 UI 5000 棋币。
+    // 皮肤定价：棋子（黑白合并）999 棋币，草 599 棋币，金菱草 325 棋币，棋盘 999 棋币，玄金棋盘 799 棋币，风格 UI 3999 棋币。
     int64_t skin_price = 0;
-    // 消耗品定价：单局投稿券 100 棋币。
+    // 消耗品定价：单局投稿券 49 棋币。
     int64_t ticket_price = 0;
     if (item == "level2") {
         target_level = 2;
-        price        = 1000;
+        price        = 499;
     } else if (item == "level3") {
         target_level = 3;
-        price        = 5000;
+        price        = 3999;
     } else if (item == "piece") {
-        skin_price = 2000;
+        skin_price = 999;
     } else if (item == "grass") {
-        skin_price = 1000;
+        skin_price = 599;
+    } else if (item == "grass_gold") {
+        skin_price = 325;
     } else if (item == "board") {
-        skin_price = 2000;
+        skin_price = 999;
+    } else if (item == "board_gold") {
+        skin_price = 799;
     } else if (item == "theme") {
-        skin_price = 5000;
+        skin_price = 3999;
     } else if (item == "ticket") {
-        ticket_price = 100;
+        ticket_price = 49;
     } else {
         return api_http_error("shop_buy", response);
     }
@@ -481,12 +487,14 @@ void user_shop_buy(cinatra::coro_http_request& request, cinatra::coro_http_respo
     result["exp_need"]  = Manager::User::exp_need(Manager::User::exp_level(exp));
 
     // 回传最新皮肤清单，前端据此刷新本机皮肤缓存（仅自己可见）。
-    bool skin_piece = false, skin_grass = false, skin_board = false, skin_theme = false;
-    if (!Manager::User::get_skins(uuid, skin_piece, skin_grass, skin_board, skin_theme)) return api_http_error("shop_buy", response);
+    bool skin_piece = false, skin_grass = false, skin_grass_gold = false, skin_board = false, skin_board_gold = false, skin_theme = false;
+    if (!Manager::User::get_skins(uuid, skin_piece, skin_grass, skin_grass_gold, skin_board, skin_board_gold, skin_theme)) return api_http_error("shop_buy", response);
     jsoncons::json skins = jsoncons::json::array();
     if (skin_piece) skins.push_back(std::string("piece"));
     if (skin_grass) skins.push_back(std::string("grass"));
+    if (skin_grass_gold) skins.push_back(std::string("grass_gold"));
     if (skin_board) skins.push_back(std::string("board"));
+    if (skin_board_gold) skins.push_back(std::string("board_gold"));
     if (skin_theme) skins.push_back(std::string("theme"));
     result["skins"] = skins;
 

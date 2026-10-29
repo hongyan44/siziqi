@@ -63,6 +63,21 @@ const dialog_end = document.getElementById('dialog_end');
 const span_end_win = document.getElementById('span_end_win');
 const span_end_hp = document.getElementById('span_end_hp');
 const span_end_time = document.getElementById('span_end_time');
+const row_end_reward = document.getElementById('row_end_reward');
+const span_end_reward = document.getElementById('span_end_reward');
+
+/**
+ * @description 结算弹窗展示本局棋币与经验奖励（观战页无此节点，故无节点时跳过）
+ * @param {number} coin 棋币数量
+ * @param {number} exp 经验数量
+ * @return {void}
+ */
+const set_end_reward = (coin, exp) => {
+    const c = Math.max(0, Math.trunc(Number(coin) || 0));
+    const e = Math.max(0, Math.trunc(Number(exp) || 0));
+    if (row_end_reward) row_end_reward.style.display = (c > 0 || e > 0) ? '' : 'none';
+    if (span_end_reward) span_end_reward.innerText = `${c} 棋币 · ${e} 经验`;
+};
 
 const button_end_restart = document.getElementById('button_end_restart');
 const button_end_archive = document.getElementById('button_end_archive');
@@ -1775,6 +1790,8 @@ const run_once = async () => {
 
     span_end_time.innerText = format_ms(await window.http_time_ms() - time);
     span_end_hp.innerText = `${my_hp} vs ${foe_hp}`;
+    // 先清空奖励行，待回放上传返回后再写入本局实际奖励
+    set_end_reward(0, 0);
 
     // 重置对局存档，重置玩家阵营决定
     if (archive) {
@@ -1820,6 +1837,7 @@ const run_once = async () => {
             // 棋币与经验结算：服务端按对局时长、胜负与分类倍率发放，这里仅做提示
             const coin_reward = Number(uploaded && uploaded.reward) || 0;
             const exp_reward = Number(uploaded && uploaded.exp_reward) || 0;
+            set_end_reward(coin_reward, exp_reward);
             if (coin_reward > 0 || exp_reward > 0) {
                 toast.success(`本局获得 ${coin_reward} 棋币 · ${exp_reward} 经验`);
             }

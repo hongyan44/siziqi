@@ -53,12 +53,16 @@ const range_click_level = document.getElementById('range_click_level');
 
 const switch_skin_piece = document.getElementById('switch_skin_piece');
 const switch_skin_grass = document.getElementById('switch_skin_grass');
+const switch_skin_grass_gold = document.getElementById('switch_skin_grass_gold');
 const switch_skin_board = document.getElementById('switch_skin_board');
+const switch_skin_board_gold = document.getElementById('switch_skin_board_gold');
 const switch_skin_theme = document.getElementById('switch_skin_theme');
 
 const text_skin_piece = document.getElementById('text_skin_piece');
 const text_skin_grass = document.getElementById('text_skin_grass');
+const text_skin_grass_gold = document.getElementById('text_skin_grass_gold');
 const text_skin_board = document.getElementById('text_skin_board');
+const text_skin_board_gold = document.getElementById('text_skin_board_gold');
 const text_skin_theme = document.getElementById('text_skin_theme');
 
 
@@ -484,7 +488,9 @@ const user_info = async (token) => {
                 localStorage.setItem('4a_skins', JSON.stringify({
                     piece: info.skins.includes('piece'),
                     grass: info.skins.includes('grass'),
+                    grass_gold: info.skins.includes('grass_gold'),
                     board: info.skins.includes('board'),
+                    board_gold: info.skins.includes('board_gold'),
                     theme: info.skins.includes('theme'),
                 }));
             } catch (_) {
@@ -892,7 +898,9 @@ button_clear_submit.addEventListener('pointerdown', async (event) => {
 const SKIN_ROWS = [
     { id: 'piece', switch_el: switch_skin_piece, text_el: text_skin_piece, desc: '半写实球体，同时替换黑白双方棋子' },
     { id: 'grass', switch_el: switch_skin_grass, text_el: text_skin_grass, desc: '中心蓝色高亮，外圈黑红交替渐变环' },
+    { id: 'grass_gold', switch_el: switch_skin_grass_gold, text_el: text_skin_grass_gold, desc: '金色菱形渐变，中心高光' },
     { id: 'board', switch_el: switch_skin_board, text_el: text_skin_board, desc: '半写实青玉棋盘' },
+    { id: 'board_gold', switch_el: switch_skin_board_gold, text_el: text_skin_board_gold, desc: '黑石盘面，亮金色网格与罗马数字' },
     { id: 'theme', switch_el: switch_skin_theme, text_el: text_skin_theme, desc: '蓝黑主调的星际舰桥界面，红色警示点缀' },
 ];
 
@@ -900,16 +908,27 @@ const render_skin_settings = () => {
     if (!Skins) return;
 
     const owned = Skins.owned();
-    const prefs = Skins.prefs();
+    // 以实际生效状态回显：两套棋盘皮肤互斥，避免同时显示为开启
+    const active = Skins.read();
 
     SKIN_ROWS.forEach((row) => {
         if (!row.switch_el) return;
         const has = !!owned[row.id];
         row.switch_el.disabled = !has;
-        row.switch_el.checked = has && prefs[row.id];
+        row.switch_el.checked = has && !!active[row.id];
         if (row.text_el) row.text_el.innerText = has ? row.desc : '未拥有，可在棋币商店购买';
     });
 };
+
+// 两套草皮肤 / 两套棋盘皮肤互斥：开启一套时自动关闭另一套
+[[switch_skin_grass, switch_skin_grass_gold], [switch_skin_grass_gold, switch_skin_grass],
+    [switch_skin_board, switch_skin_board_gold], [switch_skin_board_gold, switch_skin_board]]
+    .forEach(([self_el, other_el]) => {
+        if (!self_el || !other_el) return;
+        self_el.addEventListener('sl-change', () => {
+            if (self_el.checked) other_el.checked = false;
+        });
+    });
 
 
 // ===== 我的背包 =====
@@ -923,7 +942,9 @@ const button_backpack_close = document.getElementById('button_backpack_close');
 const BAG_SKIN_NAMES = {
     piece: '棋子皮肤',
     grass: '反曲点皮肤',
+    grass_gold: '金菱草皮肤',
     board: '棋盘皮肤',
+    board_gold: '棋盘-黑派',
     theme: '风格 UI · 虚空舰队',
 };
 
@@ -942,8 +963,14 @@ const backpack_skin_icon = (id) => {
     if (id === 'grass') {
         return `<svg viewBox='0 0 32 32' aria-hidden='true'><circle cx='16' cy='16' r='12' fill='none' stroke='#c92b3e' stroke-width='3'/><circle cx='16' cy='16' r='6' fill='#3fa8f5'/></svg>`;
     }
+    if (id === 'grass_gold') {
+        return `<svg viewBox='0 0 32 32' aria-hidden='true'><defs><linearGradient id='bag-grass-gold' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#fff4c9'/><stop offset='0.5' stop-color='#dcae45'/><stop offset='1' stop-color='#70500e'/></linearGradient></defs><path d='M16 3l13 13-13 13L3 16z' fill='url(#bag-grass-gold)' stroke='#fff0c0' stroke-width='1.5'/><circle cx='16' cy='16' r='5' fill='#fff8dd'/></svg>`;
+    }
     if (id === 'board') {
         return `<svg viewBox='0 0 32 32' aria-hidden='true'><rect x='4' y='4' width='24' height='24' rx='3' fill='#d7ebdd' stroke='#6f9c83'/><path d='M12 4v24M20 4v24M4 12h24M4 20h24' stroke='rgba(42,86,64,.45)'/></svg>`;
+    }
+    if (id === 'board_gold') {
+        return `<svg viewBox='0 0 32 32' aria-hidden='true'><rect x='4' y='4' width='24' height='24' rx='3' fill='#121418' stroke='#c9a24f'/><path d='M12 4v24M20 4v24M4 12h24M4 20h24' stroke='rgba(245,205,110,.85)'/></svg>`;
     }
     return `<svg viewBox='0 0 32 32' aria-hidden='true'><rect x='3' y='3' width='26' height='26' rx='4' fill='#0a1526' stroke='#4a9dff'/><circle cx='9' cy='9' r='2' fill='#f04056'/><path d='M9 17h14M9 22h9' stroke='#5eaaff' stroke-width='2'/></svg>`;
 };
@@ -1024,7 +1051,8 @@ const backpack_render_achievements = async () => {
 const backpack_render_skins = () => {
     if (!backpack_pane) return;
     const owned = Skins ? Skins.owned() : {};
-    const prefs = Skins ? Skins.prefs() : {};
+    // 以实际生效状态回显：两套棋盘皮肤互斥，避免同时显示为开启
+    const active = Skins ? Skins.read() : {};
     const rows = SKIN_ROWS.filter((row) => owned[row.id]);
     if (!rows.length) {
         backpack_pane.innerHTML = `
@@ -1042,7 +1070,7 @@ const backpack_render_skins = () => {
         <div class='bag-item-name'>${BAG_SKIN_NAMES[row.id] || row.id}</div>
         <div class='bag-item-desc'>${row.desc}</div>
     </div>
-    <sl-switch data-bag-skin='${row.id}' size='small' ${prefs[row.id] ? 'checked' : ''}></sl-switch>
+    <sl-switch data-bag-skin='${row.id}' size='small' ${active[row.id] ? 'checked' : ''}></sl-switch>
 </div>`).join('');
 
     backpack_pane.querySelectorAll('[data-bag-skin]').forEach((node) => {
@@ -1051,6 +1079,17 @@ const backpack_render_skins = () => {
             const id = node.dataset.bagSkin;
             const next = Skins.prefs();
             next[id] = Boolean(node.checked);
+            // 两套草皮肤 / 两套棋盘皮肤互斥：切换一套时关闭另一套
+            let other_id = null;
+            if (id === 'grass') other_id = 'grass_gold';
+            if (id === 'grass_gold') other_id = 'grass';
+            if (id === 'board') other_id = 'board_gold';
+            if (id === 'board_gold') other_id = 'board';
+            if (other_id) {
+                next[other_id] = false;
+                const other_node = backpack_pane.querySelector(`[data-bag-skin='${other_id}']`);
+                if (other_node) other_node.checked = false;
+            }
             Skins.write_prefs(next);
             Skins.apply_theme();
             render_skin_settings();
@@ -1187,6 +1226,18 @@ button_local_submit.addEventListener('click', () => {
         SKIN_ROWS.forEach((row) => {
             if (owned[row.id] && row.switch_el) prefs[row.id] = !!row.switch_el.checked;
         });
+        // 两套草皮肤互斥：都拥有时只保留当前开启的那一套
+        if (owned.grass && owned.grass_gold) {
+            const grass_gold_on = !!switch_skin_grass_gold.checked;
+            prefs.grass_gold = grass_gold_on;
+            prefs.grass = !grass_gold_on && !!switch_skin_grass.checked;
+        }
+        // 两套棋盘皮肤互斥：都拥有时只保留当前开启的那一套
+        if (owned.board && owned.board_gold) {
+            const gold_on = !!switch_skin_board_gold.checked;
+            prefs.board_gold = gold_on;
+            prefs.board = !gold_on && !!switch_skin_board.checked;
+        }
         Skins.write_prefs(prefs);
         // 主题开关变化立即反映到当前页面
         Skins.apply_theme();

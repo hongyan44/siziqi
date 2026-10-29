@@ -251,12 +251,13 @@ class Effect {
      * @param {number} y 像素坐标
      * @param {number} r 草的绘制半径
      * @param {number} count 草的数量
-     * @param {boolean} skinned 是否启用反曲点皮肤（启用时使用蓝色光晕）
+     * @param {boolean|'gold'} skinned 草皮肤标识：true 为反曲点（蓝色光晕），'gold' 为金菱草（金色光晕）
      * @return {void}
      */
     plant(x, y, r, count = 1, skinned = false) {
         const pip_count = Math.min(2, Math.max(1, Number(count) || 1));
-        const color = skinned ? '#4aa6ff' : '#2ecc71';
+        // 未启用草皮肤时沿用绿色；启用后按对应皮肤取光晕颜色
+        const color = skinned === 'gold' ? '#ffd166' : (skinned ? '#4aa6ff' : '#2ecc71');
         const centers = pip_count === 2
             ? [x - r * 1.3, x + r * 1.3]
             : [x];

@@ -313,7 +313,7 @@ window.http_user_unlock_level = async (token, secret) => {
 /**
  * @description: 商店购买（权限码 level2 / level3 与皮肤 piece / grass / board）
  * @param {string} token
- * @param {'level2'|'level3'|'piece'|'grass'|'board'} item
+ * @param {'level2'|'level3'|'piece'|'grass'|'grass_gold'|'board'|'board_gold'} item
  * @return {Promise<{ok: boolean, reason: string, level: number, coin: number, exp_level: number, exp_cur: number, exp_need: number, skins: string[]} | void>}
  */
 window.http_shop_buy = async (token, item) => {

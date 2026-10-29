@@ -261,12 +261,23 @@
             pendingAscend[0].length = 0;
             pendingAscend[1].length = 0;
         };
+        // 残局身份：对盘面编码取稳定哈希，同一残局重复破解只计一次
+        const endgameIdentity = () => {
+            try {
+                const code = window.EndgameExports.EndgameArchive.encode(challengeData);
+                let hash = 0;
+                for (let index = 0; index < code.length; index += 1) hash = ((hash << 5) - hash + code.charCodeAt(index)) | 0;
+                return `e${(hash >>> 0).toString(36)}`;
+            } catch (_) {
+                return 'builtin';
+            }
+        };
         const showResult = (winner, elapsed, reason) => {
             const blackHp = state.hp[0];
             const whiteHp = state.hp[1];
             const playerWon = winner === PLAYER_ENUM.BLACK;
-            // 成就：首次赢下残局
-            if (playerWon && typeof window.achievement_event === 'function') window.achievement_event('endgame_win');
+            // 成就：破解残局（按不同盘面去重计数）
+            if (playerWon && typeof window.achievement_event === 'function') window.achievement_event('endgame_win', { 'endgame_id': endgameIdentity() });
             const dialog = document.getElementById('challenge_result');
             dialog.classList.remove('d-none');
             dialog.classList.toggle('is-win', playerWon);

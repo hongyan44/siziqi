@@ -64,6 +64,21 @@ const span_end_win = document.getElementById('span_end_win');
 const span_end_hp = document.getElementById('span_end_hp');
 const span_end_time = document.getElementById('span_end_time');
 const span_end_score = document.getElementById('span_end_score');
+const row_end_reward = document.getElementById('row_end_reward');
+const span_end_reward = document.getElementById('span_end_reward');
+
+/**
+ * @description 结算弹窗展示本局棋币与经验奖励（观战页无此节点，故无节点时跳过）
+ * @param {number} coin 棋币数量
+ * @param {number} exp 经验数量
+ * @return {void}
+ */
+const set_end_reward = (coin, exp) => {
+    const c = Math.max(0, Math.trunc(Number(coin) || 0));
+    const e = Math.max(0, Math.trunc(Number(exp) || 0));
+    if (row_end_reward) row_end_reward.style.display = (c > 0 || e > 0) ? '' : 'none';
+    if (span_end_reward) span_end_reward.innerText = `${c} 棋币 · ${e} 经验`;
+};
 
 const button_end_restart = document.getElementById('button_end_restart');
 const button_end_match = document.getElementById('button_end_match');
@@ -845,6 +860,7 @@ const game_end = async () => {
     span_end_win.innerText = win_p === 'my' ? gl_my_name : gl_foe_name;
 
     // 结算画面
+    set_end_reward(0, 0);
     dialog_end.classList.remove('d-none');
     dialog_end.show();
 
@@ -870,6 +886,7 @@ const game_end = async () => {
             // 棋币与经验结算：排位模式棋币 ×3、经验 ×2，这里仅做提示
             const coin_reward = Number(uploaded && uploaded.reward) || 0;
             const exp_reward = Number(uploaded && uploaded.exp_reward) || 0;
+            set_end_reward(coin_reward, exp_reward);
             if (coin_reward > 0 || exp_reward > 0) {
                 toast.success(`本局获得 ${coin_reward} 棋币 · ${exp_reward} 经验`);
             }

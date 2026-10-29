@@ -514,10 +514,20 @@
             const dpr = window.devicePixelRatio || 1;
             challengeCanvas.width = size * dpr; challengeCanvas.height = size * dpr;
             challengeContext.setTransform(dpr, 0, 0, dpr, 0, 0);
-            challengeContext.fillStyle = '#fff'; challengeContext.fillRect(0, 0, size, size);
+            const skins = previewSkins ? previewSkins.read() : { piece: false, grass: false, board: false, board_gold: false };
+            // 棋盘风格：棋盘皮肤（青玉 / 玄金）> 虚空舰队主题 > 默认白底
+            const goldTheme = Boolean(previewSkins && skins.board_gold);
+            const jadeTheme = Boolean(previewSkins && !goldTheme && skins.board);
+            const voidTheme = Boolean(previewSkins && !goldTheme && !jadeTheme && previewSkins.theme_active());
+            if (voidTheme) previewSkins.draw_board_void(challengeContext, size);
+            else if (goldTheme) previewSkins.draw_board_gold(challengeContext, size);
+            else if (jadeTheme) previewSkins.draw_board_jade(challengeContext, size);
+            else { challengeContext.fillStyle = '#fff'; challengeContext.fillRect(0, 0, size, size); }
             const pad = size * 0.1; const spacing = (size - pad * 2) / 8;
-            const skins = previewSkins ? previewSkins.read() : { piece: false, grass: false, board: false };
-            challengeContext.strokeStyle = '#d0d0d0'; challengeContext.lineWidth = 1;
+            challengeContext.strokeStyle = voidTheme
+                ? 'rgba(255, 255, 255, 0.62)'
+                : (goldTheme ? 'rgba(245, 205, 110, 0.86)' : (jadeTheme ? 'rgba(31, 74, 55, 0.42)' : '#d0d0d0'));
+            challengeContext.lineWidth = 1;
             for (let i = 0; i < 9; i++) { const point = pad + i * spacing; challengeContext.beginPath(); challengeContext.moveTo(point, pad); challengeContext.lineTo(point, size - pad); challengeContext.stroke(); challengeContext.beginPath(); challengeContext.moveTo(pad, point); challengeContext.lineTo(size - pad, point); challengeContext.stroke(); }
             previewCells.forEach((item, index) => { if (item.stone === 'none') return; const x = index % 9; const y = Math.floor(index / 9); const px = pad + x * spacing; const py = pad + y * spacing; const color = item.stone === 'black' ? '#2c3e50' : '#ecf0f1'; if (previewSkins && previewSkins.draw_stone(challengeContext, px, py, spacing * 0.31, color, { skins })) return; challengeContext.beginPath(); challengeContext.arc(px, py, spacing * 0.31, 0, Math.PI * 2); challengeContext.fillStyle = color; challengeContext.fill(); if (item.stone === 'white') { challengeContext.strokeStyle = '#8b949e'; challengeContext.stroke(); } });
             previewCells.forEach((item, index) => { if (!item.plant) return; const x = index % 9; const y = Math.floor(index / 9); const px = pad + x * spacing; const py = pad + y * spacing; if (previewSkins && skins.grass) { const radius = Math.max(2, spacing * 0.09); const centers = item.plant === 2 ? [px - radius * 1.3, px + radius * 1.3] : [px]; centers.forEach((center_x) => previewSkins.draw_grass(challengeContext, center_x, py, radius, { skins })); return; } challengeContext.fillStyle = '#2ecc71'; for (let i = 0; i < item.plant; i++) { challengeContext.beginPath(); challengeContext.arc(px + (i - (item.plant - 1) / 2) * spacing * 0.17, py, Math.max(2, spacing * 0.055), 0, Math.PI * 2); challengeContext.fill(); } });

@@ -315,105 +315,43 @@ class Canvas {
 
 
     /**
-     * @description: 棋盘皮肤（半写实青玉）：温润玉底 + 云雾色斑 + 石纹脉络 + 内缘高光
-     * @param {CanvasRenderingContext2D} ctx
-     * @return {void}
-     */
-    draw_board_jade(ctx) {
-        const size = this.size;
-
-        // 玉底：左上受光的青玉渐变
-        const base = ctx.createLinearGradient(0, 0, size, size);
-        base.addColorStop(0, '#f1f9f2');
-        base.addColorStop(0.32, '#e0f1e4');
-        base.addColorStop(0.62, '#c8e5d3');
-        base.addColorStop(0.85, '#b3d6bf');
-        base.addColorStop(1, '#9cc6ab');
-        ctx.fillStyle = base;
-        ctx.fillRect(0, 0, size, size);
-
-        // 云雾状色斑：让玉面呈现温润的深浅层次
-        const patches = [
-            { x: 0.24, y: 0.18, r: 0.46, color: 'rgba(255, 255, 255, 0.55)' },
-            { x: 0.8, y: 0.32, r: 0.34, color: 'rgba(226, 246, 232, 0.6)' },
-            { x: 0.38, y: 0.86, r: 0.44, color: 'rgba(150, 200, 168, 0.28)' },
-            { x: 0.88, y: 0.82, r: 0.3, color: 'rgba(255, 255, 255, 0.32)' },
-        ];
-        patches.forEach((patch) => {
-            const glow = ctx.createRadialGradient(
-                size * patch.x,
-                size * patch.y,
-                0,
-                size * patch.x,
-                size * patch.y,
-                size * patch.r
-            );
-            glow.addColorStop(0, patch.color);
-            glow.addColorStop(1, 'rgba(255, 255, 255, 0)');
-            ctx.fillStyle = glow;
-            ctx.fillRect(0, 0, size, size);
-        });
-
-        // 石纹脉络：固定种子，保证每次重绘的纹理保持一致
-        let seed = 20260928;
-        const next = () => {
-            seed = (seed * 1664525 + 1013904223) >>> 0;
-            return seed / 4294967296;
-        };
-        ctx.save();
-        ctx.lineCap = 'round';
-        for (let index = 0; index < 7; index++) {
-            const x0 = next() * size * 0.7;
-            const y0 = next() * size;
-            const x1 = x0 + size * (0.25 + next() * 0.45);
-            const y1 = y0 + size * (next() - 0.5) * 0.28;
-            const c1x = x0 + (x1 - x0) * 0.35;
-            const c1y = y0 + size * (next() - 0.5) * 0.16;
-            const c2x = x0 + (x1 - x0) * 0.7;
-            const c2y = y0 + size * (next() - 0.5) * 0.16;
-            ctx.beginPath();
-            ctx.moveTo(x0, y0);
-            ctx.bezierCurveTo(c1x, c1y, c2x, c2y, x1, y1);
-            ctx.strokeStyle = index % 3 === 0 ? 'rgba(255, 255, 255, 0.34)' : 'rgba(96, 150, 118, 0.16)';
-            ctx.lineWidth = size * (0.0016 + next() * 0.0022);
-            ctx.stroke();
-        }
-        ctx.restore();
-
-        // 内缘高光 + 右下暗角：勾勒玉石厚度
-        const bevel = size * 0.012;
-        ctx.save();
-        ctx.lineWidth = bevel;
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-        ctx.strokeRect(bevel / 2, bevel / 2, size - bevel, size - bevel);
-        ctx.restore();
-        const edge = ctx.createLinearGradient(0, 0, size, size);
-        edge.addColorStop(0, 'rgba(255, 255, 255, 0.14)');
-        edge.addColorStop(1, 'rgba(46, 96, 70, 0.16)');
-        ctx.fillStyle = edge;
-        ctx.fillRect(0, 0, size, size);
-    };
-
-    /**
      * @description: 绘制棋盘（保留完美布局，追加自适应数字坐标）
      * @return {void}
      */
     draw_board() {
         const ctx = this.canvas_board.getContext('2d');
 
-        if (this.skins.board) {
+        // 棋盘风格优先级：棋盘皮肤（青玉 / 玄金）> 虚空舰队主题 > 默认白底
+        // 两套棋盘皮肤互斥，Skins.read() 已保证同一时间最多只有一套生效
+        const gold_board = this.skins.board_gold;
+        const jade_board = this.skins.board;
+        const void_theme = !gold_board && !jade_board && Skins.theme_active();
+
+        if (void_theme) {
+            Skins.draw_board_void(ctx, this.size);
+        } else if (gold_board) {
+            // 已购玄金棋盘：黑石材质 + 亮金网格（仅本机可见）
+            Skins.draw_board_gold(ctx, this.size);
+        } else if (jade_board) {
             // 已购棋盘皮肤：半写实青玉桌面（仅本机可见）
-            this.draw_board_jade(ctx);
+            Skins.draw_board_jade(ctx, this.size);
         } else {
             // 清空背景
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, this.size, this.size);
         }
 
-        // 绘制最外层粗描边
-        ctx.strokeStyle = this.skins.board ? '#1f4a37' : '#333333';
+        // 绘制最外层粗描边（玄金棋盘使用亮金描边 + 内侧暗线，仿镌刻金边）
+        ctx.strokeStyle = void_theme
+            ? 'rgba(255, 255, 255, 0.9)'
+            : (gold_board ? '#e6c16a' : (jade_board ? '#1f4a37' : '#333333'));
         ctx.lineWidth = 4;
         ctx.strokeRect(0, 0, this.size, this.size);
+        if (gold_board) {
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(2, 2, this.size - 4, this.size - 4);
+        }
 
 
         // 计算内部棋盘逻辑
@@ -429,8 +367,10 @@ class Canvas {
         const spacing_h = draw_size / cell_h;
 
 
-        // 绘制内部封闭网格线
-        ctx.strokeStyle = this.skins.board ? 'rgba(31, 74, 55, 0.42)' : '#cccccc';
+        // 绘制内部封闭网格线（玄金棋盘为“暗缝 + 亮金芯”的镌刻双线）
+        ctx.strokeStyle = void_theme
+            ? 'rgba(255, 255, 255, 0.62)'
+            : (gold_board ? '#f1cb72' : (jade_board ? 'rgba(31, 74, 55, 0.42)' : '#cccccc'));
         ctx.lineWidth = 1;
 
         ctx.beginPath();
@@ -448,7 +388,17 @@ class Canvas {
             ctx.lineTo(padding + draw_size, y);
         }
 
-        ctx.stroke();
+        if (gold_board) {
+            // 底衬暗缝：先压一道深色粗线，再叠亮金细芯，形成凹陷的金线
+            ctx.lineWidth = 2.6;
+            ctx.strokeStyle = 'rgba(8, 10, 13, 0.5)';
+            ctx.stroke();
+            ctx.lineWidth = 1.1;
+            ctx.strokeStyle = '#f1cb72';
+            ctx.stroke();
+        } else {
+            ctx.stroke();
+        }
         ctx.closePath();
 
 
@@ -463,12 +413,23 @@ class Canvas {
         // ==================== 以下为新增的纯动态坐标提示绘制 ====================
         
         // 1. 动态计算字号：让字体大小完美契合安全留白区域（留白的 80%，确保不压边）
-        const font_size = Math.floor(padding * 0.8);
-        
-        ctx.font = `bold ${font_size}px sans-serif`;
+        //    玄金棋盘的罗马数字更宽，字号单独收小，避免贴边或溢出
+        const font_size = Math.floor(padding * (gold_board ? 0.48 : 0.8));
+
+        // 玄金棋盘使用衬线字体 + 亮金色，并加轻微金色辉光
+        ctx.save();
+        if (gold_board) {
+            ctx.shadowColor = 'rgba(255, 196, 82, 0.55)';
+            ctx.shadowBlur = Math.max(1, font_size * 0.2);
+        }
+        ctx.font = gold_board
+            ? `bold ${font_size}px "Times New Roman", "Songti SC", Georgia, serif`
+            : `bold ${font_size}px sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillStyle = this.skins.board ? 'rgba(24, 58, 43, 0.62)' : 'rgba(0, 0, 0, 0.55)'; 
+        ctx.fillStyle = void_theme
+            ? 'rgba(226, 238, 255, 0.72)'
+            : (gold_board ? '#ffd77a' : (jade_board ? 'rgba(24, 58, 43, 0.62)' : 'rgba(0, 0, 0, 0.55)')); 
 
         // 2. 动态计算文字居中的轴线位置
         // 左侧文字中轴线：死死居中在最外框 (0) 到 棋盘线起点 (padding) 的中间
@@ -486,21 +447,25 @@ class Canvas {
 
         for (let i = 0; i < this.w; i++) {
             // --- A. 左侧数字绘制（从下到上递增，去掉最下方的 1 以防与底部重叠） ---
-            const display_num = this.h - i; 
+            const display_num = this.h - i;
+            // 玄金棋盘改用罗马数字（I、II、…、IX）
+            const display_label = gold_board ? Skins.to_roman(display_num) : display_num;
             if (display_num !== 1) {
                 const left_y = left_start_y + i * left_spacing;
-                ctx.fillText(display_num, text_left_x, left_y);
+                ctx.fillText(display_label, text_left_x, left_y);
             }
 
             // --- B. 底部数字绘制（1 到 N 严格对齐纵线坐标） ---
             const line_pos = padding + i * spacing_w;
+            const bottom_label = gold_board ? Skins.to_roman(i + 1) : i + 1;
             if (i === 0) {
                 // 第一个数字“1”应用安全位移
-                ctx.fillText(i + 1, line_pos - first_num_offset, text_bottom_y);
+                ctx.fillText(bottom_label, line_pos - first_num_offset, text_bottom_y);
             } else {
-                ctx.fillText(i + 1, line_pos, text_bottom_y);
+                ctx.fillText(bottom_label, line_pos, text_bottom_y);
             }
         }
+        ctx.restore();
         // ====================================================================
 
     };
@@ -939,8 +904,8 @@ class Canvas {
         const y = this.offset + gy * this.spacing;
         const radius = this.spacing * this.plant_radius;
 
-        // 草生成特效：反曲点皮肤启用时同步使用蓝色光晕
-        this.effect.plant(x, y, radius, count, this.skins.grass);
+        // 草生成特效：草皮肤启用时同步使用对应光晕（金菱草为金色，反曲点为蓝色）
+        this.effect.plant(x, y, radius, count, this.skins.grass_gold ? 'gold' : this.skins.grass);
     };
 
     /**
