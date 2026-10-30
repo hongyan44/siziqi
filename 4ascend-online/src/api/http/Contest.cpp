@@ -17,8 +17,13 @@
 #include <cinatra/coro_http_request.hpp>
 #include <cinatra/coro_http_response.hpp>
 
+#include <algorithm>
+#include <functional>
+#include <map>
+#include <set>
 #include <string>
 #include <string_view>
+#include <vector>
 
 
 namespace Api {
@@ -70,6 +75,73 @@ jsoncons::json signup_json(const Manager::Contest::SignupRecord& record) noexcep
     value["creator"] = record.creator;
     value["updated_at"] = record.updated_at;
     return value;
+}
+
+// 是否为本届赛事的决赛方块：入度 > 0 且出度 = 0 的终端方块中路径最深的那个（与前端 final_node_id 判定一致）
+bool is_final_node(const jsoncons::json& bracket, std::string_view node_id) noexcept {
+    if (!bracket.contains("nodes") || !bracket.at("nodes").is_array()) return false;
+    const auto& nodes_json = bracket.at("nodes");
+    if (nodes_json.size() < 2) return false;
+
+    std::map<std::string, int64_t> indegree;
+    std::map<std::string, int64_t> outdegree;
+    std::vector<std::string> order;
+    for (const auto& node : nodes_json.array_range()) {
+        if (!node.is_object()) continue;
+        std::string id;
+        try { id = node.at("id").as<std::string>(); } catch (...) { continue; }
+        if (id.empty() || indegree.count(id)) continue;
+        indegree[id]  = 0;
+        outdegree[id] = 0;
+        order.push_back(id);
+    }
+    if (order.size() < 2) return false;
+
+    std::map<std::string, std::vector<std::string>> predecessors;
+    if (bracket.contains("edges") && bracket.at("edges").is_array()) {
+        for (const auto& edge : bracket.at("edges").array_range()) {
+            if (!edge.is_object()) continue;
+            std::string from, to;
+            try { from = edge.at("from").as<std::string>(); } catch (...) { continue; }
+            try { to = edge.at("to").as<std::string>(); } catch (...) { continue; }
+            if (!indegree.count(from) || !indegree.count(to)) continue;
+            outdegree[from] += 1;
+            indegree[to] += 1;
+            predecessors[to].push_back(from);
+        }
+    }
+
+    // 深度：从起点到该节点的最长路径；遇到环时按 0 断开，避免死循环。
+    std::map<std::string, int64_t> depth;
+    std::set<std::string> visiting;
+    std::function<int64_t(const std::string&)> visit = [&](const std::string& id) -> int64_t {
+        const auto cached = depth.find(id);
+        if (cached != depth.end()) return cached->second;
+        if (visiting.count(id)) return 0;
+        visiting.insert(id);
+        int64_t value = 0;
+        const auto preds = predecessors.find(id);
+        if (preds != predecessors.end()) {
+            for (const auto& pred : preds->second) value = std::max(value, visit(pred) + 1);
+        }
+        visiting.erase(id);
+        depth[id] = value;
+        return value;
+    };
+    for (const auto& id : order) visit(id);
+
+    std::string best;
+    int64_t best_depth = -1;
+    for (const auto& id : order) {
+        if (indegree[id] <= 0 || outdegree[id] != 0) continue;
+        const int64_t value = depth[id];
+        // 路径深度并列时取节点顺序靠后的一个（与前端一致）
+        if (value >= best_depth) {
+            best       = id;
+            best_depth = value;
+        }
+    }
+    return !best.empty() && best == node_id;
 }
 } // namespace
 
@@ -515,6 +587,12 @@ void match_report(cinatra::coro_http_request& request, cinatra::coro_http_respon
         const int64_t wins_a = json_i64(wins, a_uuid, 0);
         const int64_t wins_b = json_i64(wins, b_uuid, 0);
         const bool completed = wins_a >= target || wins_b >= target;
+
+        // 决赛分出胜负后，冠军获得一张 3000 棋币兑换券；以决赛方块去重，重复上报不会重复发放。
+        if (completed && is_final_node(bracket, node_id)) {
+            const std::string champion_uuid = wins_a > wins_b ? a_uuid : b_uuid;
+            if (Manager::Contest::claim_champion_voucher(node_id)) Manager::User::add_vouchers(champion_uuid, 1);
+        }
 
         const auto now = static_cast<int64_t>(Libs::Only::Time::timestamp_ms());
         group_result["games"] = games;

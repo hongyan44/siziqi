@@ -41,5 +41,8 @@ bool update_rules(std::string_view data, std::string_view creator, uint64_t upda
 
 bool query_signup(SignupRecord& result) noexcept;
 bool update_signup(std::string_view data, std::string_view creator, uint64_t updated_at) noexcept;
+
+// 冠军奖励领取标记：同一决赛方块只允许领取一次（首次插入返回 true，重复返回 false）
+bool claim_champion_voucher(std::string_view node_id) noexcept;
 } // namespace Contest
 } // namespace Manager

@@ -23,6 +23,7 @@ sqlite3_stmt* p_rules_query = nullptr;
 sqlite3_stmt* p_rules_update = nullptr;
 sqlite3_stmt* p_signup_query = nullptr;
 sqlite3_stmt* p_signup_update = nullptr;
+sqlite3_stmt* p_claim_champion = nullptr;
 
 void bind_text(sqlite3_stmt* statement, int index, std::string_view value) noexcept {
     sqlite3_bind_text(statement, index, value.data(), static_cast<int>(value.size()), SQLITE_TRANSIENT);
@@ -87,6 +88,16 @@ void init() noexcept {
     );
     sqlite3_prepare_v2(db, "SELECT data, creator, updated_at FROM signup WHERE id = 1", -1, &p_signup_query, nullptr);
     sqlite3_prepare_v2(db, "INSERT INTO signup(id, data, creator, updated_at) VALUES (1, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data, creator = excluded.creator, updated_at = excluded.updated_at", -1, &p_signup_update, nullptr);
+
+    // 冠军奖励领取标记：以决赛方块 id 去重，避免双方重复上报导致重复发放。
+    sqlite3_exec(
+        db,
+        "CREATE TABLE IF NOT EXISTS champion_claims (node_id TEXT PRIMARY KEY) STRICT",
+        nullptr,
+        nullptr,
+        nullptr
+    );
+    sqlite3_prepare_v2(db, "INSERT OR IGNORE INTO champion_claims (node_id) VALUES (?);", -1, &p_claim_champion, nullptr);
 }
 
 void close() noexcept {
@@ -96,12 +107,14 @@ void close() noexcept {
     sqlite3_finalize(p_rules_update);
     sqlite3_finalize(p_signup_query);
     sqlite3_finalize(p_signup_update);
+    sqlite3_finalize(p_claim_champion);
     p_query = nullptr;
     p_update = nullptr;
     p_rules_query = nullptr;
     p_rules_update = nullptr;
     p_signup_query = nullptr;
     p_signup_update = nullptr;
+    p_claim_champion = nullptr;
     if (db) sqlite3_close(db);
     db = nullptr;
 }
@@ -173,6 +186,15 @@ bool update_signup(std::string_view data, std::string_view creator, uint64_t upd
     const int rc = sqlite3_step(p_signup_update);
     reset(p_signup_update);
     return rc == SQLITE_DONE;
+}
+
+bool claim_champion_voucher(std::string_view node_id) noexcept {
+    if (!db || !p_claim_champion || node_id.empty()) return false;
+    bind_text(p_claim_champion, 1, node_id);
+    const int rc      = sqlite3_step(p_claim_champion);
+    const int changed = sqlite3_changes(db);
+    reset(p_claim_champion);
+    return rc == SQLITE_DONE && changed == 1;
 }
 } // namespace Contest
 } // namespace Manager

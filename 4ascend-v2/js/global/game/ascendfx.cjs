@@ -253,7 +253,8 @@ class AscendFx {
         ctx.globalAlpha = s.alpha === undefined ? 1 : s.alpha;
 
         // 已购棋子皮肤：盘旋中的棋子同样替换（保留发光效果）
-        if (!Skins.draw_stone(ctx, s.x, s.y, r, s.color, { skins, glow: true, glow_blur: 10 })) {
+        // ascend: true 表示这枚棋子正在成打盘旋，高级定制棋子会切换为「打」的强化纹理
+        if (!Skins.draw_stone(ctx, s.x, s.y, r, s.color, { skins, glow: true, glow_blur: 10, ascend: true })) {
             // 发光棋子
             ctx.beginPath();
             ctx.arc(s.x, s.y, r, 0, Math.PI * 2);

@@ -94,6 +94,17 @@ window.http_user_info = async (token) => {
 };
 
 /**
+ * @description: 使用一张 3000 棋币兑换券（背包内使用，成功时增加 3000 棋币）
+ * @param {string} token
+ * @return {Promise<{ok: boolean, reason: string, coin: number, vouchers: number} | void>}
+ */
+window.http_user_voucher_use = async (token) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/voucher_use`, { token });
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+/**
  * @description: 查询残局关卡
  * @return {Promise<Array>}
  */
@@ -311,9 +322,9 @@ window.http_user_unlock_level = async (token, secret) => {
 };
 
 /**
- * @description: 商店购买（权限码 level2 / level3 与皮肤 piece / grass / board）
+ * @description: 商店购买（权限码 level2 / level3 与皮肤 piece / piece_rouge / grass / board）
  * @param {string} token
- * @param {'level2'|'level3'|'piece'|'grass'|'grass_gold'|'board'|'board_gold'} item
+ * @param {'level2'|'level3'|'piece'|'piece_rouge'|'grass'|'grass_gold'|'board'|'board_gold'} item
  * @return {Promise<{ok: boolean, reason: string, level: number, coin: number, exp_level: number, exp_cur: number, exp_need: number, skins: string[]} | void>}
  */
 window.http_shop_buy = async (token, item) => {

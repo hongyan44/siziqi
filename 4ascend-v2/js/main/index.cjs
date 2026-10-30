@@ -52,6 +52,7 @@ const range_click_time = document.getElementById('range_click_time');
 const range_click_level = document.getElementById('range_click_level');
 
 const switch_skin_piece = document.getElementById('switch_skin_piece');
+const switch_skin_piece_rouge = document.getElementById('switch_skin_piece_rouge');
 const switch_skin_grass = document.getElementById('switch_skin_grass');
 const switch_skin_grass_gold = document.getElementById('switch_skin_grass_gold');
 const switch_skin_board = document.getElementById('switch_skin_board');
@@ -59,6 +60,7 @@ const switch_skin_board_gold = document.getElementById('switch_skin_board_gold')
 const switch_skin_theme = document.getElementById('switch_skin_theme');
 
 const text_skin_piece = document.getElementById('text_skin_piece');
+const text_skin_piece_rouge = document.getElementById('text_skin_piece_rouge');
 const text_skin_grass = document.getElementById('text_skin_grass');
 const text_skin_grass_gold = document.getElementById('text_skin_grass_gold');
 const text_skin_board = document.getElementById('text_skin_board');
@@ -487,6 +489,7 @@ const user_info = async (token) => {
             try {
                 localStorage.setItem('4a_skins', JSON.stringify({
                     piece: info.skins.includes('piece'),
+                    piece_rouge: info.skins.includes('piece_rouge'),
                     grass: info.skins.includes('grass'),
                     grass_gold: info.skins.includes('grass_gold'),
                     board: info.skins.includes('board'),
@@ -896,12 +899,13 @@ button_clear_submit.addEventListener('pointerdown', async (event) => {
 
 // 皮肤开关：只有已购皮肤可以切换，未拥有时禁用并提示去棋币商店购买
 const SKIN_ROWS = [
-    { id: 'piece', switch_el: switch_skin_piece, text_el: text_skin_piece, desc: '半写实球体，同时替换黑白双方棋子' },
+    { id: 'piece', switch_el: switch_skin_piece, text_el: text_skin_piece, desc: '棋子经典材质，同时替换黑白双方棋子' },
+    { id: 'piece_rouge', switch_el: switch_skin_piece_rouge, text_el: text_skin_piece_rouge, desc: '红皮革层叠与黑布镶金，成打时纹理加深' },
     { id: 'grass', switch_el: switch_skin_grass, text_el: text_skin_grass, desc: '中心蓝色高亮，外圈黑红交替渐变环' },
     { id: 'grass_gold', switch_el: switch_skin_grass_gold, text_el: text_skin_grass_gold, desc: '金色菱形渐变，中心高光' },
-    { id: 'board', switch_el: switch_skin_board, text_el: text_skin_board, desc: '半写实青玉棋盘' },
+    { id: 'board', switch_el: switch_skin_board, text_el: text_skin_board, desc: '玉中乾坤棋盘' },
     { id: 'board_gold', switch_el: switch_skin_board_gold, text_el: text_skin_board_gold, desc: '黑石盘面，亮金色网格与罗马数字' },
-    { id: 'theme', switch_el: switch_skin_theme, text_el: text_skin_theme, desc: '蓝黑主调的星际舰桥界面，红色警示点缀' },
+    { id: 'theme', switch_el: switch_skin_theme, text_el: text_skin_theme, desc: '蓝黑舰桥界面 + 虚空能量棋子与反曲点环' },
 ];
 
 const render_skin_settings = () => {
@@ -920,8 +924,9 @@ const render_skin_settings = () => {
     });
 };
 
-// 两套草皮肤 / 两套棋盘皮肤互斥：开启一套时自动关闭另一套
-[[switch_skin_grass, switch_skin_grass_gold], [switch_skin_grass_gold, switch_skin_grass],
+// 两套棋子皮肤 / 两套草皮肤 / 两套棋盘皮肤互斥：开启一套时自动关闭另一套
+[[switch_skin_piece, switch_skin_piece_rouge], [switch_skin_piece_rouge, switch_skin_piece],
+    [switch_skin_grass, switch_skin_grass_gold], [switch_skin_grass_gold, switch_skin_grass],
     [switch_skin_board, switch_skin_board_gold], [switch_skin_board_gold, switch_skin_board]]
     .forEach(([self_el, other_el]) => {
         if (!self_el || !other_el) return;
@@ -941,11 +946,12 @@ const button_backpack_close = document.getElementById('button_backpack_close');
 
 const BAG_SKIN_NAMES = {
     piece: '棋子皮肤',
+    piece_rouge: '棋子皮肤：Le Rouge et Le Noir',
     grass: '反曲点皮肤',
-    grass_gold: '金菱草皮肤',
+    grass_gold: '草皮肤：黄金',
     board: '棋盘皮肤',
     board_gold: '棋盘-黑派',
-    theme: '风格 UI · 虚空舰队',
+    theme: '替换UI：幽蓝时空',
 };
 
 let backpack_tab = 'consume';
@@ -959,6 +965,9 @@ let backpack_info = null;
 const backpack_skin_icon = (id) => {
     if (id === 'piece') {
         return `<svg viewBox='0 0 32 32' aria-hidden='true'><circle cx='11' cy='16' r='8' fill='#26303c'/><circle cx='21' cy='16' r='8' fill='#f1eee5' stroke='#c3bcaa'/></svg>`;
+    }
+    if (id === 'piece_rouge') {
+        return `<svg viewBox='0 0 32 32' aria-hidden='true'><defs><linearGradient id='bag-rouge-red' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#e15a64'/><stop offset='1' stop-color='#6a1220'/></linearGradient><linearGradient id='bag-rouge-noir' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#33383f'/><stop offset='1' stop-color='#05070a'/></linearGradient></defs><circle cx='11' cy='16' r='8' fill='url(#bag-rouge-red)' stroke='#ffd9a0' stroke-width='0.9'/><path d='M6 12l10 4M5 17l12 4' stroke='rgba(255,230,200,.5)' stroke-width='1.2'/><circle cx='21' cy='16' r='8' fill='url(#bag-rouge-noir)' stroke='#c9a24f' stroke-width='0.9'/><path d='M21 9v14M21 13l5.5-3M21 13l-5.5-3M21 19l5.5 3M21 19l-5.5 3' stroke='#f0c86a' stroke-width='1.3'/></svg>`;
     }
     if (id === 'grass') {
         return `<svg viewBox='0 0 32 32' aria-hidden='true'><circle cx='16' cy='16' r='12' fill='none' stroke='#c92b3e' stroke-width='3'/><circle cx='16' cy='16' r='6' fill='#3fa8f5'/></svg>`;
@@ -1000,7 +1009,16 @@ const backpack_render_coin = (coin) => {
 const backpack_render_consume = () => {
     if (!backpack_pane) return;
     const tickets = Math.max(0, Math.trunc(Number(backpack_info && backpack_info.tickets) || 0));
+    const vouchers = Math.max(0, Math.trunc(Number(backpack_info && backpack_info.vouchers) || 0));
     backpack_pane.innerHTML = `
+<div class='bag-item'>
+    <div class='bag-ticket-icon is-voucher'><span>3000</span><i>棋币</i></div>
+    <div class='bag-item-main'>
+        <div class='bag-item-name'>3000棋币兑换券<span class='bag-count'>×${vouchers}</span></div>
+        <div class='bag-item-desc'>消耗品：赛事冠军奖励，在背包中使用后获得 3000 棋币。</div>
+    </div>
+    ${vouchers > 0 ? `<sl-button size='small' variant='primary' data-bag-voucher-use>使用</sl-button>` : `<sl-button size='small' variant='primary' outline disabled>使用</sl-button>`}
+</div>
 <div class='bag-item'>
     <div class='bag-ticket-icon'><span>投稿</span><i>单局</i></div>
     <div class='bag-item-main'>
@@ -1009,6 +1027,41 @@ const backpack_render_consume = () => {
     </div>
     ${tickets > 0 ? '' : `<sl-button size='small' variant='primary' outline href='/pages/user/shop.html' target='_self'>去商店购买</sl-button>`}
 </div>`;
+
+    const use_button = backpack_pane.querySelector('[data-bag-voucher-use]');
+    if (use_button) use_button.addEventListener('click', () => backpack_voucher_use(use_button));
+};
+
+/**
+ * @description: 在背包中使用一张 3000 棋币兑换券
+ * @param {HTMLElement} button
+ * @return {Promise<void>}
+ */
+const backpack_voucher_use = async (button) => {
+    if (!backpack_info || !button || button.disabled) return;
+    const token = typeof window.get_token === 'function' ? window.get_token() : null;
+    if (!token || typeof window.http_user_voucher_use !== 'function') return;
+
+    button.disabled = true;
+    let result = null;
+    try {
+        result = await window.http_user_voucher_use(token);
+    } catch (_) {
+        result = null;
+    } finally {
+        button.disabled = false;
+    }
+
+    if (!result) return toast.error('使用失败，请稍后重试');
+    if (!result.ok) return toast.error(result.reason === 'none' ? '没有可用的 3000 棋币兑换券' : '使用失败，请稍后重试');
+
+    backpack_info.coin = Math.max(0, Math.trunc(Number(result.coin) || 0));
+    backpack_info.vouchers = Math.max(0, Math.trunc(Number(result.vouchers) || 0));
+    toast.success('已使用 1 张 3000 棋币兑换券，获得 3000 棋币');
+    backpack_render_coin(backpack_info.coin);
+    // 账号信息里的「我的背包」入口同步显示最新棋币
+    if (block_user_wallet && window.WalletUI) window.WalletUI.render_panel(block_user_wallet, backpack_info, { backpack: true });
+    await backpack_render();
 };
 
 /**
@@ -1079,8 +1132,10 @@ const backpack_render_skins = () => {
             const id = node.dataset.bagSkin;
             const next = Skins.prefs();
             next[id] = Boolean(node.checked);
-            // 两套草皮肤 / 两套棋盘皮肤互斥：切换一套时关闭另一套
+            // 两套棋子皮肤 / 两套草皮肤 / 两套棋盘皮肤互斥：切换一套时关闭另一套
             let other_id = null;
+            if (id === 'piece') other_id = 'piece_rouge';
+            if (id === 'piece_rouge') other_id = 'piece';
             if (id === 'grass') other_id = 'grass_gold';
             if (id === 'grass_gold') other_id = 'grass';
             if (id === 'board') other_id = 'board_gold';
@@ -1226,6 +1281,12 @@ button_local_submit.addEventListener('click', () => {
         SKIN_ROWS.forEach((row) => {
             if (owned[row.id] && row.switch_el) prefs[row.id] = !!row.switch_el.checked;
         });
+        // 两套棋子皮肤互斥：都拥有时只保留当前开启的那一套
+        if (owned.piece && owned.piece_rouge) {
+            const rouge_on = !!switch_skin_piece_rouge.checked;
+            prefs.piece_rouge = rouge_on;
+            prefs.piece = !rouge_on && !!switch_skin_piece.checked;
+        }
         // 两套草皮肤互斥：都拥有时只保留当前开启的那一套
         if (owned.grass && owned.grass_gold) {
             const grass_gold_on = !!switch_skin_grass_gold.checked;
