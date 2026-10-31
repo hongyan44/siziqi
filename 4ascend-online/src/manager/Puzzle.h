@@ -53,10 +53,16 @@ bool query_daily(DailyRecord& result) noexcept;
 bool update_daily(std::string_view title, std::string_view code, std::string_view creator, uint64_t updated_at) noexcept;
 
 bool add_submission(std::string_view target, uint32_t level, std::string_view title, std::string_view code, std::string_view creator, uint64_t created_at, uint64_t& id) noexcept;
+// 审核前修改待审核投稿（仅 status=0 可改），用于管理员纠正投稿位置/名称/残局码
+bool update_submission(uint64_t id, std::string_view target, uint32_t level, std::string_view title, std::string_view code) noexcept;
 bool list_submissions(std::string_view creator, int status_filter, std::vector<Submission>& out) noexcept;
-bool review_submission(uint64_t id, bool approve, std::string_view reviewer, uint64_t now, bool allow_overwrite, bool& slot_occupied) noexcept;
+// 审核投稿：通过时发布到目标位置并返回投稿人 uuid，供上层发放投稿奖励
+bool review_submission(uint64_t id, bool approve, std::string_view reviewer, uint64_t now, bool allow_overwrite, bool& slot_occupied, std::string& creator) noexcept;
 
 // 记录首次通关：ref 为关卡号或每日残局版本，首次写入返回 true，重复通关返回 false
 bool claim_clear(std::string_view uuid, std::string_view target, int64_t ref, uint64_t cleared_at) noexcept;
+
+// 统计玩家已破解的不同残局数量：按 (target, ref) 去重后的首通记录数
+bool count_clears(std::string_view uuid, int64_t& count) noexcept;
 } // namespace Puzzle
 } // namespace Manager

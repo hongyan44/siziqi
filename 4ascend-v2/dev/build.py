@@ -130,6 +130,7 @@ def main() -> None:
         copy_file(f"vendor/onnxruntime-web/{name}", f"root/vendor/onnxruntime-web/{name}")
     copy_file("model/4ascend-zero.onnx", "root/model/4ascend-zero.onnx")
     copy_file("model/4ascend-zero.json", "root/model/4ascend-zero.json")
+    copy_file("model/4ascend-fish.onnx", "root/model/4ascend-fish.onnx")
     copy_file("vendor/comlink/comlink.min.js", "root/vendor/comlink/comlink.min.js")
     copy_file("vendor/comlink/LICENSE", "root/vendor/comlink/LICENSE")
 

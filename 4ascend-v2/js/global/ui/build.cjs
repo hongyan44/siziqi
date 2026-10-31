@@ -5,6 +5,7 @@
  */
 const { ShToast } = require('./toast.cjs');
 const { Skins } = require('../game/skin.cjs');
+const { VoidScene } = require('./voidscene.cjs');
 
 
-window.UiExports = { ShToast, Skins };
+window.UiExports = { ShToast, Skins, VoidScene };

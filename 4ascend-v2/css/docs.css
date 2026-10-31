@@ -6,6 +6,46 @@ body {
     /* 确保背景纯净 */
 }
 
+/* 文档页需要允许选中复制正文，覆盖全局禁用选择 */
+html body {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
+}
+
+/* 页面骨架：顶部操作条留白 + 标题区 + 正文卡片 */
+.docs-main {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 64px 16px 32px;
+}
+
+.docs-hero {
+    max-width: 900px;
+    margin: 0 auto;
+    text-align: center;
+}
+
+.docs-hero-icon {
+    font-size: 2.6rem;
+    color: var(--sl-color-primary-600, #3498db);
+}
+
+.docs-hero-title {
+    margin: 0.55rem 0 0.25rem;
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    color: #2c3e50;
+}
+
+.docs-hero-sub {
+    margin: 0;
+    font-size: 0.84rem;
+    color: #6c757d;
+}
+
 /* 2. 优化 Markdown 容器 */
 .markdown-body {
     box-sizing: border-box;
@@ -29,6 +69,14 @@ body {
     body {
         padding: 0;
         /* 手机端取消 body 外边距 */
+    }
+
+    .docs-main {
+        padding: 56px 0 24px;
+    }
+
+    .docs-hero {
+        padding: 0 16px;
     }
 
     .markdown-body {
@@ -57,4 +105,206 @@ body {
     border-bottom: 2px solid #3498db;
     /* 改用蓝色线条，更有活力 */
     color: #2c3e50;
+}
+
+/* ==========================================
+   替换 UI「幽蓝时空」：文档页跟随虚空舰队主题
+   与 global.css 的 html.theme-void 配套使用
+   ========================================== */
+
+html.theme-void .docs-hero-icon {
+    color: #ff7586;
+}
+
+html.theme-void .docs-hero-title {
+    color: #dbe6f7;
+}
+
+html.theme-void .docs-hero-sub {
+    color: #8499b8;
+}
+
+/* 正文卡片改为深空舷窗质感，略微透出背后的动态星景 */
+html.theme-void .markdown-body {
+    background-color: rgba(8, 18, 31, 0.74);
+    border-color: rgba(80, 132, 190, 0.34);
+    color: #cfdcf3;
+    box-shadow: 0 0 32px rgba(10, 40, 80, 0.35);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+}
+
+html.theme-void .markdown-body h1,
+html.theme-void .markdown-body h2,
+html.theme-void .markdown-body h3,
+html.theme-void .markdown-body h4,
+html.theme-void .markdown-body h5,
+html.theme-void .markdown-body h6 {
+    color: #dbe6f7;
+    border-bottom-color: rgba(80, 132, 190, 0.28);
+}
+
+html.theme-void .markdown-body h1,
+html.theme-void .markdown-body h2 {
+    border-bottom-color: rgba(226, 57, 78, 0.42);
+}
+
+html.theme-void .markdown-body p,
+html.theme-void .markdown-body li,
+html.theme-void .markdown-body dt,
+html.theme-void .markdown-body dd,
+html.theme-void .markdown-body th,
+html.theme-void .markdown-body td {
+    color: #cfdcf3;
+}
+
+html.theme-void .markdown-body a {
+    color: #82b6ea;
+}
+
+html.theme-void .markdown-body strong {
+    color: #eaf2ff;
+}
+
+html.theme-void .markdown-body code,
+html.theme-void .markdown-body kbd,
+html.theme-void .markdown-body samp {
+    background-color: rgba(22, 40, 61, 0.9);
+    color: #9fd0ff;
+    border-color: rgba(80, 132, 190, 0.28);
+}
+
+html.theme-void .markdown-body pre {
+    background-color: rgba(7, 16, 28, 0.92);
+    border: 1px solid rgba(80, 132, 190, 0.24);
+    color: #dbe6f7;
+}
+
+html.theme-void .markdown-body pre code {
+    background-color: transparent;
+    color: #dbe6f7;
+}
+
+html.theme-void .markdown-body hr {
+    background-color: rgba(80, 132, 190, 0.28);
+    border-color: rgba(80, 132, 190, 0.28);
+}
+
+html.theme-void .markdown-body table th,
+html.theme-void .markdown-body table td {
+    border-color: rgba(80, 132, 190, 0.34);
+}
+
+html.theme-void .markdown-body table tr {
+    background-color: transparent;
+}
+
+html.theme-void .markdown-body table tr:nth-child(2n) {
+    background-color: rgba(22, 40, 61, 0.5);
+}
+
+html.theme-void .markdown-body blockquote {
+    color: #8499b8;
+    border-left-color: rgba(80, 132, 190, 0.4);
+}
+
+/* ==========================================
+   替换 UI「黑派」：文档页跟随黑石亮金主题
+   与 global.css 的 html.theme-black 配套使用
+   ========================================== */
+
+html.theme-black .docs-hero-icon {
+    color: #f0c775;
+}
+
+html.theme-black .docs-hero-title {
+    color: #efe6d4;
+}
+
+html.theme-black .docs-hero-sub {
+    color: #9d957f;
+}
+
+/* 正文卡片改为黑金石材，略微透出背后的动态大厅 */
+html.theme-black .markdown-body {
+    background-color: rgba(18, 18, 22, 0.76);
+    border-color: rgba(214, 178, 94, 0.34);
+    color: #e6ddcb;
+    box-shadow: 0 0 32px rgba(60, 46, 20, 0.35);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+}
+
+html.theme-black .markdown-body h1,
+html.theme-black .markdown-body h2,
+html.theme-black .markdown-body h3,
+html.theme-black .markdown-body h4,
+html.theme-black .markdown-body h5,
+html.theme-black .markdown-body h6 {
+    color: #efe6d4;
+    border-bottom-color: rgba(214, 178, 94, 0.26);
+}
+
+html.theme-black .markdown-body h1,
+html.theme-black .markdown-body h2 {
+    border-bottom-color: rgba(226, 187, 104, 0.46);
+}
+
+html.theme-black .markdown-body p,
+html.theme-black .markdown-body li,
+html.theme-black .markdown-body dt,
+html.theme-black .markdown-body dd,
+html.theme-black .markdown-body th,
+html.theme-black .markdown-body td {
+    color: #e6ddcb;
+}
+
+html.theme-black .markdown-body a {
+    color: #e3bd77;
+}
+
+html.theme-black .markdown-body strong {
+    color: #f7efdd;
+}
+
+html.theme-black .markdown-body code,
+html.theme-black .markdown-body kbd,
+html.theme-black .markdown-body samp {
+    background-color: rgba(34, 34, 42, 0.9);
+    color: #f2cb80;
+    border-color: rgba(214, 178, 94, 0.28);
+}
+
+html.theme-black .markdown-body pre {
+    background-color: rgba(10, 10, 12, 0.92);
+    border: 1px solid rgba(214, 178, 94, 0.24);
+    color: #e6ddcb;
+}
+
+html.theme-black .markdown-body pre code {
+    background-color: transparent;
+    color: #e6ddcb;
+}
+
+html.theme-black .markdown-body hr {
+    background-color: rgba(214, 178, 94, 0.26);
+    border-color: rgba(214, 178, 94, 0.26);
+}
+
+html.theme-black .markdown-body table th,
+html.theme-black .markdown-body table td {
+    border-color: rgba(214, 178, 94, 0.32);
+}
+
+html.theme-black .markdown-body table tr {
+    background-color: transparent;
+}
+
+html.theme-black .markdown-body table tr:nth-child(2n) {
+    background-color: rgba(34, 34, 42, 0.5);
+}
+
+html.theme-black .markdown-body blockquote {
+    color: #9d957f;
+    border-left-color: rgba(214, 178, 94, 0.4);
 }

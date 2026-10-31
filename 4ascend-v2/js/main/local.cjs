@@ -66,12 +66,14 @@ button_server_join.addEventListener('pointerdown', (event) => {
     if (event.target !== button_server_join) return;
 
     const archive = input_server_archive.value;
+    const health = Number(input_server_health.value);
 
     if (archive !== '' && !ArchiveV0.load(BaseZalgo.decode(archive))) return toast.error('非法对局存档！');
+    else if (!Number.isInteger(health) || health < 2 || health > 100) return toast.error('生命值需为 2-100 的整数！');
 
     Local.setup(
         input_server_archive.value,
-        Number(input_server_health.value),
+        health,
         input_server_board.value,
         select_server_balance.value,
         select_server_mode.value,

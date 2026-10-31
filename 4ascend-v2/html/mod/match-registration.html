@@ -76,6 +76,37 @@
             margin-bottom: 0.5rem;
         }
 
+        /* 抽签地图配色：默认白底蓝线，风格 UI 生效时由下方两套主题覆盖 */
+        :root {
+            --bracket-canvas-bg: #fff;
+            --bracket-canvas-border: rgba(13, 110, 253, 0.14);
+            --bracket-grid-dot: rgba(13, 110, 253, 0.08);
+            --bracket-edge-stroke: rgba(13, 110, 253, 0.45);
+            --bracket-node-bg: #ffffff;
+            --bracket-node-border: rgba(13, 110, 253, 0.5);
+            --bracket-node-shadow: 0 0.25rem 0.9rem rgba(13, 110, 253, 0.08);
+            --bracket-node-hover-border: rgba(13, 110, 253, 0.85);
+            --bracket-node-hover-shadow: 0 0.4rem 1.2rem rgba(13, 110, 253, 0.16);
+            --bracket-node-drag-border: rgba(13, 110, 253, 0.9);
+            --bracket-node-drag-shadow: 0 0.6rem 1.6rem rgba(13, 110, 253, 0.24);
+            --bracket-node-head-border: rgba(13, 110, 253, 0.16);
+            --bracket-final-border: rgba(201, 145, 30, 0.78);
+            --bracket-final-shadow: 0 0.25rem 0.9rem rgba(201, 145, 30, 0.16);
+            --bracket-final-hover-border: rgba(201, 145, 30, 1);
+            --bracket-final-hover-shadow: 0 0.4rem 1.2rem rgba(201, 145, 30, 0.24);
+            --bracket-final-badge-bg: linear-gradient(135deg, #fde68a, #eab308);
+            --bracket-final-badge-color: #78350f;
+            --bracket-card-bg: #fff;
+            --bracket-card-border: rgba(13, 110, 253, 0.2);
+            --bracket-card-head-border: rgba(13, 110, 253, 0.12);
+            --bracket-card-head-bg: rgba(13, 110, 253, 0.04);
+            --bracket-card-head-color: var(--sl-color-primary-700);
+            --bracket-score-border: rgba(13, 110, 253, 0.3);
+            --bracket-score-bg: rgba(13, 110, 253, 0.04);
+            --bracket-score-value-color: var(--sl-color-primary-700);
+            --bracket-win-color: var(--sl-color-success-600);
+        }
+
         /* 节点地图画布 */
         .bracket-wrap {
             position: relative;
@@ -85,14 +116,14 @@
             position: relative;
             height: 480px;
             overflow: auto;
-            border: 1px solid rgba(13, 110, 253, 0.14);
+            border: 1px solid var(--bracket-canvas-border);
             border-radius: 0.85rem;
-            background-color: #fff;
+            background: var(--bracket-canvas-bg);
         }
 
         .bracket-spacer {
             position: relative;
-            background-image: radial-gradient(rgba(13, 110, 253, 0.08) 1px, transparent 1px);
+            background-image: radial-gradient(var(--bracket-grid-dot) 1px, transparent 1px);
             background-size: 18px 18px;
         }
 
@@ -125,10 +156,10 @@
         .bracket-node {
             position: absolute;
             width: 240px;
-            background: #ffffff;
-            border: 1.5px solid rgba(13, 110, 253, 0.5);
+            background: var(--bracket-node-bg);
+            border: 1.5px solid var(--bracket-node-border);
             border-radius: 0.5rem;
-            box-shadow: 0 0.25rem 0.9rem rgba(13, 110, 253, 0.08);
+            box-shadow: var(--bracket-node-shadow);
             cursor: pointer;
             user-select: none;
             touch-action: none;
@@ -137,14 +168,14 @@
 
         .bracket-node:hover,
         .bracket-node:focus-visible {
-            border-color: rgba(13, 110, 253, 0.85);
-            box-shadow: 0 0.4rem 1.2rem rgba(13, 110, 253, 0.16);
+            border-color: var(--bracket-node-hover-border);
+            box-shadow: var(--bracket-node-hover-shadow);
             outline: none;
         }
 
         .bracket-node.dragging {
-            box-shadow: 0 0.6rem 1.6rem rgba(13, 110, 253, 0.24);
-            border-color: rgba(13, 110, 253, 0.9);
+            box-shadow: var(--bracket-node-drag-shadow);
+            border-color: var(--bracket-node-drag-border);
             z-index: 5;
         }
 
@@ -169,6 +200,12 @@
             white-space: nowrap;
         }
 
+        .bracket-edges path {
+            stroke: var(--bracket-edge-stroke);
+            stroke-width: 1.5;
+            fill: none;
+        }
+
         .bracket-edges path.edge-hit {
             pointer-events: stroke;
             cursor: pointer;
@@ -179,7 +216,7 @@
             flex-direction: column;
             gap: 0.35rem;
             padding: 0.55rem 0.75rem;
-            border-bottom: 1px solid rgba(13, 110, 253, 0.16);
+            border-bottom: 1px solid var(--bracket-node-head-border);
         }
 
         .bracket-node-name {
@@ -211,22 +248,22 @@
 
         /* 决赛方块：金色描边 + 冠军横条 */
         .bracket-node.final-node {
-            border-color: rgba(201, 145, 30, 0.78);
-            box-shadow: 0 0.25rem 0.9rem rgba(201, 145, 30, 0.16);
+            border-color: var(--bracket-final-border);
+            box-shadow: var(--bracket-final-shadow);
         }
 
         .bracket-node.final-node:hover,
         .bracket-node.final-node:focus-visible {
-            border-color: rgba(201, 145, 30, 1);
-            box-shadow: 0 0.4rem 1.2rem rgba(201, 145, 30, 0.24);
+            border-color: var(--bracket-final-hover-border);
+            box-shadow: var(--bracket-final-hover-shadow);
         }
 
         .bracket-node-final {
             margin-top: 0.45rem;
             padding: 0.16rem 0.5rem;
             border-radius: 999px;
-            background: linear-gradient(135deg, #fde68a, #eab308);
-            color: #78350f;
+            background: var(--bracket-final-badge-bg);
+            color: var(--bracket-final-badge-color);
             font-size: 0.74rem;
             font-weight: 700;
             text-align: center;
@@ -268,19 +305,19 @@
 
         /* 弹窗分组卡片 */
         .group-card {
-            border: 1px solid rgba(13, 110, 253, 0.2);
+            border: 1px solid var(--bracket-card-border);
             border-radius: 0.7rem;
-            background: #fff;
+            background: var(--bracket-card-bg);
             transition: border-color 0.2s ease, box-shadow 0.2s ease;
         }
 
         .group-card-head {
             padding: 0.35rem 0.7rem;
-            border-bottom: 1px solid rgba(13, 110, 253, 0.12);
+            border-bottom: 1px solid var(--bracket-card-head-border);
             font-size: 0.8rem;
             font-weight: 700;
-            color: var(--sl-color-primary-700);
-            background: rgba(13, 110, 253, 0.04);
+            color: var(--bracket-card-head-color);
+            background: var(--bracket-card-head-bg);
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -336,9 +373,9 @@
             align-items: center;
             gap: 0.35rem;
             padding: 0.25rem 0.4rem;
-            border: 1px dashed rgba(13, 110, 253, 0.3);
+            border: 1px dashed var(--bracket-score-border);
             border-radius: 0.4rem;
-            background: rgba(13, 110, 253, 0.04);
+            background: var(--bracket-score-bg);
             font-size: 0.78rem;
         }
 
@@ -349,13 +386,13 @@
 
         .group-score-name.group-score-win {
             font-weight: 700;
-            color: var(--sl-color-success-600);
+            color: var(--bracket-win-color);
         }
 
         .group-score-value {
             flex: 0 0 auto;
             font-weight: 700;
-            color: var(--sl-color-primary-700);
+            color: var(--bracket-score-value-color);
             min-width: 1.1rem;
             text-align: center;
         }
@@ -368,6 +405,72 @@
         .group-score sl-input {
             flex: 0 0 auto;
             width: 3.6rem;
+        }
+
+        /* 风格 UI「幽蓝时空」：深空蓝画布 + 冷蓝连线 + 警示红决赛 */
+        html.theme-void {
+            --bracket-canvas-bg:
+                radial-gradient(900px 480px at 18% -10%, rgba(42, 108, 186, 0.22), transparent 62%),
+                linear-gradient(160deg, #071321, #081827 52%, #050c16);
+            --bracket-canvas-border: rgba(86, 146, 206, 0.34);
+            --bracket-grid-dot: rgba(96, 160, 226, 0.14);
+            --bracket-edge-stroke: rgba(96, 168, 230, 0.5);
+            --bracket-node-bg: linear-gradient(160deg, #0c1a2b, #0a1524 58%, #081120);
+            --bracket-node-border: rgba(88, 156, 222, 0.44);
+            --bracket-node-shadow: inset 0 1px 0 rgba(140, 196, 255, 0.12), 0 0.3rem 1rem rgba(2, 10, 24, 0.55);
+            --bracket-node-hover-border: rgba(126, 190, 246, 0.85);
+            --bracket-node-hover-shadow: 0 0.4rem 1.2rem rgba(42, 108, 186, 0.35);
+            --bracket-node-drag-border: rgba(126, 190, 246, 1);
+            --bracket-node-drag-shadow: 0 0.6rem 1.6rem rgba(42, 108, 186, 0.5);
+            --bracket-node-head-border: rgba(88, 156, 222, 0.24);
+            --bracket-final-border: rgba(226, 57, 78, 0.78);
+            --bracket-final-shadow: 0 0.25rem 0.9rem rgba(226, 57, 78, 0.18);
+            --bracket-final-hover-border: rgba(255, 117, 134, 1);
+            --bracket-final-hover-shadow: 0 0.4rem 1.2rem rgba(226, 57, 78, 0.32);
+            --bracket-final-badge-bg: linear-gradient(135deg, #ff8a95, #a71f33);
+            --bracket-final-badge-color: #fff2f4;
+            --bracket-card-bg: #0c1726;
+            --bracket-card-border: rgba(80, 132, 190, 0.32);
+            --bracket-card-head-border: rgba(80, 132, 190, 0.22);
+            --bracket-card-head-bg: rgba(80, 132, 190, 0.08);
+            --bracket-card-head-color: #ff8fa0;
+            --bracket-score-border: rgba(80, 132, 190, 0.36);
+            --bracket-score-bg: rgba(80, 132, 190, 0.07);
+            --bracket-score-value-color: #ff9aa5;
+            --bracket-win-color: #6fd7a1;
+        }
+
+        /* 风格 UI「黑派」：黑石画布 + 亮金连线 */
+        html.theme-black {
+            --bracket-canvas-bg:
+                radial-gradient(900px 480px at 50% -18%, rgba(220, 172, 82, 0.18), transparent 62%),
+                linear-gradient(160deg, #08080a, #121016 52%, #070709);
+            --bracket-canvas-border: rgba(214, 178, 94, 0.34);
+            --bracket-grid-dot: rgba(214, 178, 94, 0.14);
+            --bracket-edge-stroke: rgba(214, 178, 94, 0.55);
+            --bracket-node-bg: linear-gradient(160deg, #16151b, #1d1a14 58%, #100f12);
+            --bracket-node-border: rgba(214, 178, 94, 0.46);
+            --bracket-node-shadow: inset 0 1px 0 rgba(255, 226, 156, 0.12), 0 0.3rem 1rem rgba(0, 0, 0, 0.55);
+            --bracket-node-hover-border: rgba(240, 199, 117, 0.9);
+            --bracket-node-hover-shadow: 0 0.4rem 1.2rem rgba(214, 178, 94, 0.3);
+            --bracket-node-drag-border: rgba(242, 203, 128, 1);
+            --bracket-node-drag-shadow: 0 0.6rem 1.6rem rgba(214, 178, 94, 0.45);
+            --bracket-node-head-border: rgba(214, 178, 94, 0.24);
+            --bracket-final-border: rgba(230, 191, 110, 0.8);
+            --bracket-final-shadow: 0 0.25rem 0.9rem rgba(230, 191, 110, 0.2);
+            --bracket-final-hover-border: rgba(242, 203, 128, 1);
+            --bracket-final-hover-shadow: 0 0.4rem 1.2rem rgba(230, 191, 110, 0.32);
+            --bracket-final-badge-bg: linear-gradient(135deg, #f6dd9a, #d0a553);
+            --bracket-final-badge-color: #2a1f08;
+            --bracket-card-bg: #131318;
+            --bracket-card-border: rgba(214, 178, 94, 0.32);
+            --bracket-card-head-border: rgba(214, 178, 94, 0.22);
+            --bracket-card-head-bg: rgba(214, 178, 94, 0.08);
+            --bracket-card-head-color: #e6bf6e;
+            --bracket-score-border: rgba(214, 178, 94, 0.36);
+            --bracket-score-bg: rgba(214, 178, 94, 0.07);
+            --bracket-score-value-color: #e6bf6e;
+            --bracket-win-color: #6fd39d;
         }
 
         .admin-panel {
@@ -446,7 +549,13 @@
 </head>
 
 <body class='d-flex flex-column w-100 h-100 bg-light'>
-    <div id='button_music_wrap' class='position-fixed top-0 start-0 d-flex p-2' style='z-index: 1050;'>
+    <div id='button_home' class='position-fixed top-0 start-0 d-flex gap-1 p-2' style='z-index: 1050;'>
+        <sl-button variant='default' href='/pages/mod/match.html' circle title='返回上一级' aria-label='返回上一级'>
+            <sl-icon name='arrow-left'></sl-icon>
+        </sl-button>
+        <sl-button variant='default' href='/' circle title='返回主页' aria-label='返回主页'>
+            <sl-icon name='house'></sl-icon>
+        </sl-button>
         <sl-button id='button_music_toggle' variant='default' circle title='单击切换下一首；1 秒内双击开始/停止播放' aria-label='单击切换下一首；1 秒内双击开始/停止播放'>
             <sl-icon id='icon_music_toggle' name='volume-up'></sl-icon>
         </sl-button>
@@ -514,9 +623,6 @@
             </div>
         </main>
 
-        <footer class='text-center text-muted py-2' style='font-size: 0.74rem;'>
-            <a id='text_footer_back' href='/pages/mod/match.html' class='text-decoration-none text-secondary'>返回赛事大厅</a>
-        </footer>
     </div>
 
     <sl-dialog id='dialog_node' label='方块详情'>
@@ -643,14 +749,6 @@
                     <sl-input id='edit_texts_dialog_hint_joining' label='报名中提示'></sl-input>
                     <sl-input id='edit_texts_dialog_hint_failed' label='报名失败提示'></sl-input>
                 </div>
-            </div>
-
-            <div class='admin-panel p-3'>
-                <div class='d-flex align-items-center gap-2 mb-2'>
-                    <sl-icon name='link-45deg' class='text-warning'></sl-icon>
-                    <div class='fw-bold'>页脚</div>
-                </div>
-                <sl-input id='edit_texts_footer_back' label='返回链接文字'></sl-input>
             </div>
 
             <div class='text-secondary small'>提示：所有文字留空会回退为默认内容；保存后全服可见。</div>
@@ -876,9 +974,6 @@
                 hint_parent_lose: '只有在前一个方块「{name}」获胜晋级的选手才能报名该方块。',
                 hint_joining: '报名中…',
                 hint_failed: '报名失败，可能已报过名或该方块已满员，请刷新重试。'
-            },
-            footer: {
-                back_text: '返回赛事大厅'
             }
         });
 
@@ -919,8 +1014,7 @@
                     hint_parent_lose: pick('dialog', 'hint_parent_lose'),
                     hint_joining: pick('dialog', 'hint_joining'),
                     hint_failed: pick('dialog', 'hint_failed')
-                },
-                footer: { back_text: pick('footer', 'back_text') }
+                }
             };
         };
 
@@ -942,7 +1036,6 @@
             document.getElementById('text_bracket_section_title').textContent = texts.bracket.section_title;
             document.getElementById('text_bracket_desc').textContent = texts.bracket.desc;
             document.getElementById('text_account_label').textContent = texts.dialog.account_label;
-            document.getElementById('text_footer_back').textContent = texts.footer.back_text;
             joinButton.textContent = texts.dialog.join_text;
             dialog.label = texts.dialog.title;
         };
@@ -994,8 +1087,7 @@
             ['edit_texts_dialog_hint_parent_wait', 'dialog', 'hint_parent_wait'],
             ['edit_texts_dialog_hint_parent_lose', 'dialog', 'hint_parent_lose'],
             ['edit_texts_dialog_hint_joining', 'dialog', 'hint_joining'],
-            ['edit_texts_dialog_hint_failed', 'dialog', 'hint_failed'],
-            ['edit_texts_footer_back', 'footer', 'back_text']
+            ['edit_texts_dialog_hint_failed', 'dialog', 'hint_failed']
         ];
 
         const editTextsButton = document.getElementById('button_edit_texts');
@@ -1149,9 +1241,7 @@
                 const x1 = from.x + NODE_WIDTH, y1 = from.y + 60;
                 const x2 = to.x, y2 = to.y + 60;
                 line.setAttribute('d', `M ${x1} ${y1} C ${x1 + 48} ${y1}, ${x2 - 48} ${y2}, ${x2} ${y2}`);
-                line.setAttribute('stroke', 'rgba(13, 110, 253, 0.45)');
-                line.setAttribute('stroke-width', '1.5');
-                line.setAttribute('fill', 'none');
+                // 描边与线宽由 .bracket-edges path 的主题变量统一定义
                 edgesSvg.appendChild(line);
             });
         };

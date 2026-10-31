@@ -25,6 +25,13 @@ class State {
         /** @type {[number, number]} */
         this.hp = [6, 6]; // black white
 
+        /**
+         * 双方发起攻击（ASCEND 起手）的回合序号，按黑白分别记录。
+         * 供成就系统统计「若干步内连续攻击次数」；纯内存数据，不参与存档与快照。
+         * @type {[number[], number[]]}
+         */
+        this.attack_turns = [[], []];
+
 
         /** @type {number} */
         this.unascend_charge = 25;

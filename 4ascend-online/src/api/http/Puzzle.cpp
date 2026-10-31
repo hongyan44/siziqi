@@ -9,6 +9,7 @@
 
 #include "../../libs/only/Time.h"
 #include "../../manager/Puzzle.h"
+#include "../../manager/Task.h"
 #include "../../manager/Token.h"
 #include "../../manager/User.h"
 
@@ -214,13 +215,46 @@ void puzzle_submit(cinatra::coro_http_request& request, cinatra::coro_http_respo
         return api_http_error("puzzle_submit", response);
     if (use_ticket) Manager::User::consume_ticket(creator);
 
+    // 每日投稿任务：投稿成功即计一次（无论审核是否通过）
+    const int64_t task_reward = Manager::Task::event(creator, "puzzle_submit", Manager::Task::today());
+
     jsoncons::json result = jsoncons::json::object();
     result["id"] = id;
     result["ticket_used"] = use_ticket;
+    result["task_reward"] = task_reward;
     int64_t tickets = 0;
     if (Manager::User::get_tickets(creator, tickets)) result["tickets"] = tickets;
     std::string buffer;
     api_end("puzzle_submit", true, result, buffer);
+    response.set_status_and_content(cinatra::status_type::ok, buffer);
+}
+
+// 审核前修改投稿（3 级及以上）：管理员可纠正投稿位置、名称与残局码，仅待审核投稿可改。
+void puzzle_submission_update(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
+    auto body = api_body(request.get_body());
+    if (!body) return api_http_error("puzzle_submission_update", response);
+    auto value = body.value();
+    std::string reviewer;
+    int level = 0;
+    if (!token_level(value, reviewer, level) || level < 3) return api_http_error("puzzle_submission_update", response);
+
+    uint64_t id = 0;
+    try { id = value.at("id").as<uint64_t>(); } catch (...) { return api_http_error("puzzle_submission_update", response); }
+    const auto target = json_string(value, "target");
+    const auto title = json_string(value, "title");
+    const auto code = json_string(value, "code");
+    if (id == 0 || (target != "daily" && target != "level") || title.empty() || utf8_char_count(title) > 10 || code.empty() || code.size() > 16000)
+        return api_http_error("puzzle_submission_update", response);
+
+    uint32_t sub_level = 0;
+    if (target == "level") {
+        try { sub_level = value.at("level").as<uint32_t>(); } catch (...) { return api_http_error("puzzle_submission_update", response); }
+        if (sub_level < 1 || sub_level > 100) return api_http_error("puzzle_submission_update", response);
+    }
+
+    const bool status = Manager::Puzzle::update_submission(id, target, sub_level, title, code);
+    std::string buffer;
+    api_end("puzzle_submission_update", status, jsoncons::json::null(), buffer);
     response.set_status_and_content(cinatra::status_type::ok, buffer);
 }
 
@@ -286,11 +320,14 @@ void puzzle_submission_review(cinatra::coro_http_request& request, cinatra::coro
     const bool approve = action == "approve";
     const bool allow_overwrite = level >= 4;
     bool slot_occupied = false;
+    std::string creator;
     const bool status = Manager::Puzzle::review_submission(
-        id, approve, reviewer, static_cast<uint64_t>(Libs::Only::Time::timestamp_ms()), allow_overwrite, slot_occupied
+        id, approve, reviewer, static_cast<uint64_t>(Libs::Only::Time::timestamp_ms()), allow_overwrite, slot_occupied, creator
     );
     // 位置已被占用且未获覆盖权限：前端据此提示“该位置已有残局，不能覆盖”。
     if (slot_occupied) return api_http_error("puzzle_submission_review", response);
+    // 投稿审核通过后向投稿人发放一张 500 棋币兑换券；仅状态真正由待审改为通过时发放，避免重复审核重复发奖。
+    if (status && approve && !creator.empty()) Manager::User::add_vouchers_puzzle(creator, 1);
 
     std::string buffer;
     api_end("puzzle_submission_review", status, jsoncons::json::null(), buffer);
@@ -363,6 +400,7 @@ void load(cinatra::coro_http_server& server) noexcept {
     server.set_http_handler<cinatra::POST>("/puzzle/update", puzzle_update);
     server.set_http_handler<cinatra::POST>("/puzzle/delete", puzzle_delete);
     server.set_http_handler<cinatra::POST>("/puzzle/submit", puzzle_submit);
+    server.set_http_handler<cinatra::POST>("/puzzle/submission_update", puzzle_submission_update);
     server.set_http_handler<cinatra::POST>("/puzzle/submission_query", puzzle_submission_query);
     server.set_http_handler<cinatra::POST>("/puzzle/submission_review", puzzle_submission_review);
     server.set_http_handler<cinatra::POST>("/puzzle/claim_clear", puzzle_claim_clear);

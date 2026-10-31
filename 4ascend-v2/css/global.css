@@ -257,18 +257,43 @@ html.theme-void ::-webkit-scrollbar-thumb {
     transition: opacity 0.6s ease;
     background: #050912 url('/image/theme/void-home.jpg') center 58%/cover no-repeat;
     transform-origin: 52% 40%;
-    animation: void-backdrop-drift 60s ease-in-out infinite alternate;
+    animation: void-backdrop-drift 42s ease-in-out infinite alternate;
     will-change: transform;
+}
+
+/* 舷窗外的行星呼吸光：让静态插画也有可见的动态层次 */
+.void-backdrop::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(ellipse at 71% 30%, rgba(120, 200, 255, 0.16), transparent 34%),
+        radial-gradient(ellipse at 52% 18%, rgba(120, 150, 255, 0.08), transparent 40%);
+    mix-blend-mode: screen;
+    opacity: 0.45;
+    animation: void-planet-glow 13s ease-in-out infinite;
+}
+
+@keyframes void-planet-glow {
+
+    0%,
+    100% {
+        opacity: 0.22;
+    }
+
+    50% {
+        opacity: 0.72;
+    }
 }
 
 /* 背景缓慢推拉：舰桥随视角轻微前移，避免静态图死板 */
 @keyframes void-backdrop-drift {
     from {
-        transform: scale(1.04) translate3d(0, 0, 0);
+        transform: scale(1.03) translate3d(0, 0, 0);
     }
 
     to {
-        transform: scale(1.12) translate3d(-1.5%, -1.2%, 0);
+        transform: scale(1.13) translate3d(-2%, -1.6%, 0);
     }
 }
 
@@ -536,6 +561,7 @@ html.theme-void .void-fx {
 @media (prefers-reduced-motion: reduce) {
 
     .void-backdrop,
+    .void-backdrop::before,
     .void-stars,
     .void-meteor,
     .void-mothership {
@@ -638,4 +664,1584 @@ html.theme-void sl-button[circle]:not([disabled]):hover::part(base) {
         inset 0 0 2px rgba(220, 246, 255, 0.9),
         0 0 0 3px rgba(26, 74, 128, 0.55),
         0 0 24px rgba(70, 168, 255, 0.5) !important;
+}
+
+/* ==========================================
+   虚空舰队 · 分页面动态星景
+   主题开启且当前页命中场景时由 voidscene.cjs 挂载
+   z-index: -1 置于所有内容之下，不遮挡交互
+   ========================================== */
+
+.void-scene {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 1.1s ease;
+    background: #050912;
+    transform: translateZ(0);
+}
+
+html.theme-void.void-scene-on .void-scene {
+    opacity: 1;
+}
+
+/* 星景页把 body 的静态渐变让位，避免遮住动态星景 */
+html.theme-void.void-scene-on body,
+html.theme-void.void-scene-on body.bg-light {
+    background-image: none !important;
+    background-color: transparent !important;
+}
+
+/* ---------- 星点：远近两层视差 + 呼吸闪烁 ---------- */
+.void-scene .vs-stars {
+    position: absolute;
+    inset: -30%;
+    background-repeat: repeat;
+    will-change: transform, opacity;
+}
+
+.void-scene .vs-stars-far {
+    background-image:
+        radial-gradient(1px 1px at 8% 14%, rgba(214, 236, 255, 0.8) 50%, transparent 51%),
+        radial-gradient(1px 1px at 22% 38%, rgba(190, 220, 250, 0.65) 50%, transparent 51%),
+        radial-gradient(1.2px 1.2px at 36% 12%, rgba(230, 244, 255, 0.75) 50%, transparent 51%),
+        radial-gradient(1px 1px at 48% 62%, rgba(176, 208, 240, 0.55) 50%, transparent 51%),
+        radial-gradient(1px 1px at 58% 28%, rgba(214, 236, 255, 0.65) 50%, transparent 51%),
+        radial-gradient(1.1px 1.1px at 67% 74%, rgba(200, 226, 255, 0.7) 50%, transparent 51%),
+        radial-gradient(1px 1px at 78% 46%, rgba(180, 212, 246, 0.55) 50%, transparent 51%),
+        radial-gradient(1px 1px at 86% 88%, rgba(210, 234, 255, 0.6) 50%, transparent 51%),
+        radial-gradient(1.2px 1.2px at 94% 22%, rgba(228, 244, 255, 0.75) 50%, transparent 51%),
+        radial-gradient(1px 1px at 16% 84%, rgba(168, 202, 236, 0.5) 50%, transparent 51%),
+        radial-gradient(1px 1px at 42% 92%, rgba(196, 224, 252, 0.55) 50%, transparent 51%),
+        radial-gradient(1px 1px at 72% 16%, rgba(220, 240, 255, 0.65) 50%, transparent 51%);
+    background-size: 300px 300px;
+    animation:
+        vs-twinkle 6.4s ease-in-out infinite,
+        vs-drift-far 180s linear infinite;
+}
+
+.void-scene .vs-stars-near {
+    background-image:
+        radial-gradient(1.6px 1.6px at 14% 26%, rgba(255, 255, 255, 0.9) 50%, transparent 51%),
+        radial-gradient(1.4px 1.4px at 32% 66%, rgba(226, 242, 255, 0.85) 50%, transparent 51%),
+        radial-gradient(1.8px 1.8px at 52% 18%, rgba(255, 255, 255, 0.9) 50%, transparent 51%),
+        radial-gradient(1.4px 1.4px at 66% 52%, rgba(206, 232, 255, 0.8) 50%, transparent 51%),
+        radial-gradient(1.6px 1.6px at 82% 78%, rgba(255, 255, 255, 0.85) 50%, transparent 51%),
+        radial-gradient(1.4px 1.4px at 92% 34%, rgba(214, 238, 255, 0.8) 50%, transparent 51%),
+        radial-gradient(1.5px 1.5px at 24% 88%, rgba(238, 250, 255, 0.85) 50%, transparent 51%);
+    background-size: 430px 430px;
+    filter: drop-shadow(0 0 3px rgba(150, 210, 255, 0.4));
+    animation:
+        vs-twinkle 4.4s ease-in-out -1.6s infinite,
+        vs-drift-near 125s linear infinite;
+}
+
+@keyframes vs-drift-far {
+    from {
+        transform: translate3d(0, 0, 0);
+    }
+
+    to {
+        transform: translate3d(-300px, 24px, 0);
+    }
+}
+
+@keyframes vs-drift-near {
+    from {
+        transform: translate3d(0, 0, 0);
+    }
+
+    to {
+        transform: translate3d(-430px, 42px, 0);
+    }
+}
+
+@keyframes vs-twinkle {
+
+    0%,
+    100% {
+        opacity: 0.3;
+    }
+
+    50% {
+        opacity: 0.95;
+    }
+}
+
+/* ---------- 星云：两团缓慢漂移的辉光 ---------- */
+.void-scene .vs-nebula {
+    position: absolute;
+    inset: -18%;
+    background:
+        radial-gradient(48vmax 30vmax at 18% 74%, var(--vs-nebula-a), transparent 70%),
+        radial-gradient(40vmax 26vmax at 82% 22%, var(--vs-nebula-b), transparent 70%);
+    filter: blur(16px);
+    animation: vs-nebula 46s ease-in-out infinite alternate;
+}
+
+@keyframes vs-nebula {
+    from {
+        transform: translate3d(0, 0, 0) scale(1);
+    }
+
+    to {
+        transform: translate3d(2.4%, -1.8%, 0) scale(1.06);
+    }
+}
+
+/* ---------- 星系：旋转的螺旋光臂 ---------- */
+.void-scene .vs-galaxy {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 96vmax;
+    height: 96vmax;
+    margin-top: -48vmax;
+    margin-left: -48vmax;
+    border-radius: 50%;
+    background:
+        radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.5) 0 1.2%, rgba(190, 225, 255, 0.2) 7%, transparent 26%),
+        conic-gradient(from 18deg,
+            transparent 0deg 34deg,
+            var(--vs-arm) 52deg,
+            transparent 74deg,
+            transparent 124deg,
+            var(--vs-arm) 142deg,
+            transparent 164deg,
+            transparent 214deg,
+            var(--vs-arm) 232deg,
+            transparent 254deg,
+            transparent 304deg,
+            var(--vs-arm) 322deg,
+            transparent 344deg);
+    filter: blur(18px) saturate(1.25);
+    opacity: 0.62;
+    animation: vs-spin 150s linear infinite;
+}
+
+.void-scene-play .vs-galaxy {
+    display: none;
+}
+
+@keyframes vs-spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* ---------- 行星与星环 ---------- */
+.void-scene .vs-orb {
+    position: absolute;
+    width: var(--vs-orb-size, 28vmin);
+    height: var(--vs-orb-size, 28vmin);
+    animation: vs-orb-float 34s ease-in-out infinite alternate;
+}
+
+.void-scene .vs-planet {
+    position: absolute;
+    inset: 7%;
+    border-radius: 50%;
+    overflow: hidden;
+    background:
+        radial-gradient(circle at 30% 26%, rgba(255, 255, 255, 0.85) 0 2%, rgba(200, 235, 255, 0.28) 9%, transparent 34%),
+        repeating-linear-gradient(173deg, var(--vs-band) 0 5%, transparent 5% 10%),
+        radial-gradient(circle at 68% 72%, #06101d 0 33%, var(--vs-planet-deep) 62%, var(--vs-planet-light) 100%);
+    background-size: 100% 100%, 210% 100%, 100% 100%;
+    box-shadow:
+        inset -3vmin -4vmin 8vmin rgba(0, 0, 0, 0.82),
+        inset 2vmin 2vmin 5vmin rgba(150, 205, 255, 0.18),
+        0 0 7vmin var(--vs-planet-glow);
+    animation:
+        vs-planet-roll 55s linear infinite,
+        vs-planet-breathe 26s ease-in-out infinite alternate;
+}
+
+@keyframes vs-planet-roll {
+    from {
+        background-position: 0 0, 0 0, 0 0;
+    }
+
+    to {
+        background-position: 0 0, -210% 0, 0 0;
+    }
+}
+
+@keyframes vs-planet-breathe {
+    from {
+        filter: brightness(1);
+        transform: scale(1);
+    }
+
+    to {
+        filter: brightness(1.12);
+        transform: scale(1.025);
+    }
+}
+
+.void-scene .vs-ring {
+    position: absolute;
+    top: 26%;
+    right: -34%;
+    bottom: 26%;
+    left: -34%;
+    border: 0.6vmin solid var(--vs-ring);
+    border-radius: 50%;
+    transform: rotate(-17deg);
+    box-shadow: 0 0 2.4vmin var(--vs-glow);
+    opacity: 0.55;
+    animation: vs-ring-wobble 28s ease-in-out infinite alternate;
+}
+
+@keyframes vs-ring-wobble {
+    from {
+        transform: rotate(-17deg) scale(1);
+    }
+
+    to {
+        transform: rotate(-13deg) scale(1.03);
+    }
+}
+
+.void-scene .vs-orb-float,
+.void-scene .vs-orb {
+    transform-origin: 50% 50%;
+}
+
+@keyframes vs-orb-float {
+    from {
+        transform: translate3d(0, 0, 0);
+    }
+
+    to {
+        transform: translate3d(-1.6%, 1.4%, 0);
+    }
+}
+
+/* ---------- 场景配色的公用变量默认值 ---------- */
+.void-scene {
+    --vs-nebula-a: rgba(46, 110, 190, 0.2);
+    --vs-nebula-b: rgba(24, 60, 110, 0.18);
+    --vs-arm: rgba(70, 140, 230, 0.16);
+    --vs-band: rgba(190, 225, 255, 0.16);
+    --vs-planet-deep: #123252;
+    --vs-planet-light: #3f86c4;
+    --vs-planet-glow: rgba(80, 170, 255, 0.38);
+    --vs-ring: rgba(160, 210, 255, 0.36);
+    --vs-glow: rgba(70, 160, 255, 0.35);
+    --vs-meteor: rgba(170, 225, 255, 0.9);
+}
+
+/* ---------- 场景一：对局准备 · 舰桥舷窗 ---------- */
+.void-scene-play {
+    background:
+        radial-gradient(ellipse at 72% 34%, rgba(14, 43, 70, 0.92) 0%, transparent 58%),
+        radial-gradient(ellipse at 16% 6%, rgba(10, 28, 48, 0.85) 0%, transparent 46%),
+        linear-gradient(180deg, #050912, #061321 55%, #04070d);
+}
+
+.void-scene-play .vs-orb {
+    --vs-orb-size: 31vmin;
+    top: 15vh;
+    right: 8vw;
+}
+
+.void-scene-play .vs-nebula {
+    --vs-nebula-a: rgba(40, 100, 180, 0.2);
+    --vs-nebula-b: rgba(20, 70, 130, 0.16);
+}
+
+/* ---------- 场景二：赛事 / 残局主页 · 红移星系 ---------- */
+.void-scene-event {
+    background:
+        radial-gradient(ellipse at 30% 26%, rgba(120, 26, 36, 0.5) 0%, transparent 58%),
+        radial-gradient(ellipse at 78% 74%, rgba(30, 70, 130, 0.3) 0%, transparent 62%),
+        linear-gradient(180deg, #07060b, #0a0a12 50%, #05060a);
+    --vs-nebula-a: rgba(150, 40, 45, 0.2);
+    --vs-nebula-b: rgba(60, 90, 170, 0.14);
+    --vs-arm: rgba(235, 95, 70, 0.16);
+    --vs-meteor: rgba(255, 190, 160, 0.9);
+}
+
+.void-scene-event .vs-orb {
+    display: none;
+}
+
+/* 红巨星核心：呼吸光核 + 缓慢旋转的日冕 */
+.void-scene .vs-core {
+    display: none;
+}
+
+.void-scene-event .vs-core {
+    position: absolute;
+    top: 26vh;
+    left: 24vw;
+    display: block;
+    width: 18vmin;
+    height: 18vmin;
+    border-radius: 50%;
+    background: radial-gradient(circle, #fff 0 2%, #ffd08a 7%, #d94b38 24%, rgba(120, 20, 30, 0.42) 46%, transparent 70%);
+    box-shadow: 0 0 14vmin rgba(230, 70, 50, 0.35);
+    animation: vs-core-pulse 9s ease-in-out infinite;
+}
+
+.void-scene-event .vs-core::after {
+    content: '';
+    position: absolute;
+    inset: -70%;
+    background: conic-gradient(from 0deg,
+            transparent 0deg 24deg,
+            rgba(255, 130, 95, 0.1) 44deg,
+            transparent 64deg,
+            transparent 140deg,
+            rgba(255, 130, 95, 0.08) 160deg,
+            transparent 180deg,
+            transparent 260deg,
+            rgba(255, 130, 95, 0.1) 280deg,
+            transparent 300deg);
+    filter: blur(8px);
+    animation: vs-spin 70s linear infinite reverse;
+}
+
+@keyframes vs-core-pulse {
+
+    0%,
+    100% {
+        transform: scale(1);
+        filter: brightness(1);
+    }
+
+    50% {
+        transform: scale(1.06);
+        filter: brightness(1.18);
+    }
+}
+
+/* ---------- 场景三：商店 / 剧情 · 紫青星云 ---------- */
+.void-scene-lore {
+    background:
+        radial-gradient(ellipse at 22% 70%, rgba(80, 40, 130, 0.4) 0%, transparent 60%),
+        radial-gradient(ellipse at 82% 24%, rgba(20, 90, 105, 0.32) 0%, transparent 58%),
+        linear-gradient(180deg, #060912, #0a0a18 50%, #060810);
+    --vs-nebula-a: rgba(120, 60, 190, 0.22);
+    --vs-nebula-b: rgba(30, 130, 145, 0.18);
+    --vs-arm: rgba(130, 95, 225, 0.18);
+    --vs-band: rgba(190, 235, 235, 0.15);
+    --vs-planet-deep: #1b3a52;
+    --vs-planet-light: #4f9c9b;
+    --vs-planet-glow: rgba(90, 220, 210, 0.26);
+    --vs-ring: rgba(130, 220, 215, 0.28);
+    --vs-glow: rgba(90, 210, 205, 0.28);
+    --vs-meteor: rgba(200, 180, 255, 0.9);
+}
+
+.void-scene-lore .vs-orb {
+    --vs-orb-size: 23vmin;
+    bottom: 12vh;
+    left: 11vw;
+}
+
+.void-scene-lore .vs-ring {
+    display: none;
+}
+
+/* 两颗缓慢漂浮的卫星 */
+.void-scene .vs-moon {
+    display: none;
+    position: absolute;
+    border-radius: 50%;
+    background: radial-gradient(circle at 32% 30%, rgba(255, 255, 255, 0.65) 0 3%, var(--vs-moon) 34%, #07101b 100%);
+    box-shadow: 0 0 4vmin var(--vs-glow);
+}
+
+.void-scene-lore .vs-moon-a {
+    top: 16vh;
+    right: 20vw;
+    display: block;
+    width: 9vmin;
+    height: 9vmin;
+    animation: vs-moon-float 30s ease-in-out infinite alternate;
+}
+
+.void-scene-lore .vs-moon-b {
+    top: 30vh;
+    right: 10vw;
+    display: block;
+    width: 5vmin;
+    height: 5vmin;
+    animation: vs-moon-float 26s ease-in-out -8s infinite alternate-reverse;
+}
+
+.void-scene-lore .vs-moon {
+    --vs-moon: #7d7ab8;
+}
+
+@keyframes vs-moon-float {
+    from {
+        transform: translate3d(0, 0, 0);
+    }
+
+    to {
+        transform: translate3d(-2.4vw, 3vh, 0);
+    }
+}
+
+/* ---------- 场景四：成就主页 · 金色星冠 ---------- */
+.void-scene-honor {
+    background:
+        radial-gradient(ellipse at 70% 26%, rgba(140, 100, 30, 0.36) 0%, transparent 58%),
+        radial-gradient(ellipse at 20% 76%, rgba(30, 70, 130, 0.32) 0%, transparent 60%),
+        linear-gradient(180deg, #050912, #0a0f1e 50%, #05060c);
+    --vs-nebula-a: rgba(170, 130, 40, 0.2);
+    --vs-nebula-b: rgba(50, 90, 170, 0.15);
+    --vs-arm: rgba(230, 190, 90, 0.18);
+    --vs-band: rgba(255, 230, 170, 0.16);
+    --vs-planet-deep: #2a2416;
+    --vs-planet-light: #b8923e;
+    --vs-planet-glow: rgba(240, 195, 90, 0.34);
+    --vs-ring: rgba(245, 210, 130, 0.42);
+    --vs-glow: rgba(240, 190, 80, 0.3);
+    --vs-meteor: rgba(255, 232, 180, 0.92);
+}
+
+.void-scene-honor .vs-orb {
+    --vs-orb-size: 21vmin;
+    top: 17vh;
+    right: 9vw;
+}
+
+/* 成就页专属：金色星冠环，包裹行星并缓慢旋转 */
+.void-scene .vs-halo {
+    display: none;
+}
+
+.void-scene-honor .vs-halo {
+    position: absolute;
+    top: 12vh;
+    right: 5vw;
+    display: block;
+    width: 30vmin;
+    height: 30vmin;
+    border: 0.28vmin solid rgba(245, 210, 130, 0.24);
+    border-radius: 50%;
+    box-shadow:
+        0 0 7vmin rgba(240, 190, 80, 0.18),
+        inset 0 0 7vmin rgba(240, 190, 80, 0.12);
+    animation: vs-spin 90s linear infinite;
+}
+
+.void-scene-honor .vs-halo::before {
+    content: '';
+    position: absolute;
+    inset: 8%;
+    border: 1px dashed rgba(245, 220, 160, 0.35);
+    border-radius: 50%;
+}
+
+/* ---------- 流星：三个不同节奏 ---------- */
+.void-scene .vs-meteors {
+    position: absolute;
+    inset: 0;
+}
+
+.void-scene .vs-meteors i {
+    position: absolute;
+    display: block;
+    width: 150px;
+    height: 2px;
+    border-radius: 2px;
+    background: linear-gradient(90deg,
+        transparent 0%,
+        var(--vs-meteor) 42%,
+        #fff 78%,
+        transparent 100%);
+    filter: drop-shadow(0 0 6px var(--vs-meteor));
+    opacity: 0;
+    transform: rotate(158deg);
+    animation: vs-meteor 13s linear infinite;
+}
+
+.void-scene .vs-meteors i:nth-child(2) {
+    top: 6%;
+    left: 88%;
+    width: 115px;
+    animation-delay: 6.8s;
+    animation-duration: 15s;
+}
+
+.void-scene .vs-meteors i:nth-child(3) {
+    top: 18%;
+    left: 52%;
+    width: 185px;
+    animation-delay: 10.6s;
+    animation-duration: 17s;
+}
+
+@keyframes vs-meteor {
+    0% {
+        opacity: 0;
+        transform: translate3d(0, 0, 0) rotate(158deg);
+    }
+
+    3% {
+        opacity: 0.85;
+    }
+
+    15% {
+        opacity: 0.85;
+    }
+
+    26%,
+    100% {
+        opacity: 0;
+        transform: translate3d(-76vw, 46vh, 0) rotate(158deg);
+    }
+}
+
+/* ---------- 舰桥舷窗框 / 控制台余晖 ---------- */
+.void-scene .vs-frame {
+    display: none;
+}
+
+.void-scene-play .vs-frame {
+    display: block;
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 42%, transparent 0 44%, rgba(3, 7, 13, 0.34) 62%, rgba(2, 5, 10, 0.88) 100%);
+}
+
+.void-scene-play .vs-frame::before {
+    content: '';
+    position: absolute;
+    top: 5%;
+    right: 7%;
+    bottom: 7%;
+    left: 7%;
+    border: 1px solid rgba(120, 190, 255, 0.16);
+    border-radius: 3.2vmin;
+    box-shadow:
+        inset 0 0 14vmin rgba(0, 0, 0, 0.55),
+        0 0 3vmin rgba(44, 120, 210, 0.18);
+}
+
+.void-scene .vs-console {
+    display: none;
+}
+
+.void-scene-play .vs-console {
+    position: absolute;
+    right: -4%;
+    bottom: -10%;
+    left: -4%;
+    display: block;
+    height: 36vh;
+    background:
+        linear-gradient(180deg, transparent, rgba(3, 7, 12, 0.92)),
+        radial-gradient(ellipse at 16% 100%, rgba(220, 50, 70, 0.36), transparent 55%),
+        radial-gradient(ellipse at 84% 100%, rgba(220, 50, 70, 0.36), transparent 55%);
+    filter: blur(3px);
+}
+
+.void-scene .vs-vignette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 45%, transparent 55%, rgba(2, 5, 10, 0.55) 100%);
+}
+
+@media (max-width: 720px) {
+    .void-scene-play .vs-orb {
+        top: 11vh;
+        right: 4vw;
+    }
+
+    .void-scene-event .vs-core {
+        top: 16vh;
+        left: 12vw;
+    }
+
+    .void-scene-honor .vs-orb {
+        top: 12vh;
+        right: 4vw;
+    }
+
+    .void-scene-lore .vs-orb {
+        bottom: 9vh;
+        left: 6vw;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    .void-scene,
+    .void-scene * {
+        animation: none !important;
+    }
+}
+
+/* ==========================================
+   🖤 风格 UI「黑派」：黑石大理石 + 亮金装饰
+   由 skin.cjs 在已购且本地开关打开时挂到 html.theme-black
+   ========================================== */
+
+html.theme-black {
+    color-scheme: dark;
+
+    /* Shoelace：中性色压成暖炭黑，主色替换为 Art Deco 亮金 */
+    --sl-color-neutral-0: #050506;
+    --sl-color-neutral-50: #0a0a0c;
+    --sl-color-neutral-100: #101014;
+    --sl-color-neutral-200: #17171d;
+    --sl-color-neutral-300: #22222a;
+    --sl-color-neutral-400: #3a3a44;
+    --sl-color-neutral-500: #6d6a63;
+    --sl-color-neutral-600: #a29782;
+    --sl-color-neutral-700: #c9bca2;
+    --sl-color-neutral-800: #e2d7c1;
+    --sl-color-neutral-900: #f2ead9;
+    --sl-color-neutral-950: #fbf6ea;
+
+    --sl-color-primary-50: #2a1f08;
+    --sl-color-primary-100: #3c2c0c;
+    --sl-color-primary-200: #5a4213;
+    --sl-color-primary-300: #7d5b1b;
+    --sl-color-primary-400: #a87a28;
+    --sl-color-primary-500: #e6bf6e;
+    --sl-color-primary-600: #d0a553;
+    --sl-color-primary-700: #b28a3f;
+    --sl-color-primary-800: #8f6c2e;
+    --sl-color-primary-900: #6c5122;
+    --sl-color-primary-950: #4a3716;
+
+    --sl-panel-background-color: #131318;
+    --sl-panel-border-color: rgba(214, 178, 94, 0.34);
+    --sl-overlay-background-color: rgba(4, 4, 5, 0.8);
+}
+
+html.theme-black,
+html.theme-black body {
+    background-color: #060608;
+    color: #e6ddcb;
+}
+
+/* 全站底纹：炭黑石材 + 顶部暖金日轮辉光 + 侧翼蓝灰玻璃反光 */
+html.theme-black body {
+    background-image:
+        radial-gradient(1200px 720px at 50% -20%, rgba(220, 172, 82, 0.2), transparent 62%),
+        radial-gradient(900px 620px at 6% 108%, rgba(70, 92, 124, 0.18), transparent 64%),
+        linear-gradient(180deg, #060608, #101014 46%, #060607);
+    background-attachment: fixed;
+}
+
+html.theme-black body.bg-light,
+html.theme-black .bg-light {
+    background-color: transparent !important;
+}
+
+html.theme-black .bg-white,
+html.theme-black .card,
+html.theme-black .list-group-item {
+    background-color: #131318 !important;
+    color: #e6ddcb;
+}
+
+html.theme-black .text-secondary,
+html.theme-black .text-muted {
+    color: #9d957f !important;
+}
+
+html.theme-black .text-dark,
+html.theme-black .text-black,
+html.theme-black .text-body {
+    color: #efe6d4 !important;
+}
+
+html.theme-black .text-primary {
+    color: #f0c775 !important;
+}
+
+html.theme-black .text-success {
+    color: #6fd39d !important;
+}
+
+html.theme-black .border,
+html.theme-black .border-top,
+html.theme-black .border-bottom,
+html.theme-black .border-start,
+html.theme-black .border-end {
+    border-color: rgba(214, 178, 94, 0.32) !important;
+}
+
+html.theme-black .border.rounded,
+html.theme-black .border-top.rounded {
+    background-color: rgba(19, 19, 24, 0.72) !important;
+}
+
+html.theme-black a {
+    color: #e3bd77;
+}
+
+html.theme-black hr {
+    border-color: rgba(214, 178, 94, 0.26);
+}
+
+/* 经济面板跟随黑派：黑金石材 + 双金描边 */
+html.theme-black .wallet-card {
+    border-color: rgba(214, 178, 94, 0.4);
+    background: linear-gradient(135deg, #121218, #1c1a14);
+    box-shadow: inset 0 1px 0 rgba(255, 226, 156, 0.14);
+}
+
+html.theme-black .wallet-card-exp-title {
+    color: #b8ad95;
+}
+
+html.theme-black .wallet-card-exp-title b {
+    color: #f2cb80;
+}
+
+html.theme-black .wallet-bar {
+    background: #23212a;
+}
+
+html.theme-black .wallet-card-exp-sub {
+    color: #928b7a;
+}
+
+html.theme-black .wallet-card-coin {
+    border-color: rgba(214, 178, 94, 0.46);
+    background: #18171c;
+    box-shadow: 0 0.25rem 0.7rem rgba(0, 0, 0, 0.4);
+}
+
+html.theme-black .wallet-card-coin-label {
+    color: #d8bd86;
+}
+
+html.theme-black .wallet-card-coin-value,
+html.theme-black .wallet-inline {
+    color: #f4cd84;
+}
+
+/* 滚动条换成哑光金 */
+html.theme-black * {
+    scrollbar-color: rgba(206, 172, 100, 0.42) transparent;
+}
+
+html.theme-black ::-webkit-scrollbar-thumb {
+    background-color: rgba(206, 172, 100, 0.42);
+}
+
+/* 加载遮罩同步换肤，避免开启主题后首屏闪白 */
+html.theme-black .loading-a {
+    background: #060608;
+}
+
+html.theme-black .loading-t {
+    color: #928b7a;
+}
+
+/* ==========================================
+   黑派 · 主页插画（用户上传的黑金大厅）
+   ========================================== */
+
+.black-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.6s ease;
+    background: #060608 url('/image/theme/black-home.jpg?v=20261030') center 56%/cover no-repeat;
+    transform-origin: 50% 44%;
+    filter: saturate(1.06) contrast(1.04) brightness(1.03);
+    animation: black-backdrop-drift 52s ease-in-out infinite alternate;
+    will-change: transform;
+}
+
+/* 顶灯日轮呼吸：让静态大厅图保持可感知的光感变化 */
+.black-backdrop::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(ellipse at 50% 4%, rgba(255, 214, 130, 0.24), transparent 38%),
+        radial-gradient(ellipse at 74% 34%, rgba(120, 160, 205, 0.12), transparent 40%);
+    mix-blend-mode: screen;
+    opacity: 0.5;
+    animation: black-lamp-breathe 12s ease-in-out infinite;
+}
+
+@keyframes black-lamp-breathe {
+
+    0%,
+    100% {
+        opacity: 0.28;
+    }
+
+    50% {
+        opacity: 0.78;
+    }
+}
+
+/* 背景缓慢推拉：避免静态图死板 */
+@keyframes black-backdrop-drift {
+    from {
+        transform: scale(1.08) translate3d(0, 0, 0);
+    }
+
+    to {
+        transform: scale(1.2) translate3d(-2%, -1.6%, 0);
+    }
+}
+
+.black-backdrop::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        linear-gradient(180deg, rgba(4, 4, 5, 0.08) 0%, rgba(4, 4, 5, 0.3) 46%, rgba(4, 4, 5, 0.8) 100%),
+        radial-gradient(ellipse at 50% 36%, rgba(4, 4, 5, 0) 0%, rgba(4, 4, 5, 0.38) 84%);
+}
+
+html.theme-black .black-backdrop {
+    opacity: 1;
+}
+
+/* ==========================================
+   黑派 · 主页动态装饰层（日轮 / 金芒 / 浮尘）
+   仅主页挂载 .black-fx，主题关闭时整体隐藏
+   ========================================== */
+
+.black-fx {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.8s ease;
+}
+
+html.theme-black .black-fx {
+    opacity: 1;
+}
+
+/* 顶部日轮：暖白灯芯 + 金色外环 + 缓慢呼吸 */
+.black-sun {
+    position: absolute;
+    top: -7vmin;
+    left: 50%;
+    width: 22vmin;
+    height: 22vmin;
+    margin-left: -11vmin;
+    border-radius: 50%;
+    background:
+        radial-gradient(circle at 50% 46%, #fffdf2 0 5%, #ffe6a8 14%, rgba(226, 178, 86, 0.55) 38%, rgba(180, 132, 48, 0.16) 62%, transparent 74%);
+    filter: blur(0.6vmin);
+    animation: black-sun-pulse 9s ease-in-out infinite;
+}
+
+.black-sun::after {
+    content: '';
+    position: absolute;
+    inset: -42%;
+    border-radius: 50%;
+    border: 1px solid rgba(232, 195, 112, 0.26);
+    box-shadow:
+        0 0 16vmin rgba(230, 188, 100, 0.2),
+        inset 0 0 10vmin rgba(230, 188, 100, 0.12);
+}
+
+@keyframes black-sun-pulse {
+
+    0%,
+    100% {
+        transform: scale(1);
+        filter: blur(0.6vmin) brightness(1);
+    }
+
+    50% {
+        transform: scale(1.04);
+        filter: blur(0.6vmin) brightness(1.16);
+    }
+}
+
+/* 放射金芒：以顶部日轮为中心缓慢摇曳 */
+.black-rays {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 0;
+    height: 0;
+}
+
+.black-rays i {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: block;
+    width: 1px;
+    height: 120vmax;
+    background: linear-gradient(180deg, rgba(255, 232, 168, 0.32), rgba(255, 214, 120, 0.05) 58%, transparent 82%);
+    transform-origin: 50% 0;
+    filter: blur(0.5px);
+    animation: black-ray-breathe 10s ease-in-out infinite;
+}
+
+.black-rays i:nth-child(1) {
+    transform: rotate(-78deg);
+    animation-delay: -1.2s;
+}
+
+.black-rays i:nth-child(2) {
+    transform: rotate(-56deg);
+    animation-delay: -3.4s;
+}
+
+.black-rays i:nth-child(3) {
+    transform: rotate(-34deg);
+    animation-delay: -5.1s;
+}
+
+.black-rays i:nth-child(4) {
+    transform: rotate(-14deg);
+    animation-delay: -2.2s;
+}
+
+.black-rays i:nth-child(5) {
+    transform: rotate(14deg);
+    animation-delay: -7.6s;
+}
+
+.black-rays i:nth-child(6) {
+    transform: rotate(34deg);
+    animation-delay: -4.3s;
+}
+
+.black-rays i:nth-child(7) {
+    transform: rotate(56deg);
+    animation-delay: -6.5s;
+}
+
+.black-rays i:nth-child(8) {
+    transform: rotate(78deg);
+    animation-delay: -8.8s;
+}
+
+@keyframes black-ray-breathe {
+
+    0%,
+    100% {
+        opacity: 0.18;
+    }
+
+    50% {
+        opacity: 0.62;
+    }
+}
+
+/* 悬浮金尘：沿大厅空间缓慢上浮 */
+.black-dust {
+    position: absolute;
+    inset: 0;
+}
+
+.black-dust i {
+    position: absolute;
+    display: block;
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: rgba(244, 208, 128, 0.85);
+    box-shadow: 0 0 6px rgba(244, 208, 128, 0.6);
+    opacity: 0;
+    animation: black-dust-rise 18s linear infinite;
+}
+
+.black-dust i:nth-child(1) {
+    left: 12%;
+    bottom: 6%;
+    animation-delay: -2s;
+}
+
+.black-dust i:nth-child(2) {
+    left: 26%;
+    bottom: 2%;
+    width: 2px;
+    height: 2px;
+    animation-delay: -6s;
+    animation-duration: 22s;
+}
+
+.black-dust i:nth-child(3) {
+    left: 38%;
+    bottom: 10%;
+    animation-delay: -11s;
+}
+
+.black-dust i:nth-child(4) {
+    left: 51%;
+    bottom: 4%;
+    width: 2px;
+    height: 2px;
+    animation-delay: -15s;
+    animation-duration: 20s;
+}
+
+.black-dust i:nth-child(5) {
+    left: 63%;
+    bottom: 8%;
+    animation-delay: -8s;
+}
+
+.black-dust i:nth-child(6) {
+    left: 72%;
+    bottom: 3%;
+    width: 2px;
+    height: 2px;
+    animation-delay: -13s;
+    animation-duration: 24s;
+}
+
+.black-dust i:nth-child(7) {
+    left: 84%;
+    bottom: 12%;
+    animation-delay: -5s;
+}
+
+.black-dust i:nth-child(8) {
+    left: 92%;
+    bottom: 5%;
+    width: 2px;
+    height: 2px;
+    animation-delay: -17s;
+    animation-duration: 21s;
+}
+
+@keyframes black-dust-rise {
+    0% {
+        opacity: 0;
+        transform: translate3d(0, 0, 0);
+    }
+
+    12% {
+        opacity: 0.8;
+    }
+
+    78% {
+        opacity: 0.5;
+    }
+
+    100% {
+        opacity: 0;
+        transform: translate3d(-2vw, -46vh, 0);
+    }
+}
+
+/* ==========================================
+   黑派 · 按钮：黑金石模块 / 金色日轮章
+   ========================================== */
+
+/* 黑金石模块：默认按钮为黑石底 + 亮金双侧描边 + 横向扫光 */
+html.theme-black sl-button:not([variant])::part(base),
+html.theme-black sl-button[variant='default']::part(base) {
+    background-color: #121217 !important;
+    background-image:
+        linear-gradient(115deg,
+            rgba(255, 224, 148, 0) 34%,
+            rgba(255, 224, 148, 0.24) 50%,
+            rgba(255, 224, 148, 0) 66%),
+        linear-gradient(180deg,
+            rgba(96, 78, 36, 0.5) 0%,
+            rgba(30, 28, 24, 0.6) 46%,
+            rgba(8, 8, 9, 0.92) 100%) !important;
+    background-size: 240% 100%, 100% 100% !important;
+    background-repeat: no-repeat !important;
+    background-position: 135% 0, 0 0 !important;
+    border: 1px solid rgba(214, 178, 94, 0.46) !important;
+    color: #f2e6cc !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 232, 176, 0.3),
+        inset 3px 0 0 rgba(226, 187, 104, 0.68),
+        inset -3px 0 0 rgba(226, 187, 104, 0.3),
+        inset 0 -10px 18px rgba(2, 2, 3, 0.6),
+        0 0 14px rgba(180, 138, 56, 0.16) !important;
+    animation: black-energy-sweep 4.6s ease-in-out infinite;
+    transition: box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+html.theme-black sl-button:not([variant])::part(label),
+html.theme-black sl-button[variant='default']::part(label) {
+    color: #f2e6cc !important;
+}
+
+html.theme-black sl-button:not([variant]):not([disabled]):hover::part(base),
+html.theme-black sl-button[variant='default']:not([disabled]):hover::part(base) {
+    border-color: rgba(244, 210, 132, 0.86) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 240, 200, 0.46),
+        inset 3px 0 0 rgba(244, 210, 132, 0.92),
+        inset -3px 0 0 rgba(244, 210, 132, 0.42),
+        inset 0 -8px 16px rgba(2, 2, 3, 0.5),
+        0 0 22px rgba(214, 168, 78, 0.34) !important;
+}
+
+@keyframes black-energy-sweep {
+
+    0%,
+    62%,
+    100% {
+        background-position: 135% 0, 0 0;
+    }
+
+    22% {
+        background-position: -30% 0, 0 0;
+    }
+}
+
+/* 金色日轮章：圆形按钮改为金环 + 中心放射纹的黑金石徽记 */
+html.theme-black sl-button[circle]::part(base) {
+    background-color: #0a0a0c !important;
+    background-image:
+        radial-gradient(circle at 50% 50%, rgba(255, 226, 156, 0.26) 0%, rgba(255, 226, 156, 0) 46%),
+        repeating-conic-gradient(from 0deg at 50% 50%,
+            rgba(226, 187, 104, 0.16) 0deg 4deg,
+            transparent 4deg 16deg),
+        radial-gradient(circle at 50% 46%, #1a191d 0%, #101014 58%, #060607 100%) !important;
+    background-size: 100% 100% !important;
+    background-position: 0 0 !important;
+    background-repeat: no-repeat !important;
+    border: 1px solid rgba(226, 187, 104, 0.6) !important;
+    color: #f4e7ca !important;
+    box-shadow:
+        inset 0 0 14px rgba(206, 164, 78, 0.28),
+        inset 0 0 2px rgba(255, 232, 176, 0.7),
+        0 0 0 3px rgba(40, 32, 18, 0.55),
+        0 0 16px rgba(180, 138, 56, 0.28) !important;
+    animation: none !important;
+}
+
+html.theme-black sl-button[circle]::part(label) {
+    color: #f4e7ca !important;
+}
+
+html.theme-black sl-button[circle]:not([disabled]):hover::part(base) {
+    border-color: rgba(255, 232, 176, 0.9) !important;
+    box-shadow:
+        inset 0 0 18px rgba(226, 184, 100, 0.4),
+        inset 0 0 2px rgba(255, 240, 200, 0.85),
+        0 0 0 3px rgba(56, 44, 24, 0.6),
+        0 0 24px rgba(214, 168, 78, 0.42) !important;
+}
+
+/* ==========================================
+   黑派 · 分页面动态大厅
+   主题开启且当前页命中场景时由 voidscene.cjs 挂载
+   z-index: -1 置于所有内容之下，不遮挡交互
+   ========================================== */
+
+.black-scene {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 1.1s ease;
+    background: #060608;
+    transform: translateZ(0);
+    --bs-gold: rgba(230, 190, 102, 0.85);
+    --bs-gold-soft: rgba(230, 190, 102, 0.3);
+}
+
+html.theme-black.black-scene-on .black-scene {
+    opacity: 1;
+}
+
+/* 场景页把 body 的静态渐变让位，避免遮住动态大厅 */
+html.theme-black.black-scene-on body,
+html.theme-black.black-scene-on body.bg-light {
+    background-image: none !important;
+    background-color: transparent !important;
+}
+
+/* ---------- 大厅主体：主题插画（金字塔 / 符文 / 古老科技 / 荣耀殿堂） ---------- */
+.black-scene .bs-hall {
+    position: absolute;
+    inset: -6%;
+    background: #060608 url('/image/theme/black-play.jpg?v=20261030') center 54%/cover no-repeat;
+    transform-origin: 50% 62%;
+    animation: bs-hall-drift 62s ease-in-out infinite alternate;
+    will-change: transform;
+}
+
+/* 插画缓慢推拉：远景轻微拉近并横移，避免整页死板 */
+@keyframes bs-hall-drift {
+    from {
+        transform: scale(1.02) translate3d(0, 0, 0);
+    }
+
+    to {
+        transform: scale(1.1) translate3d(-1.4%, -1%, 0);
+    }
+}
+
+/* 压暗顶部与底部，保证前景内容始终可读 */
+.black-scene .bs-hall::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg,
+            rgba(4, 4, 5, 0.34) 0%,
+            rgba(4, 4, 5, 0.12) 30%,
+            rgba(4, 4, 5, 0.46) 74%,
+            rgba(4, 4, 5, 0.86) 100%);
+}
+
+/* 分组色调：对局冷金 / 赛事暖金 / 剧情蓝灰 / 荣耀高亮 */
+.black-scene .bs-hall::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--bs-tint, radial-gradient(ellipse at 50% 28%, rgba(230, 190, 102, 0.06), transparent 62%));
+    mix-blend-mode: screen;
+}
+
+/* ---------- 顶部日轮灯（叠加在插画顶灯之上，只做轻微呼吸） ---------- */
+.black-scene .bs-lamp {
+    position: absolute;
+    top: -13vmin;
+    left: 50%;
+    width: 19vmin;
+    height: 19vmin;
+    margin-left: -9.5vmin;
+    border-radius: 50%;
+    background:
+        radial-gradient(circle at 50% 44%, rgba(255, 253, 244, 0.86) 0 4%, rgba(255, 232, 176, 0.55) 12%, rgba(232, 182, 92, 0.28) 36%, rgba(170, 124, 44, 0.08) 60%, transparent 72%);
+    filter: blur(1vmin);
+    opacity: 0.55;
+    animation: bs-lamp-breathe 8s ease-in-out infinite;
+}
+
+.black-scene .bs-lamp::after {
+    content: '';
+    position: absolute;
+    inset: -34%;
+    border-radius: 50%;
+    border: 1px solid rgba(232, 195, 112, 0.24);
+    box-shadow:
+        0 0 18vmin rgba(230, 188, 100, 0.18),
+        inset 0 0 12vmin rgba(230, 188, 100, 0.1);
+}
+
+@keyframes bs-lamp-breathe {
+
+    0%,
+    100% {
+        transform: scale(1);
+        filter: blur(0.8vmin) brightness(1);
+    }
+
+    50% {
+        transform: scale(1.05);
+        filter: blur(0.8vmin) brightness(1.18);
+    }
+}
+
+/* ---------- 顶部放射金芒 ---------- */
+.black-scene .bs-rays {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 0;
+    height: 0;
+}
+
+.black-scene .bs-rays i {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: block;
+    width: 1px;
+    height: 128vmax;
+    background: linear-gradient(180deg, rgba(255, 232, 168, 0.14), rgba(255, 214, 120, 0.02) 56%, transparent 80%);
+    transform-origin: 50% 0;
+    filter: blur(0.5px);
+    animation: bs-ray-breathe 11s ease-in-out infinite;
+}
+
+.black-scene .bs-rays i:nth-child(1) {
+    transform: rotate(-76deg);
+    animation-delay: -1.6s;
+}
+
+.black-scene .bs-rays i:nth-child(2) {
+    transform: rotate(-54deg);
+    animation-delay: -3.8s;
+}
+
+.black-scene .bs-rays i:nth-child(3) {
+    transform: rotate(-32deg);
+    animation-delay: -5.6s;
+}
+
+.black-scene .bs-rays i:nth-child(4) {
+    transform: rotate(-12deg);
+    animation-delay: -2.4s;
+}
+
+.black-scene .bs-rays i:nth-child(5) {
+    transform: rotate(12deg);
+    animation-delay: -8s;
+}
+
+.black-scene .bs-rays i:nth-child(6) {
+    transform: rotate(32deg);
+    animation-delay: -4.6s;
+}
+
+.black-scene .bs-rays i:nth-child(7) {
+    transform: rotate(54deg);
+    animation-delay: -6.8s;
+}
+
+.black-scene .bs-rays i:nth-child(8) {
+    transform: rotate(76deg);
+    animation-delay: -9.2s;
+}
+
+@keyframes bs-ray-breathe {
+
+    0%,
+    100% {
+        opacity: 0.08;
+    }
+
+    50% {
+        opacity: 0.26;
+    }
+}
+
+/* ---------- 地面：插画自带拼花，这里只叠一层缓慢起伏的金色反光 ---------- */
+.black-scene .bs-floor {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 34vh;
+    background: radial-gradient(ellipse at 50% 96%, rgba(226, 178, 84, 0.14), rgba(226, 178, 84, 0.04) 46%, transparent 72%);
+    opacity: 0.7;
+    animation: bs-floor-breathe 14s ease-in-out infinite;
+}
+
+@keyframes bs-floor-breathe {
+
+    0%,
+    100% {
+        opacity: 0.48;
+    }
+
+    50% {
+        opacity: 0.82;
+    }
+}
+
+/* ---------- 悬浮金尘 ---------- */
+.black-scene .bs-dust {
+    position: absolute;
+    inset: 0;
+}
+
+.black-scene .bs-dust i {
+    position: absolute;
+    display: block;
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: rgba(244, 208, 128, 0.8);
+    box-shadow: 0 0 6px rgba(244, 208, 128, 0.55);
+    opacity: 0;
+    animation: bs-dust-rise 20s linear infinite;
+}
+
+.black-scene .bs-dust i:nth-child(1) {
+    left: 14%;
+    bottom: 8%;
+    animation-delay: -3s;
+}
+
+.black-scene .bs-dust i:nth-child(2) {
+    left: 27%;
+    bottom: 3%;
+    width: 2px;
+    height: 2px;
+    animation-delay: -7s;
+    animation-duration: 24s;
+}
+
+.black-scene .bs-dust i:nth-child(3) {
+    left: 39%;
+    bottom: 12%;
+    animation-delay: -12s;
+}
+
+.black-scene .bs-dust i:nth-child(4) {
+    left: 52%;
+    bottom: 5%;
+    width: 2px;
+    height: 2px;
+    animation-delay: -16s;
+    animation-duration: 22s;
+}
+
+.black-scene .bs-dust i:nth-child(5) {
+    left: 64%;
+    bottom: 9%;
+    animation-delay: -9s;
+}
+
+.black-scene .bs-dust i:nth-child(6) {
+    left: 73%;
+    bottom: 4%;
+    width: 2px;
+    height: 2px;
+    animation-delay: -14s;
+    animation-duration: 26s;
+}
+
+.black-scene .bs-dust i:nth-child(7) {
+    left: 85%;
+    bottom: 13%;
+    animation-delay: -6s;
+}
+
+.black-scene .bs-dust i:nth-child(8) {
+    left: 93%;
+    bottom: 6%;
+    width: 2px;
+    height: 2px;
+    animation-delay: -18s;
+    animation-duration: 23s;
+}
+
+.black-scene .bs-dust i:nth-child(9) {
+    left: 8%;
+    bottom: 18%;
+    animation-delay: -11s;
+}
+
+.black-scene .bs-dust i:nth-child(10) {
+    left: 96%;
+    bottom: 16%;
+    width: 2px;
+    height: 2px;
+    animation-delay: -21s;
+}
+
+@keyframes bs-dust-rise {
+    0% {
+        opacity: 0;
+        transform: translate3d(0, 0, 0);
+    }
+
+    12% {
+        opacity: 0.85;
+    }
+
+    74% {
+        opacity: 0.5;
+    }
+
+    100% {
+        opacity: 0;
+        transform: translate3d(-2.4vw, -52vh, 0);
+    }
+}
+
+/* ---------- 暗角 ---------- */
+.black-scene .bs-vignette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 44%, transparent 52%, rgba(3, 3, 4, 0.62) 100%);
+}
+
+/* ---------- 分页插画：金字塔竞技场 / 符文神殿 / 古老科技 / 荣耀殿堂 ---------- */
+.black-scene-play .bs-hall {
+    background-image: url('/image/theme/black-play.jpg?v=20261030');
+    animation-duration: 66s;
+    --bs-tint: radial-gradient(ellipse at 50% 30%, rgba(180, 200, 224, 0.1), transparent 64%);
+}
+
+.black-scene-event .bs-hall {
+    background-image: url('/image/theme/black-event.jpg?v=20261030');
+    animation-duration: 56s;
+    --bs-tint: radial-gradient(ellipse at 50% 26%, rgba(255, 206, 122, 0.14), transparent 62%);
+}
+
+.black-scene-lore .bs-hall {
+    background-image: url('/image/theme/black-lore.jpg?v=20261030');
+    animation-duration: 60s;
+    --bs-tint: radial-gradient(ellipse at 50% 30%, rgba(120, 160, 208, 0.14), transparent 64%);
+}
+
+.black-scene-honor .bs-hall {
+    background-image: url('/image/theme/black-honor.jpg?v=20261030');
+    animation-duration: 48s;
+    --bs-tint: radial-gradient(ellipse at 50% 26%, rgba(255, 216, 140, 0.2), transparent 58%);
+}
+
+.black-scene-honor .bs-lamp {
+    width: 23vmin;
+    height: 23vmin;
+    margin-left: -11.5vmin;
+}
+
+.black-scene-honor .bs-floor {
+    opacity: 0.9;
+}
+
+@media (max-width: 720px) {
+    .black-scene .bs-lamp {
+        width: 18vmin;
+        height: 18vmin;
+        margin-left: -9vmin;
+    }
+
+    .black-scene-honor .bs-lamp {
+        width: 18vmin;
+        height: 18vmin;
+        margin-left: -9vmin;
+    }
+
+    .black-scene .bs-hall {
+        background-position: center 58%;
+    }
+
+    .black-fx .black-sun {
+        width: 16vmin;
+        height: 16vmin;
+        margin-left: -8vmin;
+    }
+}
+
+/* 系统开启“减弱动态效果”时停掉黑派背景与场景动画 */
+@media (prefers-reduced-motion: reduce) {
+
+    .black-backdrop,
+    .black-backdrop::before,
+    .black-sun,
+    .black-rays i,
+    .black-dust i,
+    .black-scene,
+    .black-scene *,
+    html.theme-black sl-button[variant='default']::part(base),
+    html.theme-black sl-button:not([variant])::part(base) {
+        animation: none !important;
+    }
 }

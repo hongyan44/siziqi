@@ -192,19 +192,23 @@ const set_end_reward = (coin, exp) => {
 };
 
 /**
- * @description: 人机对战奖励结算（仅登录玩家；服务端按对局时长标准值发放，胜方双倍、向上取整）
+ * @description: 人机对战奖励结算（仅登录玩家；不足 1 分钟胜方 20 / 败方 1，其余按对局时长标准值发放、胜方双倍、向上取整）
  * @param {number} duration 对局时长（秒）
  * @param {boolean} win 玩家是否获胜
+ * @param {number} time 本局开局时间（毫秒，用于同一局结算去重）
+ * @param {string|number} difficulty AI 难度选项（'0' 入门，'1' 及以上为简单及以上难度）
  * @return {Promise<{coin:number, exp:number}>}
  */
-const reward_ai = async (duration, win) => {
+const reward_ai = async (duration, win, time = 0, difficulty = 0) => {
     const token = typeof window.get_token === 'function' ? window.get_token() : null;
     if (!token || typeof window.http_ai_reward !== 'function') return { 'coin': 0, 'exp': 0 };
     try {
-        const result = await window.http_ai_reward(token, duration, win);
+        const result = await window.http_ai_reward(token, duration, win, time, difficulty);
         const coin = Number(result && result.reward) || 0;
         const exp = Number(result && result.exp_reward) || 0;
         if (coin > 0 || exp > 0) toast.success(`本局获得 ${coin} 棋币 · ${exp} 经验`);
+        const task = Number(result && result.task_reward) || 0;
+        if (task > 0) toast.success(`每日任务完成：+${task} 棋币`);
         return { 'coin': coin, 'exp': exp };
     } catch (_) {
         // 结算失败不影响对局结算画面
@@ -734,6 +738,7 @@ const ai_pice = async () => {
  */
 const ai_turn = async (index) => {
     if (gl_cf_name === '4ascend-zero') return await ai_worker.ZERO_TURN(index);
+    else if (gl_cf_name === '4ascend-fish') return await ai_worker.FISH_TURN(index);
     else if (gl_cf_name === '4ascend-hce') return await ai_worker.HCE_TURN(index);
 };
 
@@ -743,6 +748,7 @@ const ai_turn = async (index) => {
  */
 const ai_think = async () => {
     if (gl_cf_name === '4ascend-zero') return await ai_worker.ZERO_THINK(gl_cf_opt, gl_cf_synchronize_random);
+    else if (gl_cf_name === '4ascend-fish') return await ai_worker.FISH_THINK(gl_cf_opt, gl_cf_synchronize_random);
     else if (gl_cf_name === '4ascend-hce') return await ai_worker.HCE_THINK(gl_cf_opt);
 };
 
@@ -753,6 +759,7 @@ const ai_think = async () => {
  */
 const ai_init = async (data) => {
     if (gl_cf_name === '4ascend-zero') return await ai_worker.ZERO_RESET(data.aic >>> 0, data.unity >>> 0, data.first, data.hp, data.plant, gl_cf_mode === 'night', gl_cf_level_option);
+    else if (gl_cf_name === '4ascend-fish') return await ai_worker.FISH_RESET(data.aic >>> 0, data.unity >>> 0, data.first, data.hp, data.plant, gl_cf_mode === 'night', gl_cf_level_option);
     else if (gl_cf_name === '4ascend-hce') return await ai_worker.HCE_RESET(data.first ^ 1);
 };
 
@@ -1331,7 +1338,12 @@ const run = async () => {
             if (gl_ui) gl_ui.set_turn_flash(false);
             // 成就：赢下 AI（入门难度为 0，其余均视为简单及以上）；败局也计入 AI 对局场次
             if (typeof window.achievement_event === 'function') {
-                if (win === my_color) window.achievement_event('ai_win', { 'easy_or_above': gl_cf_level_option !== '0' });
+                if (win === my_color) window.achievement_event('ai_win', {
+                    'easy_or_above': gl_cf_level_option !== '0',
+                    'turn_count': state.turn_count,
+                    'attack_turns': state.attack_turns ? state.attack_turns[my_index] : [],
+                    'board_empty': Boolean(gl_board && gl_board.stone_count === 0),
+                });
                 else window.achievement_event('ai_game');
             }
             game_msg.innerText = win === my_color ? `🏆|${my_name}|胜利${my_icon}` : `💀|${foe_name}|胜利${foe_icon}`;
@@ -1371,9 +1383,15 @@ const run = async () => {
     span_end_time.innerText = format_ms(duration_ms);
     span_end_hp.innerText = `${my_hp} vs ${foe_hp}`;
 
-    // 棋币与经验结算：仅登录玩家，服务端按对局时长标准值发放，胜方双倍、向上取整
-    const ai_reward = await reward_ai(Math.floor(duration_ms / 1000), my_wins);
+    // 棋币与经验结算：仅登录玩家，服务端按对局时长标准值发放（不足 1 分钟胜方 20 / 败方 1，其余胜方双倍、向上取整）
+    const duration_s = Math.floor(duration_ms / 1000);
+    const ai_reward = await reward_ai(duration_s, my_wins, time, gl_cf_level_option);
     set_end_reward(ai_reward.coin, ai_reward.exp);
+
+    // 快棋成就：不足 1 分钟的胜负（人机对战同样计入）
+    if (duration_s < 60 && typeof window.achievement_event === 'function') {
+        window.achievement_event(my_wins ? 'fast_win' : 'fast_loss');
+    }
 
     // 结算画面
     dialog_end.classList.remove('d-none');

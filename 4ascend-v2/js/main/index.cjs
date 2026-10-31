@@ -7,6 +7,15 @@ const button_local = document.getElementById('button_local');
 const button_user = document.getElementById('button_user');
 const button_clear = document.getElementById('button_clear');
 
+// 每日任务入口与弹窗
+const button_task_wrap = document.getElementById('button_task_wrap');
+const button_task_toggle = document.getElementById('button_task_toggle');
+const badge_task_dot = document.getElementById('badge_task_dot');
+const dialog_task = document.getElementById('dialog_task');
+const div_task_list = document.getElementById('div_task_list');
+const button_task_close = document.getElementById('button_task_close');
+const span_task_refresh = document.getElementById('span_task_refresh');
+
 
 const dialog_init = document.getElementById('dialog_init');
 
@@ -55,17 +64,12 @@ const switch_skin_piece = document.getElementById('switch_skin_piece');
 const switch_skin_piece_rouge = document.getElementById('switch_skin_piece_rouge');
 const switch_skin_grass = document.getElementById('switch_skin_grass');
 const switch_skin_grass_gold = document.getElementById('switch_skin_grass_gold');
+const switch_skin_grass_jade = document.getElementById('switch_skin_grass_jade');
 const switch_skin_board = document.getElementById('switch_skin_board');
 const switch_skin_board_gold = document.getElementById('switch_skin_board_gold');
 const switch_skin_theme = document.getElementById('switch_skin_theme');
+const switch_skin_theme_black = document.getElementById('switch_skin_theme_black');
 
-const text_skin_piece = document.getElementById('text_skin_piece');
-const text_skin_piece_rouge = document.getElementById('text_skin_piece_rouge');
-const text_skin_grass = document.getElementById('text_skin_grass');
-const text_skin_grass_gold = document.getElementById('text_skin_grass_gold');
-const text_skin_board = document.getElementById('text_skin_board');
-const text_skin_board_gold = document.getElementById('text_skin_board_gold');
-const text_skin_theme = document.getElementById('text_skin_theme');
 
 
 const dialog_user = document.getElementById('dialog_user');
@@ -103,6 +107,13 @@ const input_user_account_code = document.getElementById('input_user_account_code
 const button_user_account_sms = document.getElementById('button_user_account_sms');
 const input_user_account = document.getElementById('input_user_account');
 const button_user_account_submit = document.getElementById('button_user_account_submit');
+
+// 全服消息管理（仅管理员 level 4 可见）
+const block_notice_admin = document.getElementById('block_notice_admin');
+const input_notice_title = document.getElementById('input_notice_title');
+const textarea_notice_content = document.getElementById('textarea_notice_content');
+const button_notice_publish = document.getElementById('button_notice_publish');
+const button_notice_clear_admin = document.getElementById('button_notice_clear_admin');
 
 // 当前账号绑定的邮箱或手机号，用于发送设置密码的验证码
 let user_ident = '';
@@ -383,6 +394,7 @@ const render_user_level = (level) => {
     block_user_color.classList.toggle('d-none', safe_level < 2);
     block_user_color_gradient.classList.toggle('d-none', safe_level < 3);
     block_user_color_rainbow.classList.toggle('d-none', safe_level !== 4);
+    if (block_notice_admin) block_notice_admin.classList.toggle('d-none', safe_level !== 4);
 };
 
 // 当前昵称颜色选择：'' 表示未选择，单色为 '#rrggbb'，彩色渐变为 'linear-gradient(...)'，流动彩虹为 'rainbow'
@@ -469,6 +481,30 @@ const read_avatar_file = (file) => new Promise((resolve, reject) => {
     image.src = url;
 });
 
+/**
+ * @description: 把账号已购皮肤写入本机缓存，供本地设置与对局画布读取
+ * @param {string[]} skins
+ * @return {void}
+ */
+const sync_owned_skins = (skins) => {
+    if (!Skins || !Array.isArray(skins)) return;
+    try {
+        localStorage.setItem('4a_skins', JSON.stringify({
+            piece: skins.includes('piece'),
+            piece_rouge: skins.includes('piece_rouge'),
+            grass: skins.includes('grass'),
+            grass_gold: skins.includes('grass_gold'),
+            grass_jade: skins.includes('grass_jade'),
+            board: skins.includes('board'),
+            board_gold: skins.includes('board_gold'),
+            theme: skins.includes('theme'),
+            theme_black: skins.includes('theme_black'),
+        }));
+    } catch (_) {
+        // 隐私模式下 localStorage 可能不可用，忽略即可
+    }
+};
+
 const user_info = async (token) => {
     try {
         const info = await window.http_user_info(token);
@@ -486,19 +522,7 @@ const user_info = async (token) => {
         if (block_user_wallet && window.WalletUI) window.WalletUI.render_panel(block_user_wallet, info, { backpack: true });
         // 账号已购皮肤同步到本机缓存，供本地设置的皮肤开关识别
         if (Skins && Array.isArray(info.skins)) {
-            try {
-                localStorage.setItem('4a_skins', JSON.stringify({
-                    piece: info.skins.includes('piece'),
-                    piece_rouge: info.skins.includes('piece_rouge'),
-                    grass: info.skins.includes('grass'),
-                    grass_gold: info.skins.includes('grass_gold'),
-                    board: info.skins.includes('board'),
-                    board_gold: info.skins.includes('board_gold'),
-                    theme: info.skins.includes('theme'),
-                }));
-            } catch (_) {
-                // 隐私模式下 localStorage 可能不可用，忽略即可
-            }
+            sync_owned_skins(info.skins);
             Skins.apply_theme();
         }
         user_avatar_data = info.avatar || '';
@@ -897,15 +921,17 @@ button_clear_submit.addEventListener('pointerdown', async (event) => {
 });
 
 
-// 皮肤开关：只有已购皮肤可以切换，未拥有时禁用并提示去棋币商店购买
+// 皮肤开关：只展示本账号已拥有的皮肤，未拥有的整行不显示
 const SKIN_ROWS = [
-    { id: 'piece', switch_el: switch_skin_piece, text_el: text_skin_piece, desc: '棋子经典材质，同时替换黑白双方棋子' },
-    { id: 'piece_rouge', switch_el: switch_skin_piece_rouge, text_el: text_skin_piece_rouge, desc: '红皮革层叠与黑布镶金，成打时纹理加深' },
-    { id: 'grass', switch_el: switch_skin_grass, text_el: text_skin_grass, desc: '中心蓝色高亮，外圈黑红交替渐变环' },
-    { id: 'grass_gold', switch_el: switch_skin_grass_gold, text_el: text_skin_grass_gold, desc: '金色菱形渐变，中心高光' },
-    { id: 'board', switch_el: switch_skin_board, text_el: text_skin_board, desc: '玉中乾坤棋盘' },
-    { id: 'board_gold', switch_el: switch_skin_board_gold, text_el: text_skin_board_gold, desc: '黑石盘面，亮金色网格与罗马数字' },
-    { id: 'theme', switch_el: switch_skin_theme, text_el: text_skin_theme, desc: '蓝黑舰桥界面 + 虚空能量棋子与反曲点环' },
+    { id: 'piece', switch_el: switch_skin_piece },
+    { id: 'piece_rouge', switch_el: switch_skin_piece_rouge },
+    { id: 'grass', switch_el: switch_skin_grass },
+    { id: 'grass_gold', switch_el: switch_skin_grass_gold },
+    { id: 'grass_jade', switch_el: switch_skin_grass_jade },
+    { id: 'board', switch_el: switch_skin_board },
+    { id: 'board_gold', switch_el: switch_skin_board_gold },
+    { id: 'theme', switch_el: switch_skin_theme },
+    { id: 'theme_black', switch_el: switch_skin_theme_black },
 ];
 
 const render_skin_settings = () => {
@@ -918,20 +944,28 @@ const render_skin_settings = () => {
     SKIN_ROWS.forEach((row) => {
         if (!row.switch_el) return;
         const has = !!owned[row.id];
+        // 本地设置只展示已拥有的皮肤，未拥有的整行隐藏
+        const row_el = row.switch_el.closest('[data-skin-row]');
+        if (row_el) row_el.classList.toggle('d-none', !has);
         row.switch_el.disabled = !has;
         row.switch_el.checked = has && !!active[row.id];
-        if (row.text_el) row.text_el.innerText = has ? row.desc : '未拥有，可在棋币商店购买';
     });
 };
 
-// 两套棋子皮肤 / 两套草皮肤 / 两套棋盘皮肤互斥：开启一套时自动关闭另一套
-[[switch_skin_piece, switch_skin_piece_rouge], [switch_skin_piece_rouge, switch_skin_piece],
-    [switch_skin_grass, switch_skin_grass_gold], [switch_skin_grass_gold, switch_skin_grass],
-    [switch_skin_board, switch_skin_board_gold], [switch_skin_board_gold, switch_skin_board]]
-    .forEach(([self_el, other_el]) => {
-        if (!self_el || !other_el) return;
-        self_el.addEventListener('sl-change', () => {
-            if (self_el.checked) other_el.checked = false;
+// 同组皮肤互斥：开启组内任一皮肤时自动关闭同组其余皮肤
+[[switch_skin_piece, switch_skin_piece_rouge],
+    [switch_skin_grass, switch_skin_grass_gold, switch_skin_grass_jade],
+    [switch_skin_board, switch_skin_board_gold],
+    [switch_skin_theme, switch_skin_theme_black]]
+    .forEach((group) => {
+        group.forEach((self_el) => {
+            if (!self_el) return;
+            self_el.addEventListener('sl-change', () => {
+                if (!self_el.checked) return;
+                group.forEach((other_el) => {
+                    if (other_el && other_el !== self_el) other_el.checked = false;
+                });
+            });
         });
     });
 
@@ -943,15 +977,20 @@ const backpack_coin = document.getElementById('backpack_coin');
 const backpack_pane = document.getElementById('backpack_pane');
 const backpack_tabs = Array.from(document.querySelectorAll('.backpack-tab'));
 const button_backpack_close = document.getElementById('button_backpack_close');
+const dialog_gift_friend = document.getElementById('dialog_gift_friend');
+const div_gift_friend_list = document.getElementById('div_gift_friend_list');
+const button_gift_friend_close = document.getElementById('button_gift_friend_close');
 
 const BAG_SKIN_NAMES = {
-    piece: '棋子皮肤',
+    piece: '棋子皮肤：止变',
     piece_rouge: '棋子皮肤：Le Rouge et Le Noir',
-    grass: '反曲点皮肤',
+    grass: '草皮肤：反曲点',
     grass_gold: '草皮肤：黄金',
-    board: '棋盘皮肤',
-    board_gold: '棋盘-黑派',
-    theme: '替换UI：幽蓝时空',
+    grass_jade: '草皮肤：白玉玲珑',
+    board: '棋盘皮肤：玉中乾坤',
+    board_gold: '棋盘皮肤：黑派',
+    theme: 'UI替换：幽蓝时空',
+    theme_black: 'UI替换：保存神域',
 };
 
 let backpack_tab = 'consume';
@@ -975,11 +1014,17 @@ const backpack_skin_icon = (id) => {
     if (id === 'grass_gold') {
         return `<svg viewBox='0 0 32 32' aria-hidden='true'><defs><linearGradient id='bag-grass-gold' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#fff4c9'/><stop offset='0.5' stop-color='#dcae45'/><stop offset='1' stop-color='#70500e'/></linearGradient></defs><path d='M16 3l13 13-13 13L3 16z' fill='url(#bag-grass-gold)' stroke='#fff0c0' stroke-width='1.5'/><circle cx='16' cy='16' r='5' fill='#fff8dd'/></svg>`;
     }
+    if (id === 'grass_jade') {
+        return `<svg viewBox='0 0 32 32' aria-hidden='true'><defs><radialGradient id='bag-grass-jade' cx='38%' cy='34%' r='72%'><stop offset='0' stop-color='#fdfefb'/><stop offset='0.34' stop-color='#d5ecda'/><stop offset='0.68' stop-color='#63af82'/><stop offset='0.9' stop-color='#2c7350'/><stop offset='1' stop-color='#0d3a28'/></radialGradient></defs><circle cx='16' cy='16' r='13' fill='url(#bag-grass-jade)' stroke='#0b3223' stroke-width='1.4'/><path d='M7 20c3-2 5-6 9-6s5 3 9 5' fill='none' stroke='rgba(255,255,255,.5)' stroke-width='1.2'/><ellipse cx='12' cy='10' rx='4' ry='2.4' fill='rgba(255,255,255,.6)' transform='rotate(-24 12 10)'/></svg>`;
+    }
     if (id === 'board') {
         return `<svg viewBox='0 0 32 32' aria-hidden='true'><rect x='4' y='4' width='24' height='24' rx='3' fill='#d7ebdd' stroke='#6f9c83'/><path d='M12 4v24M20 4v24M4 12h24M4 20h24' stroke='rgba(42,86,64,.45)'/></svg>`;
     }
     if (id === 'board_gold') {
         return `<svg viewBox='0 0 32 32' aria-hidden='true'><rect x='4' y='4' width='24' height='24' rx='3' fill='#121418' stroke='#c9a24f'/><path d='M12 4v24M20 4v24M4 12h24M4 20h24' stroke='rgba(245,205,110,.85)'/></svg>`;
+    }
+    if (id === 'theme_black') {
+        return `<svg viewBox='0 0 32 32' aria-hidden='true'><rect x='3' y='3' width='26' height='26' rx='4' fill='#0c0c0f' stroke='#c9a24f'/><path d='M16 6v20M6 16h20M9.5 9.5l13 13M22.5 9.5l-13 13' stroke='rgba(230,191,110,.7)'/><circle cx='16' cy='16' r='3.4' fill='#f6e2ad'/><circle cx='16' cy='16' r='4.6' fill='none' stroke='#e6bf6e'/></svg>`;
     }
     return `<svg viewBox='0 0 32 32' aria-hidden='true'><rect x='3' y='3' width='26' height='26' rx='4' fill='#0a1526' stroke='#4a9dff'/><circle cx='9' cy='9' r='2' fill='#f04056'/><path d='M9 17h14M9 22h9' stroke='#5eaaff' stroke-width='2'/></svg>`;
 };
@@ -1010,6 +1055,8 @@ const backpack_render_consume = () => {
     if (!backpack_pane) return;
     const tickets = Math.max(0, Math.trunc(Number(backpack_info && backpack_info.tickets) || 0));
     const vouchers = Math.max(0, Math.trunc(Number(backpack_info && backpack_info.vouchers) || 0));
+    const vouchers_500 = Math.max(0, Math.trunc(Number(backpack_info && backpack_info.vouchers_500) || 0));
+    const gift_vouchers = Math.max(0, Math.trunc(Number(backpack_info && backpack_info.gift_vouchers) || 0));
     backpack_pane.innerHTML = `
 <div class='bag-item'>
     <div class='bag-ticket-icon is-voucher'><span>3000</span><i>棋币</i></div>
@@ -1018,6 +1065,22 @@ const backpack_render_consume = () => {
         <div class='bag-item-desc'>消耗品：赛事冠军奖励，在背包中使用后获得 3000 棋币。</div>
     </div>
     ${vouchers > 0 ? `<sl-button size='small' variant='primary' data-bag-voucher-use>使用</sl-button>` : `<sl-button size='small' variant='primary' outline disabled>使用</sl-button>`}
+</div>
+<div class='bag-item'>
+    <div class='bag-ticket-icon is-voucher-500'><span>500</span><i>棋币</i></div>
+    <div class='bag-item-main'>
+        <div class='bag-item-name'>500棋币兑换券<span class='bag-count'>×${vouchers_500}</span></div>
+        <div class='bag-item-desc'>消耗品：残局投稿审核通过奖励，在背包中使用后获得 500 棋币。</div>
+    </div>
+    ${vouchers_500 > 0 ? `<sl-button size='small' variant='primary' data-bag-voucher-500-use>使用</sl-button>` : `<sl-button size='small' variant='primary' outline disabled>使用</sl-button>`}
+</div>
+<div class='bag-item'>
+    <div class='bag-ticket-icon is-gift'><span>500</span><i>赠礼</i></div>
+    <div class='bag-item-main'>
+        <div class='bag-item-name'>好友赠礼：500棋币<span class='bag-count'>×${gift_vouchers}</span></div>
+        <div class='bag-item-desc'>消耗品：每天限购 1 个。选择好友赠送后，对方背包获得 1 张 500 棋币兑换券。</div>
+    </div>
+    ${gift_vouchers > 0 ? `<sl-button size='small' variant='primary' data-bag-gift-send>赠送好友</sl-button>` : `<sl-button size='small' variant='primary' outline disabled>赠送好友</sl-button>`}
 </div>
 <div class='bag-item'>
     <div class='bag-ticket-icon'><span>投稿</span><i>单局</i></div>
@@ -1030,6 +1093,10 @@ const backpack_render_consume = () => {
 
     const use_button = backpack_pane.querySelector('[data-bag-voucher-use]');
     if (use_button) use_button.addEventListener('click', () => backpack_voucher_use(use_button));
+    const use_500_button = backpack_pane.querySelector('[data-bag-voucher-500-use]');
+    if (use_500_button) use_500_button.addEventListener('click', () => backpack_voucher_500_use(use_500_button));
+    const gift_button = backpack_pane.querySelector('[data-bag-gift-send]');
+    if (gift_button) gift_button.addEventListener('click', gift_friend_open);
 };
 
 /**
@@ -1062,6 +1129,130 @@ const backpack_voucher_use = async (button) => {
     // 账号信息里的「我的背包」入口同步显示最新棋币
     if (block_user_wallet && window.WalletUI) window.WalletUI.render_panel(block_user_wallet, backpack_info, { backpack: true });
     await backpack_render();
+};
+
+/**
+ * @description: 在背包中使用一张 500 棋币兑换券
+ * @param {HTMLElement} button
+ * @return {Promise<void>}
+ */
+const backpack_voucher_500_use = async (button) => {
+    if (!backpack_info || !button || button.disabled) return;
+    const token = typeof window.get_token === 'function' ? window.get_token() : null;
+    if (!token || typeof window.http_user_voucher_500_use !== 'function') return;
+
+    button.disabled = true;
+    let result = null;
+    try {
+        result = await window.http_user_voucher_500_use(token);
+    } catch (_) {
+        result = null;
+    } finally {
+        button.disabled = false;
+    }
+
+    if (!result) return toast.error('使用失败，请稍后重试');
+    if (!result.ok) return toast.error(result.reason === 'none' ? '没有可用的 500 棋币兑换券' : '使用失败，请稍后重试');
+
+    backpack_info.coin = Math.max(0, Math.trunc(Number(result.coin) || 0));
+    backpack_info.vouchers_500 = Math.max(0, Math.trunc(Number(result.vouchers_500) || 0));
+    toast.success('已使用 1 张 500 棋币兑换券，获得 500 棋币');
+    backpack_render_coin(backpack_info.coin);
+    // 账号信息里的「我的背包」入口同步显示最新棋币
+    if (block_user_wallet && window.WalletUI) window.WalletUI.render_panel(block_user_wallet, backpack_info, { backpack: true });
+    await backpack_render();
+};
+
+/**
+ * @description: 关闭赠送好友弹窗
+ * @return {void}
+ */
+const gift_friend_hide = () => {
+    if (!dialog_gift_friend) return;
+    if (typeof dialog_gift_friend.hide === 'function') dialog_gift_friend.hide();
+    else dialog_gift_friend.classList.add('d-none');
+};
+
+/**
+ * @description: 赠送 1 个好友赠礼给指定好友
+ * @param {string} uuid
+ * @param {HTMLElement} button
+ * @return {Promise<void>}
+ */
+const gift_friend_send = async (uuid, button) => {
+    if (!uuid || !button || button.disabled) return;
+    const token = typeof window.get_token === 'function' ? window.get_token() : null;
+    if (!token || typeof window.http_user_voucher_gift_send !== 'function') return;
+
+    button.disabled = true;
+    let result = null;
+    try {
+        result = await window.http_user_voucher_gift_send(token, uuid);
+    } catch (_) {
+        result = null;
+    } finally {
+        button.disabled = false;
+    }
+
+    if (!result) return toast.error('赠送失败，请稍后重试');
+    if (!result.ok) {
+        if (result.reason === 'none') return toast.info('背包里没有好友赠礼了');
+        return toast.error('赠送失败，请稍后重试');
+    }
+
+    if (backpack_info) backpack_info.gift_vouchers = Math.max(0, Math.trunc(Number(result.gift_vouchers) || 0));
+    toast.success('已送出好友赠礼，对方背包获得 1 张 500 棋币兑换券');
+    gift_friend_hide();
+    await backpack_render();
+};
+
+/**
+ * @description: 打开赠送好友弹窗并列出好友
+ * @return {Promise<void>}
+ */
+const gift_friend_open = async () => {
+    if (!dialog_gift_friend || !div_gift_friend_list) return;
+    const count = Math.max(0, Math.trunc(Number(backpack_info && backpack_info.gift_vouchers) || 0));
+    if (count < 1) return toast.info('背包里没有好友赠礼，去商店购买一个吧');
+
+    div_gift_friend_list.innerHTML = `<div class='text-secondary small py-2'>正在加载好友…</div>`;
+    dialog_gift_friend.classList.remove('d-none');
+    if (typeof dialog_gift_friend.show === 'function') dialog_gift_friend.show();
+    else customElements.whenDefined('sl-dialog').then(() => dialog_gift_friend.show());
+
+    let result = null;
+    try {
+        result = await window.http_friend_list(window.get_token());
+    } catch (_) {
+        result = null;
+    }
+    const friends = result && Array.isArray(result.friends) ? result.friends : [];
+    div_gift_friend_list.innerHTML = '';
+    if (!friends.length) {
+        div_gift_friend_list.innerHTML = `<div class='text-secondary small py-2'>还没有好友，先去添加好友吧</div>`;
+        return;
+    }
+
+    friends.forEach((friend) => {
+        const row = document.createElement('div');
+        row.className = 'bag-item';
+        const main = document.createElement('div');
+        main.className = 'bag-item-main';
+        const name = document.createElement('div');
+        name.className = 'bag-item-name';
+        name.textContent = friend.name || '无名氏';
+        const desc = document.createElement('div');
+        desc.className = 'bag-item-desc';
+        desc.textContent = friend.online ? '在线' : '离线';
+        main.append(name, desc);
+        const button = document.createElement('sl-button');
+        button.setAttribute('size', 'small');
+        button.setAttribute('variant', 'primary');
+        button.textContent = '赠送';
+        button.addEventListener('click', () => gift_friend_send(friend.uuid, button));
+        row.append(main, button);
+        div_gift_friend_list.append(row);
+    });
 };
 
 /**
@@ -1132,18 +1323,21 @@ const backpack_render_skins = () => {
             const id = node.dataset.bagSkin;
             const next = Skins.prefs();
             next[id] = Boolean(node.checked);
-            // 两套棋子皮肤 / 两套草皮肤 / 两套棋盘皮肤互斥：切换一套时关闭另一套
-            let other_id = null;
-            if (id === 'piece') other_id = 'piece_rouge';
-            if (id === 'piece_rouge') other_id = 'piece';
-            if (id === 'grass') other_id = 'grass_gold';
-            if (id === 'grass_gold') other_id = 'grass';
-            if (id === 'board') other_id = 'board_gold';
-            if (id === 'board_gold') other_id = 'board';
-            if (other_id) {
-                next[other_id] = false;
-                const other_node = backpack_pane.querySelector(`[data-bag-skin='${other_id}']`);
-                if (other_node) other_node.checked = false;
+            // 同组皮肤互斥：切换一套时关闭同组其余皮肤
+            const SKIN_GROUPS = [
+                ['piece', 'piece_rouge'],
+                ['grass', 'grass_gold', 'grass_jade'],
+                ['board', 'board_gold'],
+                ['theme', 'theme_black'],
+            ];
+            const group = SKIN_GROUPS.find((ids) => ids.includes(id));
+            if (group) {
+                group.forEach((other_id) => {
+                    if (other_id === id) return;
+                    next[other_id] = false;
+                    const other_node = backpack_pane.querySelector(`[data-bag-skin='${other_id}']`);
+                    if (other_node) other_node.checked = false;
+                });
             }
             Skins.write_prefs(next);
             Skins.apply_theme();
@@ -1216,6 +1410,7 @@ backpack_tabs.forEach((tab) => tab.addEventListener('click', () => {
 }));
 if (button_backpack_close) button_backpack_close.addEventListener('click', backpack_close);
 if (backpack_backdrop) backpack_backdrop.addEventListener('click', backpack_close);
+if (button_gift_friend_close) button_gift_friend_close.addEventListener('click', gift_friend_hide);
 
 
 // 本地设置，对话框
@@ -1243,6 +1438,15 @@ const open_local_settings = () => {
 
     dialog_local.classList.remove('d-none');
     dialog_local.show();
+
+    // 换设备时本机可能还没有已购皮肤缓存，按账号最新数据刷新一次再回显
+    if (window.get_token && window.get_token() && window.http_user_info) {
+        window.http_user_info(window.get_token()).then((info) => {
+            if (!info) return;
+            sync_owned_skins(info.skins);
+            render_skin_settings();
+        }).catch(() => { });
+    }
 };
 
 button_local.addEventListener('click', open_local_settings);
@@ -1287,17 +1491,28 @@ button_local_submit.addEventListener('click', () => {
             prefs.piece_rouge = rouge_on;
             prefs.piece = !rouge_on && !!switch_skin_piece.checked;
         }
-        // 两套草皮肤互斥：都拥有时只保留当前开启的那一套
-        if (owned.grass && owned.grass_gold) {
-            const grass_gold_on = !!switch_skin_grass_gold.checked;
-            prefs.grass_gold = grass_gold_on;
-            prefs.grass = !grass_gold_on && !!switch_skin_grass.checked;
-        }
+        // 三套草皮肤互斥：只保留当前开启的那一套
+        const grass_ids = ['grass', 'grass_gold', 'grass_jade'];
+        const grass_switch = {
+            grass: switch_skin_grass,
+            grass_gold: switch_skin_grass_gold,
+            grass_jade: switch_skin_grass_jade,
+        };
+        const grass_on = grass_ids.filter((id) => owned[id] && grass_switch[id] && grass_switch[id].checked).pop();
+        grass_ids.forEach((id) => {
+            if (owned[id]) prefs[id] = id === grass_on;
+        });
         // 两套棋盘皮肤互斥：都拥有时只保留当前开启的那一套
         if (owned.board && owned.board_gold) {
             const gold_on = !!switch_skin_board_gold.checked;
             prefs.board_gold = gold_on;
             prefs.board = !gold_on && !!switch_skin_board.checked;
+        }
+        // 两套 UI 主题互斥：黑派优先，都开启时只保留黑派
+        if (owned.theme && owned.theme_black) {
+            const black_on = !!switch_skin_theme_black.checked;
+            prefs.theme_black = black_on;
+            prefs.theme = !black_on && !!switch_skin_theme.checked;
         }
         Skins.write_prefs(prefs);
         // 主题开关变化立即反映到当前页面
@@ -1307,3 +1522,321 @@ button_local_submit.addEventListener('click', () => {
     dialog_local.hide();
     toast.success('设置保存成功！');
 });
+
+
+// ===== 每日任务（主页右下角入口） =====
+/**
+ * @description: HTML 转义
+ * @param {*} value
+ * @return {string}
+ */
+const task_escape = (value) => String(value == null ? '' : value).replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+}[char]));
+
+/**
+ * @description: 更新入口红点（显示已完成任务数）
+ * @param {number} count
+ * @return {void}
+ */
+const task_badge_update = (count) => {
+    if (!badge_task_dot) return;
+    const value = Math.max(0, Math.trunc(Number(count) || 0));
+    if (value > 0) {
+        badge_task_dot.textContent = value > 99 ? '99+' : String(value);
+        badge_task_dot.classList.remove('d-none');
+    } else {
+        badge_task_dot.classList.add('d-none');
+    }
+};
+
+/**
+ * @description: 单个任务行
+ * @param {Object} task
+ * @return {string}
+ */
+const task_row_html = (task) => {
+    const target = Math.max(1, Math.trunc(Number(task && task.target) || 1));
+    const progress = Math.min(target, Math.max(0, Math.trunc(Number(task && task.progress) || 0)));
+    const reward = Math.max(0, Math.trunc(Number(task && task.reward) || 0));
+    const done = Boolean(task && task.done);
+    const claimed = Boolean(task && task.claimed);
+    const claimable = done && !claimed;
+    // 投稿任务固定保留，已完成任务无需重抽，这两类不显示刷新按钮
+    const refreshable = !done && String(task && task.kind) !== 'puzzle';
+    const status = done ? (claimed ? '已完成，奖励已领取' : '已完成，待领取奖励') : `进度 ${progress} / ${target}`;
+    const idle = `<sl-button class='task-row-refresh' size='small' variant='default' data-task-id='${task_escape(task && task.id)}'>刷新</sl-button>`;
+    const action = claimable
+        ? `<sl-button class='task-row-claim' size='small' variant='success' data-task-id='${task_escape(task && task.id)}'>领取奖励</sl-button>`
+        : refreshable ? idle : '';
+    return `<div class='task-row ${done ? 'done' : ''} ${claimable ? 'claimable' : ''}'>
+    <span class='task-row-icon'><sl-icon name='${done ? 'check-circle-fill' : 'circle'}'></sl-icon></span>
+    <div class='task-row-main'>
+        <div class='task-row-title'>${task_escape(task && task.title)}</div>
+        <div class='task-row-sub'>${status}</div>
+    </div>
+    <span class='task-row-reward'>+${reward} 棋币<br>+${reward} 经验</span>
+    ${action}
+</div>`;
+};
+
+/**
+ * @description: 刷新次数与费用提示
+ * @param {Object} data
+ * @return {void}
+ */
+const task_refresh_update = (data) => {
+    const free = Math.max(0, Math.trunc(Number(data && data.free_refresh) || 0));
+    const cost = Math.max(0, Math.trunc(Number(data && data.refresh_cost) || 0));
+    if (span_task_refresh) span_task_refresh.textContent = free > 0 ? `免费刷新剩余 ${free} 次` : `每次刷新消耗 ${cost} 棋币`;
+};
+
+/**
+ * @description: 刷新指定的单个任务（进度清零，换成同组未抽到过的任务）
+ * @param {string} id
+ * @param {HTMLElement} button
+ * @return {Promise<void>}
+ */
+const task_refresh_one = async (id, button) => {
+    if (!id || !require_login() || typeof window.http_task_refresh !== 'function') return;
+    if (button) button.disabled = true;
+    try {
+        const data = await window.http_task_refresh(window.get_token(), id);
+        if (!data) throw Error('task refresh failed');
+        if (!data.ok) {
+            const reason = String(data.reason || '');
+            const message = reason === 'coin' ? '棋币不足，刷新失败。'
+                : reason === 'invalid' ? '该任务不可刷新（已完成或为投稿任务）。'
+                : reason === 'no_candidate' ? '该组任务已全部抽到过，暂无新的可刷新任务。'
+                : '刷新失败，请稍后重试。';
+            toast.error(message);
+            task_refresh_update(data);
+            return;
+        }
+        const cost = Math.max(0, Math.trunc(Number(data.cost) || 0));
+        toast.success(cost > 0 ? `任务已刷新，消耗 ${cost} 棋币。` : '任务已刷新（免费）。');
+        task_badge_update(data.claimable_count);
+        task_render(data);
+    } catch (_) {
+        toast.error('刷新失败，请稍后重试。');
+        if (button) button.disabled = false;
+    }
+};
+
+/**
+ * @description: 领取指定已完成任务的奖励；全部领取后右下角红点消失
+ * @param {string} id
+ * @param {HTMLElement} button
+ * @return {Promise<void>}
+ */
+const task_claim_one = async (id, button) => {
+    if (!id || !require_login() || typeof window.http_task_claim !== 'function') return;
+    if (button) button.disabled = true;
+    try {
+        const data = await window.http_task_claim(window.get_token(), id);
+        if (!data) throw Error('task claim failed');
+        if (!data.ok) {
+            toast.error(String(data.reason || '') === 'invalid' ? '该任务当前不可领取奖励。' : '领取失败，请稍后重试。');
+            task_badge_update(data.claimable_count);
+            return;
+        }
+        const reward = Math.max(0, Math.trunc(Number(data.reward) || 0));
+        toast.success(`已领取 ${reward} 棋币 · ${reward} 经验。`);
+        task_badge_update(data.claimable_count);
+        task_render(data);
+    } catch (_) {
+        toast.error('领取失败，请稍后重试。');
+        if (button) button.disabled = false;
+    }
+};
+
+/**
+ * @description: 渲染任务列表（多人 / 单人 / 投稿分组）
+ * @param {Object} data
+ * @return {void}
+ */
+const task_render = (data) => {
+    if (!div_task_list) return;
+    const tasks = (data && Array.isArray(data.tasks) ? data.tasks : []).filter(Boolean);
+    if (!tasks.length) {
+        div_task_list.innerHTML = `<div class='text-secondary small'>暂无任务，请稍后重试。</div>`;
+        return;
+    }
+    const groups = [['multi', '多人任务'], ['single', '单人任务'], ['puzzle', '投稿任务']];
+    div_task_list.innerHTML = groups.map(([kind, label]) => {
+        const list = tasks.filter((task) => task.kind === kind);
+        if (!list.length) return '';
+        return `<div class='task-group-title'>${label}</div>${list.map(task_row_html).join('')}`;
+    }).join('');
+    // 每行按钮独立绑定：刷新只换该任务，领取只结算该任务
+    div_task_list.querySelectorAll('.task-row-refresh').forEach((button) => {
+        button.addEventListener('click', () => task_refresh_one(button.dataset.taskId, button));
+    });
+    div_task_list.querySelectorAll('.task-row-claim').forEach((button) => {
+        button.addEventListener('click', () => task_claim_one(button.dataset.taskId, button));
+    });
+    task_refresh_update(data);
+};
+
+/**
+ * @description: 同步入口显隐与红点
+ * @return {Promise<void>}
+ */
+const task_sync = async () => {
+    if (!button_task_wrap) return;
+    button_task_wrap.classList.toggle('d-none', !is_logged_in());
+    if (!is_logged_in() || typeof window.http_task_query !== 'function') return;
+    try {
+        const data = await window.http_task_query(window.get_token());
+        if (data) task_badge_update(data.claimable_count);
+    } catch (_) {
+        // 任务入口失败不影响主页其它功能
+    }
+};
+
+if (button_task_toggle) {
+    button_task_toggle.addEventListener('click', async () => {
+        if (!require_login()) return;
+        div_task_list.innerHTML = `<div class='text-secondary small'>任务加载中…</div>`;
+        dialog_task.classList.remove('d-none');
+        dialog_task.show();
+        try {
+            const data = await window.http_task_query(window.get_token());
+            if (!data) throw Error('task query failed');
+            task_badge_update(data.claimable_count);
+            task_render(data);
+        } catch (_) {
+            div_task_list.innerHTML = `<div class='text-secondary small'>任务加载失败，请稍后重试。</div>`;
+        }
+    });
+}
+if (button_task_close) button_task_close.addEventListener('click', () => dialog_task.hide());
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', task_sync, { once: true });
+else task_sync();
+
+
+// ===== 全服消息（主页右上角喇叭入口） =====
+const button_notice_wrap = document.getElementById('button_notice_wrap');
+const button_notice_toggle = document.getElementById('button_notice_toggle');
+const dialog_notice = document.getElementById('dialog_notice');
+const button_notice_close = document.getElementById('button_notice_close');
+const span_notice_title = document.getElementById('span_notice_title');
+const span_notice_time = document.getElementById('span_notice_time');
+const div_notice_content = document.getElementById('div_notice_content');
+
+// 当前生效的全服消息（null 表示没有）
+let notice_current = null;
+
+/**
+ * @description: 格式化消息时间
+ * @param {number} value
+ * @return {string}
+ */
+const notice_time_text = (value) => {
+    const stamp = Math.trunc(Number(value) || 0);
+    if (!stamp) return '';
+    const date = new Date(stamp);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleString('zh-CN', { hour12: false });
+};
+
+/**
+ * @description: 渲染全服消息入口与弹窗内容
+ * @param {Object | null} record
+ * @return {void}
+ */
+const notice_render = (record) => {
+    const content = String(record && record.content || '').trim();
+    notice_current = content ? record : null;
+
+    if (button_notice_wrap) button_notice_wrap.classList.toggle('d-none', !notice_current);
+    if (!notice_current) {
+        if (dialog_notice && dialog_notice.open) dialog_notice.hide();
+        return;
+    }
+
+    const title = String(notice_current.title || '').trim();
+    if (span_notice_title) {
+        span_notice_title.textContent = title;
+        span_notice_title.classList.toggle('d-none', !title);
+    }
+    if (div_notice_content) div_notice_content.textContent = content;
+    if (span_notice_time) span_notice_time.textContent = notice_time_text(notice_current.created_at);
+};
+
+/**
+ * @description: 同步全服消息（失败时保持当前状态）
+ * @return {Promise<void>}
+ */
+const notice_sync = async () => {
+    if (typeof window.http_notice_query !== 'function') return;
+    try {
+        const data = await window.http_notice_query();
+        if (data) notice_render(data.notice);
+    } catch (_) {
+        // 查询失败不影响主页其它功能
+    }
+};
+
+if (button_notice_toggle) {
+    button_notice_toggle.addEventListener('click', async () => {
+        await notice_sync();
+        if (!notice_current) return;
+        dialog_notice.classList.remove('d-none');
+        dialog_notice.show();
+    });
+}
+if (button_notice_close) button_notice_close.addEventListener('click', () => dialog_notice.hide());
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', notice_sync, { once: true });
+else notice_sync();
+setInterval(notice_sync, 60000);
+
+
+// ===== 全服消息管理（账号信息弹窗内，仅管理员可见） =====
+if (button_notice_publish) {
+    button_notice_publish.addEventListener('click', async () => {
+        if (!require_login() || typeof window.http_notice_publish !== 'function') return;
+        const content = String(textarea_notice_content.value || '').trim();
+        if (!content) return toast.error('请输入消息内容。');
+
+        const token = window.get_token();
+        const title = String(input_notice_title.value || '').trim();
+        button_notice_publish.disabled = true;
+        try {
+            const ok = await window.http_notice_publish(token, title, content);
+            if (!ok) return toast.error('发布失败，请稍后重试。');
+            input_notice_title.value = '';
+            textarea_notice_content.value = '';
+            await notice_sync();
+            toast.success('全服消息已发布。');
+        } catch (_) {
+            toast.error('发布失败，请稍后重试。');
+        } finally {
+            button_notice_publish.disabled = false;
+        }
+    });
+}
+
+if (button_notice_clear_admin) {
+    button_notice_clear_admin.addEventListener('click', async () => {
+        if (!require_login() || typeof window.http_notice_clear !== 'function') return;
+        const token = window.get_token();
+        button_notice_clear_admin.disabled = true;
+        try {
+            const ok = await window.http_notice_clear(token);
+            if (!ok) return toast.error('清除失败，请稍后重试。');
+            await notice_sync();
+            toast.success('已清除全服消息。');
+        } catch (_) {
+            toast.error('清除失败，请稍后重试。');
+        } finally {
+            button_notice_clear_admin.disabled = false;
+        }
+    });
+}

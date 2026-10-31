@@ -124,7 +124,7 @@
 
             await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
-            window.ai_worker = Comlink.wrap(new Worker('/js/worker/ai.min.js?v=20261020-no-tactics'));
+            window.ai_worker = Comlink.wrap(new Worker('/js/worker/ai.min.js?v=20261031-fish'));
             window.ai_worker.AI_INIT();
 
             const elapsed = Date.now() - st;
@@ -146,8 +146,8 @@
 
 
 <body class='d-flex flex-column w-100 h-100 bg-light'>
-    <div id='button_home' class='position-fixed top-0 start-0 d-flex p-2' style="z-index: 1050;">
-        <sl-button variant='default' href='/' circle>
+    <div id='button_home' class='position-fixed top-0 start-0 d-flex gap-1 p-2' style="z-index: 1050;">
+        <sl-button variant='default' href='/' circle title='返回主页' aria-label='返回主页'>
             <sl-icon name='house'></sl-icon>
         </sl-button>
     </div>
@@ -178,8 +178,8 @@
                     </div>
 
                     <div class='d-flex flex-row gap-1 w-100'>
-                        <sl-input style='flex: 1; min-width: 0;' value='6' id='input_server_health'
-                            placeholder='输入 生命数值' size='large' pill></sl-input>
+                        <sl-input style='flex: 1; min-width: 0;' type='number' min='2' max='100' step='1' value='6'
+                            id='input_server_health' placeholder='输入 生命数值（2-100）' size='large' pill></sl-input>
                         <sl-input class='pe-none' style='flex: 1; min-width: 0;' id='input_server_board'
                             placeholder='输入 初始盘面' size='large' pill disabled></sl-input>
                     </div>
@@ -215,6 +215,7 @@
                         <sl-select id='select_server_ai' style='flex: 1; min-width: 0;' value='4ascend-zero'
                             placeholder='选择对手' size='large' pill hoist>
                             <sl-option value='4ascend-zero'>ZERO</sl-option>
+                            <sl-option value='4ascend-fish'>四子鱼</sl-option>
                             <!-- <sl-option value='4ascend-hce'>HCE</sl-option> -->
                         </sl-select>
 

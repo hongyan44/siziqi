@@ -769,8 +769,15 @@ const foe_pice = async (foe_stone) => {
  * @return {Promise<void>}
  */
 const game_leave = async () => {
+    // 绑定本局棋盘：本局结算或已开新一局时，这个检测循环必须退出，
+    // 否则上一局遗留的循环会把“对方已离开”误判到下一局。
+    const board = gl_board;
+
     while (true) {
         await window.sleep(4888);
+
+        // 本局已结算 / 已换新一局，停止检测
+        if (gl_end_active || gl_board !== board) break;
 
         // 对方是否已标记离开
         let result;
@@ -801,6 +808,7 @@ const game_leave = async () => {
         rematch_foe_left();
         gl_cf_client.notify('$', null);
         gl_ui.notify_click('$', null);
+        break;
     }
 };
 
@@ -957,8 +965,11 @@ const rematch_listen = async (client) => {
         if (event.type !== 'message' || event.data.op !== 'sync_player2player') continue;
 
         const result = event.data.result;
-        // 对方退出对局（逃跑）：立刻判定对方已离开，不必等轮询
+        // 对方退出对局（逃跑）：立刻判定对方已离开，不必等轮询。
+        // 必须校验房间号：只有本房间对手发出的退出通知才作数，
+        // 避免服务端房间->连接映射异常时，别的对局的退出消息把本局误结算。
         if (result && result.type === 'game_leave') {
+            if (result.room !== gl_cf_room) continue;
             rematch_on_foe_leave();
             continue;
         }
@@ -1065,7 +1076,8 @@ const rematch_listen = async (client) => {
         }
         gl_cf_client.stop_resend(2001);
         // 立刻通知对方我方已退出对局：对方结算界面的重赛按钮立即变为“对方已离开”
-        gl_cf_client.send(GameMessage.sync_player2player(gl_cf_room, gl_cf_token, { 'type': 'game_leave' }));
+        // 带上房间号，接收方据此拒绝其它房间的退出通知
+        gl_cf_client.send(GameMessage.sync_player2player(gl_cf_room, gl_cf_token, { 'type': 'game_leave', 'room': gl_cf_room }));
         toast.success('逃跑成功！');
         location.replace('/');
     });
@@ -1744,8 +1756,12 @@ const run_once = async () => {
             gl_wins = true;
             if (gl_ui) gl_ui.set_turn_flash(false);
             winner_color = win;
-            // 成就：赢下真人对局
-            if (win === my_color && typeof window.achievement_event === 'function') window.achievement_event('online_win');
+            // 成就：赢下真人对局（附带回合数与本方进攻回合，用于风格成就）
+            if (win === my_color && typeof window.achievement_event === 'function') window.achievement_event('online_win', {
+                'turn_count': state.turn_count,
+                'attack_turns': state.attack_turns ? state.attack_turns[my_index] : [],
+                'board_empty': Boolean(gl_board && gl_board.stone_count === 0),
+            });
             game_msg.innerText = win === my_color ? `🏆|${my_name}|胜利${my_icon}` : `💀|${foe_name}|胜利${foe_icon}`;
             span_end_win.innerText = win === my_color ? my_name : foe_name;
             break;
@@ -1788,10 +1804,18 @@ const run_once = async () => {
     const foe_hp = foe_color === PLAYER_ENUM.BLACK ? state.hp[0] : state.hp[1];
     const winner = winner_color === PLAYER_ENUM.BLACK ? 'A' : winner_color === PLAYER_ENUM.WHITE ? 'B' : gl_opponent_left ? (my_color === PLAYER_ENUM.BLACK ? 'A' : 'B') : 'none';
 
-    span_end_time.innerText = format_ms(await window.http_time_ms() - time);
+    const now_ms = await window.http_time_ms();
+    const duration_s = Math.max(0, Math.floor((now_ms - time) / 1000));
+    span_end_time.innerText = format_ms(now_ms - time);
     span_end_hp.innerText = `${my_hp} vs ${foe_hp}`;
     // 先清空奖励行，待回放上传返回后再写入本局实际奖励
     set_end_reward(0, 0);
+
+    // 快棋成就：不足 1 分钟的胜负（对方离开判我方胜同样计入，需至少完成一回合）
+    if (duration_s < 60 && gl_state.turn_count > 0 && typeof window.achievement_event === 'function') {
+        if (gl_wins || gl_opponent_left) window.achievement_event('fast_win');
+        else if (winner === 'A' || winner === 'B') window.achievement_event('fast_loss');
+    }
 
     // 重置对局存档，重置玩家阵营决定
     if (archive) {
@@ -1825,7 +1849,7 @@ const run_once = async () => {
                 black_uuid: my_color === PLAYER_ENUM.BLACK ? my_uuid : foe_uuid,
                 white_uuid: my_color === PLAYER_ENUM.WHITE ? my_uuid : foe_uuid,
                 time: Math.floor(time / 1000),
-                duration: Math.max(0, Math.floor((await window.http_time_ms() - time) / 1000)),
+                duration: duration_s,
                 mode: gl_cf_mode === 'night' ? 2 : gl_cf_mode === 'blight' ? 1 : 0,
                 category: gl_cf_category,
                 first: first_index,
@@ -1841,6 +1865,9 @@ const run_once = async () => {
             if (coin_reward > 0 || exp_reward > 0) {
                 toast.success(`本局获得 ${coin_reward} 棋币 · ${exp_reward} 经验`);
             }
+            // 每日任务奖励（完成时服务端自动入账）
+            const task_reward = Number(uploaded && uploaded.task_reward) || 0;
+            if (task_reward > 0) toast.success(`每日任务完成：+${task_reward} 棋币`);
         } catch (error) {
             console.error('回放上传失败:', error);
         }

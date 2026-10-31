@@ -134,6 +134,16 @@
                     'hidden-seed search commits its move to the synchronized live match',
                 );
 
+                await worker.FISH_RESET(1001, 2002, 0, 6, true);
+                await worker.FISH_TURN(40);
+                const fishAction = await worker.FISH_THINK(8, false);
+                const fishSearch = await worker.ZERO_DEBUG_SEARCH();
+                assert(Number.isInteger(fishAction) && fishAction >= 0 && fishAction < 81, '四子鱼 MCTS returns a board action');
+                assert(fishSearch.engine === 'fish', '四子鱼 uses its own ONNX model');
+                assert(fishSearch.randomMode === 'hidden' && fishSearch.searchSeeds.length === 2, '四子鱼 ordinary levels use hidden seeds');
+                const fishState = await worker.ZERO_DEBUG_STATE();
+                assert(fishState.turnCount === 2, '四子鱼 commits exactly one move');
+
                 output.textContent = `${log.join('\n')}\nALL TESTS PASSED`;
             } catch (error) {
                 console.error(error);

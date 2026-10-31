@@ -126,8 +126,7 @@ bool ranked_endgame(
     // 储存回放哈希
     std::shared_ptr<Player> my;
     std::shared_ptr<Player> foe;
-    Friend::player2player_rers(room, uuid, my);
-    Friend::player2player(room, uuid, foe);
+    if (!Friend::player2player_rers(room, uuid, my) || !Friend::player2player(room, uuid, foe) || !my || !foe) return false;
 
     // 如果有分数则直接返回
     if (my->score != -1 && foe->score != -1) {
@@ -140,11 +139,12 @@ bool ranked_endgame(
 
     if (is_backbg) return false;
 
-    auto my_leave  = my->leave || my->exp < now - 25 * 1000;
-    auto foe_leave = foe->leave || foe->exp < now - 25 * 1000;
+    // 心跳超过 60 秒未上报才视为离开（与前端判定一致，避免后台节流误判为逃跑）
+    auto my_leave  = my->leave || my->exp < now - 60 * 1000;
+    auto foe_leave = foe->leave || foe->exp < now - 60 * 1000;
 
-    // printf("[ranked_endgame] my_leave: %d (leave:%d, exp:%ld < %ld)\n", my_leave, my->leave, my->exp, now - 25 * 1000);
-    // printf("[ranked_endgame] foe_leave: %d (leave:%d, exp:%ld < %ld)\n", foe_leave, foe->leave, foe->exp, now - 25 * 1000);
+    // printf("[ranked_endgame] my_leave: %d (leave:%d, exp:%ld < %ld)\n", my_leave, my->leave, my->exp, now - 60 * 1000);
+    // printf("[ranked_endgame] foe_leave: %d (leave:%d, exp:%ld < %ld)\n", foe_leave, foe->leave, foe->exp, now - 60 * 1000);
 
     // 必须双人都拥有哈希
     // 或者如果逃跑或离开也可以

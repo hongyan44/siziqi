@@ -99,6 +99,12 @@ class GameBlight {
         );
         if (!points && this.state.ascend_status === ASCEND_ENUM.NONE) return; // 发起必须进行ASCEND，回应允许不进行ASCEND
 
+        // 攻击记录：状态为 NONE 且成打，说明本回合是该方主动发起攻击（回应的成打不计）
+        if (points && this.state.ascend_status === ASCEND_ENUM.NONE) {
+            const attack_turns = this.state.attack_turns;
+            if (Array.isArray(attack_turns)) attack_turns[this.state.turn_player === PLAYER_ENUM.BLACK ? 0 : 1].push(this.state.turn_count + 1);
+        }
+
         // 升级棋子
         if (points) points.forEach((pos) => pos.stone = pos.stone === STONE_ENUM.BLACK ? STONE_ENUM.BLACK_ASCEND : STONE_ENUM.WHITE_ASCEND);
 

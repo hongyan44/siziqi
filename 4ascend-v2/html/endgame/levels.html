@@ -48,6 +48,8 @@
         .import-hint { font-size: .78rem; }
         .admin-panel { border: 1px solid rgba(111, 66, 193, .18); background: linear-gradient(135deg, rgba(111, 66, 193, .035), rgba(255, 255, 255, .9)); }
         .level-title { font-size: .92rem; }
+        .dialog-board-wrap { width: min(100%, 240px); aspect-ratio: 1; background: #fff; border-radius: .65rem; overflow: hidden; }
+        .dialog-board-wrap canvas { display: block; width: 100%; height: 100%; }
         .legend-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
         .endgame-corner-actions { gap: .35rem; }
         @media (max-width: 767.98px) { .level-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem; } .level-card { min-height: 92px; } .level-number { width: 36px; height: 36px; } }
@@ -70,8 +72,9 @@
     </script>
 </head>
 <body class='d-flex flex-column w-100 h-100 bg-light'>
-    <div class='position-fixed top-0 start-0 d-flex p-2 endgame-corner-actions' style='z-index: 1050;'>
-        <sl-button variant='default' href='/' circle aria-label='返回主页' title='返回主页'><sl-icon name='arrow-left'></sl-icon></sl-button>
+    <div id='button_home' class='position-fixed top-0 start-0 d-flex p-2 endgame-corner-actions' style='z-index: 1050;'>
+        <sl-button variant='default' href='/pages/endgame/index.html' circle aria-label='返回上一级' title='返回上一级'><sl-icon name='arrow-left'></sl-icon></sl-button>
+        <sl-button variant='default' href='/' circle aria-label='返回主页' title='返回主页'><sl-icon name='house'></sl-icon></sl-button>
         <sl-button id='button_music_toggle' variant='default' circle title='单击切换下一首；1 秒内双击开始/停止播放' aria-label='单击切换下一首；1 秒内双击开始/停止播放'><sl-icon id='icon_music_toggle' name='volume-up'></sl-icon></sl-button>
     </div>
     <div class='d-flex flex-column w-100 h-100'>
@@ -152,10 +155,18 @@
         <div class='d-flex flex-column gap-3'>
             <div class='d-flex align-items-center gap-3'><span id='dialog_level_number' class='level-number'>01</span><div><div id='dialog_level_title' class='h5 fw-bold mb-1'>第 1 关</div><div id='dialog_level_status' class='text-secondary small'>尚未导入残局</div></div></div>
             <div class='border rounded p-3 bg-light'><div class='text-secondary small mb-1'>挑战说明</div><div id='dialog_level_description'>导入残局码后开始挑战，命中正着即可完成本关。</div></div>
-            <div id='dialog_level_code_hint' class='text-secondary small'>当前关卡还没有残局码，请先在上方导入。</div>
+            <div id='dialog_level_preview' class='border rounded p-3 bg-light d-none'>
+                <div class='d-flex align-items-center justify-content-between gap-2 mb-2'>
+                    <span class='text-secondary small'>黑方 HP <strong id='dialog_black_hp' class='text-body'>-</strong></span>
+                    <span class='text-secondary small'>白方 HP <strong id='dialog_white_hp' class='text-body'>-</strong></span>
+                </div>
+                <div class='dialog-board-wrap mx-auto'><canvas id='dialog_board' aria-label='关卡棋局预览'></canvas></div>
+                <div id='dialog_level_code_hint' class='text-secondary small mt-2'>当前关卡还没有残局码，请先在上方导入。</div>
+            </div>
         </div>
         <div slot='footer' class='d-flex gap-2'>
             <sl-button id='button_dialog_close' variant='neutral'>关闭</sl-button>
+            <sl-button id='button_dialog_copy' variant='default' disabled><sl-icon slot='prefix' name='clipboard'></sl-icon>复制残局码</sl-button>
             <sl-button id='button_dialog_import' variant='default'>导入残局</sl-button>
             <sl-button id='button_dialog_start' variant='primary' disabled>开始挑战</sl-button>
         </div>
@@ -188,6 +199,51 @@
         const renderAdminEditor = () => { $('admin_editor').classList.toggle('d-none', !isAdmin()); $('visitor_notice').classList.toggle('d-none', isAdmin()); $('reviewer_notice').classList.toggle('d-none', !isReviewer()); };
         const resetEditor = () => { editingId = 0; $('input_level').value = '1'; $('input_title').value = ''; $('input_code').value = ''; $('button_save').innerHTML = '<sl-icon slot=\'prefix\' name=\'cloud-arrow-up\'></sl-icon>保存到服务端'; };
         const editRecord = (record) => { if (!isAdmin()) return; editingId = Number(record.id); $('input_level').value = String(record.level); $('input_title').value = record.title; $('input_code').value = record.code; $('button_save').innerHTML = '<sl-icon slot=\'prefix\' name=\'pencil-square\'></sl-icon>更新服务端残局'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+        // 关卡预进入界面：按残局码解析出的盘面绘制预览，并展示双方血量。
+        const previewSkins = window.UiExports && window.UiExports.Skins ? window.UiExports.Skins : null;
+        const dialogCanvas = document.getElementById('dialog_board');
+        const dialogContext = dialogCanvas.getContext('2d');
+        let dialogPreviewCells = [];
+        const redrawDialogBoard = () => {
+            const size = dialogCanvas.clientWidth;
+            if (!size || !dialogPreviewCells.length) return;
+            const dpr = window.devicePixelRatio || 1;
+            dialogCanvas.width = size * dpr; dialogCanvas.height = size * dpr;
+            dialogContext.setTransform(dpr, 0, 0, dpr, 0, 0);
+            const skins = previewSkins ? previewSkins.read() : { piece: false, grass: false, board: false, board_gold: false };
+            const goldTheme = Boolean(previewSkins && skins.board_gold);
+            const jadeTheme = Boolean(previewSkins && !goldTheme && skins.board);
+            const blackTheme = Boolean(previewSkins && !goldTheme && !jadeTheme && skins.theme_black);
+            const voidTheme = Boolean(previewSkins && !goldTheme && !jadeTheme && !blackTheme && skins.theme);
+            if (blackTheme) previewSkins.draw_board_black(dialogContext, size);
+            else if (voidTheme) previewSkins.draw_board_void(dialogContext, size);
+            else if (goldTheme) previewSkins.draw_board_gold(dialogContext, size);
+            else if (jadeTheme) previewSkins.draw_board_jade(dialogContext, size);
+            else { dialogContext.fillStyle = '#fff'; dialogContext.fillRect(0, 0, size, size); }
+            const pad = size * 0.1; const spacing = (size - pad * 2) / 8;
+            dialogContext.strokeStyle = voidTheme
+                ? 'rgba(255, 255, 255, 0.62)'
+                : (blackTheme ? 'rgba(180, 144, 74, 0.52)' : (goldTheme ? 'rgba(245, 205, 110, 0.86)' : (jadeTheme ? 'rgba(31, 74, 55, 0.42)' : '#d0d0d0')));
+            dialogContext.lineWidth = 1;
+            for (let i = 0; i < 9; i++) { const point = pad + i * spacing; dialogContext.beginPath(); dialogContext.moveTo(point, pad); dialogContext.lineTo(point, size - pad); dialogContext.stroke(); dialogContext.beginPath(); dialogContext.moveTo(pad, point); dialogContext.lineTo(size - pad, point); dialogContext.stroke(); }
+            // 残局码的盘面坐标以左下角为原点，绘制时需上下翻转，才能与挑战页的棋盘方向一致。
+            dialogPreviewCells.forEach((item, index) => { if (item.stone === 'none') return; const x = index % 9; const y = Math.floor(index / 9); const px = pad + x * spacing; const py = pad + (8 - y) * spacing; const color = item.stone === 'black' ? '#2c3e50' : '#ecf0f1'; if (previewSkins && previewSkins.draw_stone(dialogContext, px, py, spacing * 0.31, color, { skins })) return; dialogContext.beginPath(); dialogContext.arc(px, py, spacing * 0.31, 0, Math.PI * 2); dialogContext.fillStyle = color; dialogContext.fill(); if (item.stone !== 'black') { dialogContext.strokeStyle = '#8b949e'; dialogContext.stroke(); } });
+            dialogPreviewCells.forEach((item, index) => { if (!item.plant) return; const x = index % 9; const y = Math.floor(index / 9); const px = pad + x * spacing; const py = pad + (8 - y) * spacing; const radius = Math.max(2, spacing * 0.09); const centers = item.plant === 2 ? [px - radius * 1.3, px + radius * 1.3] : [px]; if (previewSkins && centers.every((center_x) => previewSkins.draw_grass(dialogContext, center_x, py, radius, { skins }))) return; dialogContext.fillStyle = '#2ecc71'; for (let i = 0; i < item.plant; i++) { dialogContext.beginPath(); dialogContext.arc(px + (i - (item.plant - 1) / 2) * spacing * 0.17, py, Math.max(2, spacing * 0.055), 0, Math.PI * 2); dialogContext.fill(); } });
+        };
+        const copyDialogCode = async (text) => {
+            try { await navigator.clipboard.writeText(text); return true; }
+            catch (_) {
+                const area = document.createElement('textarea');
+                area.value = text; area.style.position = 'fixed'; area.style.opacity = '0';
+                document.body.append(area); area.select();
+                const copied = document.execCommand('copy'); area.remove();
+                return copied;
+            }
+        };
+        const toast = (message, variant) => {
+            if (window.UiExports && window.UiExports.ShToast) new window.UiExports.ShToast()[variant](message);
+            else showFeedback(message, variant === 'error' ? 'danger' : 'success');
+        };
         const openLevel = (level) => {
             selectedLevel = level;
             const record = recordFor(level);
@@ -196,10 +252,25 @@
             $('dialog_level_title').textContent = `第 ${level} 关`;
             $('dialog_level_status').textContent = record ? `${status.label} · ${record.title}` : '尚未发布残局';
             $('dialog_level_description').textContent = record ? '残局码已就绪，可以开始挑战；完成后会记录本机进度。' : '管理员发布残局后即可开始挑战。';
-            $('dialog_level_code_hint').textContent = record ? `残局码已同步（${record.code.length} 字符）` : '当前关卡还没有残局码。';
             $('button_dialog_start').disabled = !record;
+            $('button_dialog_copy').disabled = !record;
+            // 有残局码时解析盘面，预览双方血量与棋子布局；解析失败则隐藏预览。
+            let archive = null;
+            if (record) { try { archive = window.EndgameExports.EndgameArchive.decode(record.code); } catch (_) { archive = null; } }
+            const preview = $('dialog_level_preview');
+            preview.classList.toggle('d-none', !archive);
+            if (archive) {
+                dialogPreviewCells = archive.cells.map((item) => ({ stone: item.stone || 'none', plant: Number(item.plant) || 0 }));
+                const hp = archive.hp || {};
+                $('dialog_black_hp').textContent = String(Number(hp.black) || 0);
+                $('dialog_white_hp').textContent = String(Number(hp.white) || 0);
+                $('dialog_level_code_hint').textContent = `残局码已同步（${record.code.length} 字符）`;
+            } else {
+                dialogPreviewCells = [];
+            }
             $('dialog_level').classList.remove('d-none');
             $('dialog_level').show();
+            requestAnimationFrame(() => requestAnimationFrame(redrawDialogBoard));
         };
         const renderLevels = () => {
             const first = (currentPage - 1) * PAGE_SIZE + 1;
@@ -244,7 +315,7 @@
                 writeRecords(); currentPage = Math.ceil(level / PAGE_SIZE); resetEditor(); await refreshServerRecords(); showFeedback(`第 ${level} 关“${title}”已同步到服务端，所有玩家可见。`, 'success');
             } catch (error) { showFeedback(error.message || '服务端保存失败，请检查登录状态。', 'danger'); }
         };
-        const startSelected = () => { const record = recordFor(selectedLevel); if (!record) return; window.location.href = `/pages/endgame/challenge.html?mode=code&level=${selectedLevel}&code=${encodeURIComponent(record.code)}`; };
+        const startSelected = () => { const record = recordFor(selectedLevel); if (!record) return; window.location.href = `/pages/endgame/challenge.html?mode=code&level=${selectedLevel}&code=${encodeURIComponent(record.code)}&title=${encodeURIComponent(record.title)}`; };
         $('button_save').addEventListener('click', saveServerLevel);
         $('button_reset_editor').addEventListener('click', resetEditor);
         $('input_title').addEventListener('sl-input', () => { if (Array.from($('input_title').value || '').length > 10) $('input_title').value = Array.from($('input_title').value).slice(0, 10).join(''); });
@@ -252,10 +323,22 @@
         $('button_prev').addEventListener('click', () => { if (currentPage > 1) { currentPage--; renderLevels(); } });
         $('button_next').addEventListener('click', () => { if (currentPage < TOTAL_LEVELS / PAGE_SIZE) { currentPage++; renderLevels(); } });
         $('button_dialog_close').addEventListener('click', () => $('dialog_level').hide());
+        // 预进入界面允许复制当前关卡的残局码。
+        $('button_dialog_copy').addEventListener('click', async () => {
+            const record = recordFor(selectedLevel);
+            if (!record) { toast('当前关卡还没有残局码。', 'error'); return; }
+            const copied = await copyDialogCode(record.code);
+            toast(copied ? '残局码已复制到剪贴板。' : '复制失败，请手动选择残局码。', copied ? 'success' : 'error');
+        });
+        window.addEventListener('resize', () => { if (!$('dialog_level').classList.contains('d-none')) redrawDialogBoard(); });
         $('button_dialog_import').addEventListener('click', () => focusImport(selectedLevel));
         $('button_dialog_start').addEventListener('click', startSelected);
         $('button_clear_all').addEventListener('click', () => { if (!Object.keys(levelRecords).length) { showFeedback('当前没有可清除的本机进度。'); return; } if (!window.confirm('确定清除本机保存的闯关进度吗？')) return; levelRecords = {}; writeRecords(); renderLevels(); showFeedback('本机闯关进度已清除。', 'success'); });
         const loadAccount = async () => { if (!window.get_token || !window.get_token()) { renderAdminEditor(); return; } try { endgameUserInfo = await window.http_user_info(window.get_token()); } catch (_) { endgameUserInfo = null; } renderAdminEditor(); };
+        // 从闯关对局“返回选关”时带 level 参数，自动翻到该关所在的一页。
+        const initialLevel = safeLevel(new URLSearchParams(location.search).get('level'));
+        currentPage = Math.min(TOTAL_LEVELS / PAGE_SIZE, Math.ceil(initialLevel / PAGE_SIZE));
+        selectedLevel = initialLevel;
         levelRecords = readRecords(); renderLevels();
         loadAccount().then(refreshServerRecords);
     </script>

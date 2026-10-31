@@ -108,8 +108,7 @@ const cleaned = sanitize_texts({
     header: { title: '  报名  ', subtitle: '   ' },
     event: { section_title: '', title: ' 赛事 ', desc: '  说明  ', status_open: '', status_full: '  满  ' },
     bracket: { section_title: '   ', desc: ' 点击 ', empty_hint: '' },
-    dialog: { hint: '  自定义  ', hint_parent: '', join_text: '' },
-    footer: { back_text: '  回去  ' }
+    dialog: { hint: '  自定义  ', hint_parent: '', join_text: '' }
 });
 ok('主标题裁剪空白', cleaned.header.title === '报名');
 ok('副标题留空回退默认', cleaned.header.subtitle === default_texts().header.subtitle);
@@ -121,14 +120,13 @@ ok('空位提示留空回退默认', cleaned.bracket.empty_hint === '虚位以�
 ok('弹窗说明裁剪', cleaned.dialog.hint === '自定义');
 ok('前置说明留空回退默认', cleaned.dialog.hint_parent === default_texts().dialog.hint_parent);
 ok('报名按钮留空回退默认', cleaned.dialog.join_text === '报名入组');
-ok('页脚裁剪', cleaned.footer.back_text === '回去');
 
 console.log('\n[2] 默认值回退与幂等');
 ok('null 回退到默认结构', equal(sanitize_texts(null), default_texts()));
 ok('默认结构幂等', equal(sanitize_texts(default_texts()), default_texts()));
 const partial = sanitize_texts({ header: { title: 'X' } });
-ok('部分字段回退且保留自定义', partial.header.title === 'X' && equal(partial.footer, default_texts().footer));
-ok('默认结构字段齐全', ['header', 'event', 'bracket', 'dialog', 'footer'].every((k) => partial[k] && typeof partial[k] === 'object'));
+ok('部分字段回退且保留自定义', partial.header.title === 'X' && equal(partial.dialog, default_texts().dialog));
+ok('默认结构字段齐全', ['header', 'event', 'bracket', 'dialog'].every((k) => partial[k] && typeof partial[k] === 'object'));
 
 console.log('\n[3] 转义与占位替换');
 ok('HTML 标签被转义', escape_text('<img src=x onerror=alert(1)>') === '&lt;img src=x onerror=alert(1)&gt;', escape_text('<img src=x onerror=alert(1)>'));
@@ -174,7 +172,6 @@ ok('状态标签取自文案', code.includes('texts.event.status_open') && code.
 ok('空位提示取自文案', code.includes('texts.bracket.empty_hint'));
 ok('名单标题取自文案', code.includes('texts.dialog.list_title'));
 ok('报名提示取自文案', code.includes('texts.dialog.hint_parent_wait') && code.includes('texts.dialog.hint_joining'));
-ok('页脚文字取自文案', code.includes('texts.footer.back_text'));
 ok('保存走 signup_update', code.includes('http_contest_signup_update'));
 ok('管理员可见编辑按钮', code.includes("getElementById('button_edit_texts').classList.toggle"));
 
@@ -209,7 +206,7 @@ ok('存在 uuid 报名条件助手', /const is_registered = \(node, uuid, name\)
 ok('存在已登记 uuid 集合助手', /const registered_uuids = \(node\)/.test(html));
 ok('renderRegisterRow 按 uuid 判定', /if \(is_registered\(node, accountUuid, accountName\)\)/.test(html));
 ok('报名处理器按 uuid 判定', /if \(is_registered\(node, uuid, name\)\) return;/.test(html));
-ok('前置方块判定同样按 uuid', /parents\.filter\(\(p\) => is_registered\(p, uuid, name\)\)/.test(html));
+ok('前置方块判定同样按 uuid', /parents\.filter\(\(parent\) => is_registered\(parent, uuid, name\)\)/.test(html));
 ok('移除玩家同步清理 uuid', /delete node\.player_uuids\[name\]/.test(html));
 ok('页面不再用 Math.random 分配分组', !/Math\.random/.test(html));
 

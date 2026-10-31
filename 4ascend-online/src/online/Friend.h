@@ -28,6 +28,9 @@ bool room_all(std::vector<std::shared_ptr<Room>>& rooms_) noexcept;
 // 得到观众名字
 bool room_observers(const std::string& id, std::vector<std::string>& names) noexcept;
 
+// 连接断开：清空房间/观战者里指向该连接的指针
+void client_detach(cinatra::coro_http_connection* client) noexcept;
+
 // 玩家加入
 bool player_join(const std::string& id, const std::string& uuid, const std::string& name, cinatra::coro_http_connection* client) noexcept;
 // 观战者加入

@@ -105,6 +105,29 @@ window.http_user_voucher_use = async (token) => {
 };
 
 /**
+ * @description: 使用一张 500 棋币兑换券（背包内使用，成功时增加 500 棋币）
+ * @param {string} token
+ * @return {Promise<{ok: boolean, reason: string, coin: number, vouchers_500: number} | void>}
+ */
+window.http_user_voucher_500_use = async (token) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/voucher_500_use`, { token });
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+/**
+ * @description: 赠送好友赠礼（扣减自己 1 个，好友背包增加 1 张 500 棋币兑换券）
+ * @param {string} token
+ * @param {string} uuid 好友标识
+ * @return {Promise<{ok: boolean, reason: string, gift_vouchers: number} | void>}
+ */
+window.http_user_voucher_gift_send = async (token, uuid) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/voucher_gift_send`, { token, uuid });
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+/**
  * @description: 查询残局关卡
  * @return {Promise<Array>}
  */
@@ -192,11 +215,12 @@ window.http_puzzle_delete = async (token, id) => {
  * @param {number} level 仅 target 为 level 时需要
  * @param {string} title
  * @param {string} code
- * @return {Promise<boolean>}
+ * @return {Promise<{id: number, ticket_used: boolean, tickets?: number, task_reward: number} | void>}
  */
 window.http_puzzle_submit = async (token, target, level, title, code) => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/puzzle/submit`, { token, target, level, title, code });
-    return Boolean(rjson && rjson.status);
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
 };
 
 /**
@@ -208,6 +232,21 @@ window.http_puzzle_submission_query = async (token) => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/puzzle/submission_query`, { token });
     if (!rjson || !rjson.status) return;
     return rjson.result;
+};
+
+/**
+ * @description: 审核前修改投稿（权限等级 ≥ 3；仅待审核投稿可改）
+ * @param {string} token
+ * @param {number} id
+ * @param {'daily'|'level'} target
+ * @param {number} level 仅 target 为 level 时需要
+ * @param {string} title
+ * @param {string} code
+ * @return {Promise<boolean>}
+ */
+window.http_puzzle_submission_update = async (token, id, target, level, title, code) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/puzzle/submission_update`, { token, id, target, level, title, code });
+    return Boolean(rjson && rjson.status);
 };
 
 /**
@@ -324,7 +363,7 @@ window.http_user_unlock_level = async (token, secret) => {
 /**
  * @description: 商店购买（权限码 level2 / level3 与皮肤 piece / piece_rouge / grass / board）
  * @param {string} token
- * @param {'level2'|'level3'|'piece'|'piece_rouge'|'grass'|'grass_gold'|'board'|'board_gold'} item
+ * @param {'level2'|'level3'|'piece'|'piece_rouge'|'grass'|'grass_gold'|'grass_jade'|'board'|'board_gold'} item
  * @return {Promise<{ok: boolean, reason: string, level: number, coin: number, exp_level: number, exp_cur: number, exp_need: number, skins: string[]} | void>}
  */
 window.http_shop_buy = async (token, item) => {
@@ -442,20 +481,107 @@ window.http_replay_update = async (token, opponent, data, meta = {}) => {
 
 
 /**
- * @description: 人机对战结算（仅登录玩家；按对局时长标准值发放棋币与经验，胜方双倍、向上取整）
+ * @description: 人机对战结算（仅登录玩家；不足 1 分钟胜方 20 / 败方 1，其余按对局时长标准值发放，胜方双倍、向上取整）
  * @param {string} token
  * @param {number} duration 对局时长（秒）
  * @param {boolean} win 玩家是否获胜
- * @return {Promise<{reward: number, exp_reward: number, coin: number, exp: number, exp_level: number, exp_cur: number, exp_need: number} | void>}
+ * @param {number} time 本局开局时间（毫秒，用于同一局结算去重）
+ * @param {number} difficulty AI 难度选项（'0' 入门，'1' 及以上为简单及以上难度）
+ * @return {Promise<{reward: number, exp_reward: number, task_reward: number, coin: number, exp: number, exp_level: number, exp_cur: number, exp_need: number} | void>}
  */
-window.http_ai_reward = async (token, duration, win) => {
+window.http_ai_reward = async (token, duration, win, time = 0, difficulty = 0) => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/replay/ai_reward`, {
         token,
         duration: Math.max(0, Math.trunc(Number(duration) || 0)),
         win: win ? 1 : 0,
+        time: Math.max(0, Math.trunc(Number(time) || 0)),
+        difficulty: Math.max(0, Math.trunc(Number(difficulty) || 0)),
     });
     if (!rjson || !rjson.status) return;
     return rjson.result;
+};
+
+
+/**
+ * @description: 查询每日任务（首次访问自动生成 3 个多人 + 2 个单人 + 1 个投稿任务，每天 0 点刷新）
+ * @param {string} token
+ * @return {Promise<{day: number, done_count: number, claimable_count: number, refresh_count: number, free_refresh: number, refresh_cost: number, tasks: Array<{id: string, kind: string, title: string, target: number, progress: number, reward: number, done: boolean, claimed: boolean}>} | void>}
+ */
+window.http_task_query = async (token) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/task/query`, { token });
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+
+/**
+ * @description: 刷新指定的未完成任务（前 2 次免费，之后每次 50 棋币；投稿任务与已完成任务不可刷新）
+ * @param {string} token
+ * @param {string} id 目标任务 id
+ * @return {Promise<{ok: boolean, reason: string, cost: number, coin: number, refresh_count: number, free_refresh: number, refresh_cost: number, done_count: number, claimable_count: number, tasks: object[]} | void>}
+ */
+window.http_task_refresh = async (token, id) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/task/refresh`, { token, id });
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+
+/**
+ * @description: 领取指定已完成任务的奖励（棋币 + 等额经验，同一任务只能领取一次）
+ * @param {string} token
+ * @param {string} id 目标任务 id
+ * @return {Promise<{ok: boolean, reason: string, reward: number, coin: number, done_count: number, claimable_count: number, tasks: object[]} | void>}
+ */
+window.http_task_claim = async (token, id) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/task/claim`, { token, id });
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+
+/**
+ * @description: 观战任务上报（成功加入观战房间时调用）
+ * @param {string} token
+ * @return {Promise<{task_reward: number} | void>}
+ */
+window.http_task_spectate = async (token) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/task/spectate`, { token });
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+
+/**
+ * @description: 查询当前全服消息（公开接口，无消息时返回空）
+ * @return {Promise<{notice: {id: number, title: string, content: string, created_at: number} | null} | void>}
+ */
+window.http_notice_query = async () => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/notice/query`, {});
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+/**
+ * @description: 发布全服消息（仅管理员 level=4；旧消息自动失效）
+ * @param {string} token
+ * @param {string} title
+ * @param {string} content
+ * @return {Promise<boolean>}
+ */
+window.http_notice_publish = async (token, title, content) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/notice/publish`, { token, title, content });
+    return Boolean(rjson && rjson.status);
+};
+
+/**
+ * @description: 清除全服消息（仅管理员 level=4）
+ * @param {string} token
+ * @return {Promise<boolean>}
+ */
+window.http_notice_clear = async (token) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/notice/clear`, { token });
+    return Boolean(rjson && rjson.status);
 };
 
 
@@ -603,7 +729,7 @@ window.http_story_character_query = async () => {
 };
 
 /**
- * @description: 新增剧情角色（仅管理员，图片为 data URL，只增不删）
+ * @description: 新增剧情角色（仅管理员，图片为 data URL）
  * @param {string} token
  * @param {string} name 角色名
  * @param {string} image 代表图 data URL
@@ -616,7 +742,32 @@ window.http_story_character_add = async (token, name, image) => {
 };
 
 /**
- * @description: 为角色新增表情（仅管理员，图片为 data URL，只增不删）
+ * @description: 更换剧情角色代表图（仅管理员，图片为 data URL）
+ * @param {string} token
+ * @param {number} character_id
+ * @param {string} image 新代表图 data URL
+ * @return {Promise<{id: number} | void>}
+ */
+window.http_story_character_update_rep = async (token, character_id, image) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/character_update`, { token, action: 'update_rep', character_id, image }, 60000);
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+/**
+ * @description: 删除剧情角色及其全部表情（仅管理员，不可恢复）
+ * @param {string} token
+ * @param {number} character_id
+ * @return {Promise<{id: number} | void>}
+ */
+window.http_story_character_delete = async (token, character_id) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/character_update`, { token, action: 'delete', character_id }, 60000);
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+/**
+ * @description: 为角色新增表情（仅管理员，图片为 data URL）
  * @param {string} token
  * @param {number} character_id
  * @param {string} name 表情名
@@ -625,6 +776,19 @@ window.http_story_character_add = async (token, name, image) => {
  */
 window.http_story_expression_add = async (token, character_id, name, image) => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/character_update`, { token, action: 'expression', character_id, name, image }, 60000);
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+/**
+ * @description: 删除角色的单个表情（仅管理员，不可恢复）
+ * @param {string} token
+ * @param {number} character_id
+ * @param {number} expression_id
+ * @return {Promise<{id: number} | void>}
+ */
+window.http_story_expression_delete = async (token, character_id, expression_id) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/character_update`, { token, action: 'delete_expression', character_id, expression_id }, 60000);
     if (!rjson || !rjson.status) return;
     return rjson.result;
 };

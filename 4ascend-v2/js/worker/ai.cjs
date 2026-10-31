@@ -35,8 +35,13 @@ const endgameTactics = EndgameTactics.create({ RulesRuntime });
 const aiHandicap = AiHandicap.create({ RulesRuntime });
 
 
-let evaluator = null;
-let initialization = null;
+/** 对手引擎 → ONNX 模型路径。 */
+const MODEL_URLS = {
+    'zero': '/model/4ascend-zero.onnx',
+    'fish': '/model/4ascend-fish.onnx',
+};
+
+const engines = new Map();
 let aiZero = null;
 let lastSearch = null;
 let endgameGame = null;
@@ -45,16 +50,23 @@ let lastEndgameSearch = null;
 let aiLevelOption = null;
 
 
-const ensureInitialized = async () => {
-    if (evaluator && evaluator.session) return;
-    if (!initialization) {
-        evaluator = evaluator || new OnnxEvaluator('/model/4ascend-zero.onnx', self.FAscendExports);
-        initialization = evaluator.initialize().catch((error) => {
-            initialization = null;
+const ensureInitialized = async (engine = 'zero') => {
+    const key = MODEL_URLS[engine] ? engine : 'zero';
+    let slot = engines.get(key);
+    if (!slot) {
+        slot = { 'evaluator': null, 'initialization': null };
+        engines.set(key, slot);
+    }
+    if (slot.evaluator && slot.evaluator.session) return slot.evaluator;
+    if (!slot.initialization) {
+        slot.evaluator = slot.evaluator || new OnnxEvaluator(MODEL_URLS[key], self.FAscendExports);
+        slot.initialization = slot.evaluator.initialize().catch((error) => {
+            slot.initialization = null;
             throw error;
         });
     }
-    await initialization;
+    await slot.initialization;
+    return slot.evaluator;
 };
 
 const requireGame = () => {
@@ -115,27 +127,80 @@ const hiddenRandomSearchGame = (game) => {
 };
 
 
+const resetMatchGame = (seedAic, seedUnity, first, hp, plant, overload = false, level = null) => {
+    aiZero = createGame(seedAic, seedUnity, first, hp, plant, overload);
+    aiLevelOption = level === null || level === undefined ? null : String(level);
+    lastSearch = null;
+    return true;
+};
+
+const applyMatchTurn = (action) => {
+    const result = RulesRuntime.applyMove(requireGame(), Number(action));
+    if (!result.legal) throw new Error(`Illegal move received by AI worker: ${action}`);
+    return true;
+};
+
+/**
+ * 在同一个对局状态下用指定引擎思考并落子。
+ * @param {'zero'|'fish'} engine 对手引擎
+ * @param {number} simulations 模拟次数
+ * @param {boolean} synchronizeRandom 是否使用本局真实随机流（仅 ZERO 的 ??? 档）
+ * @return {Promise<number>} 落子索引
+ */
+const thinkAndCommit = async (engine, simulations, synchronizeRandom = false) => {
+    const evaluator = await ensureInitialized(engine);
+    const game = requireGame();
+    // synchronizeRandom=true 仅对应人机挑战 ???（opt=6）：MCTS 直接使用本局真实随机流。
+    // 对局中不再叠加任何残局战术辅助（战术仅保留在残局挑战 / 残局思考链路）。
+    const knownRandom = Boolean(synchronizeRandom);
+    const hidden = knownRandom ? null : hiddenRandomSearchGame(game);
+    const searchGame = knownRandom ? game : hidden.searchGame;
+    const search = new MctsSearch(evaluator, RulesRuntime, {
+        'cPuct': 2.0,
+        'maximumMilliseconds': 45000,
+    });
+    lastSearch = await search.search(searchGame, simulations);
+    lastSearch.randomMode = knownRandom ? 'known' : 'hidden';
+    lastSearch.searchSeeds = hidden ? hidden.seeds : null;
+    lastSearch.engine = engine;
+    lastSearch.handicapOverride = false;
+
+    let action = lastSearch.action;
+
+    // 难度取用弱化：仅简单 / 普通生效，且只替换落点、不改变选子结果。
+    const adjusted = aiHandicap.adjust(game, action, aiLevelOption);
+    if (adjusted && adjusted.action !== action) {
+        action = adjusted.action;
+        lastSearch.action = action;
+        lastSearch.handicapOverride = true;
+        lastSearch.handicapLevel = adjusted.level;
+        lastSearch.handicapReason = adjusted.reason;
+        lastSearch.handicapOriginal = adjusted.original;
+        lastSearch.handicapDetail = adjusted.detail || null;
+    }
+
+    const result = RulesRuntime.applyMove(game, action);
+    if (!result.legal) throw new Error(`MCTS returned illegal action ${action}.`);
+    return action;
+};
+
+
 Comlink.expose({
     async AI_INIT() {
-        await ensureInitialized();
+        await ensureInitialized('zero');
         return {
             'backend': 'onnxruntime-web/wasm',
-            'model': '/model/4ascend-zero.onnx',
+            'model': MODEL_URLS.zero,
             'rules': 'js/global/fascend',
         };
     },
 
     ZERO_RESET(seedAic, seedUnity, first, hp, plant, overload = false, level = null) {
-        aiZero = createGame(seedAic, seedUnity, first, hp, plant, overload);
-        aiLevelOption = level === null || level === undefined ? null : String(level);
-        lastSearch = null;
-        return true;
+        return resetMatchGame(seedAic, seedUnity, first, hp, plant, overload, level);
     },
 
     ZERO_TURN(action) {
-        const result = RulesRuntime.applyMove(requireGame(), Number(action));
-        if (!result.legal) throw new Error(`Illegal move received by AI worker: ${action}`);
-        return true;
+        return applyMatchTurn(action);
     },
 
     ZERO_SET_CELL(index, stone, plant) {
@@ -152,39 +217,20 @@ Comlink.expose({
     },
 
     async ZERO_THINK(simulations, synchronizeRandom = false) {
-        await ensureInitialized();
-        const game = requireGame();
-        // synchronizeRandom=true 仅对应人机挑战 ???（opt=6）：MCTS 直接使用本局真实随机流。
-        // 对局中不再叠加任何残局战术辅助（战术仅保留在残局挑战 / 残局思考链路）。
-        const knownRandom = Boolean(synchronizeRandom);
-        const hidden = knownRandom ? null : hiddenRandomSearchGame(game);
-        const searchGame = knownRandom ? game : hidden.searchGame;
-        const search = new MctsSearch(evaluator, RulesRuntime, {
-            'cPuct': 2.0,
-            'maximumMilliseconds': 45000,
-        });
-        lastSearch = await search.search(searchGame, simulations);
-        lastSearch.randomMode = knownRandom ? 'known' : 'hidden';
-        lastSearch.searchSeeds = hidden ? hidden.seeds : null;
-        lastSearch.handicapOverride = false;
+        return thinkAndCommit('zero', simulations, synchronizeRandom);
+    },
 
-        let action = lastSearch.action;
+    // 四子鱼（4zero 教师模型）复用同一套对局/搜索逻辑，只切换 ONNX 权重。
+    FISH_RESET(seedAic, seedUnity, first, hp, plant, overload = false, level = null) {
+        return resetMatchGame(seedAic, seedUnity, first, hp, plant, overload, level);
+    },
 
-        // 难度取用弱化：仅简单 / 普通生效，且只替换落点、不改变选子结果。
-        const adjusted = aiHandicap.adjust(game, action, aiLevelOption);
-        if (adjusted && adjusted.action !== action) {
-            action = adjusted.action;
-            lastSearch.action = action;
-            lastSearch.handicapOverride = true;
-            lastSearch.handicapLevel = adjusted.level;
-            lastSearch.handicapReason = adjusted.reason;
-            lastSearch.handicapOriginal = adjusted.original;
-            lastSearch.handicapDetail = adjusted.detail || null;
-        }
+    FISH_TURN(action) {
+        return applyMatchTurn(action);
+    },
 
-        const result = RulesRuntime.applyMove(game, action);
-        if (!result.legal) throw new Error(`MCTS returned illegal action ${action}.`);
-        return action;
+    async FISH_THINK(simulations, synchronizeRandom = false) {
+        return thinkAndCommit('fish', simulations, synchronizeRandom);
     },
 
     /** Load an exact, deterministic残局 position without replaying fake moves. */
@@ -229,7 +275,7 @@ Comlink.expose({
             return lastEndgameSearch;
         }
 
-        await ensureInitialized();
+        const evaluator = await ensureInitialized('zero');
         const search = new MctsSearch(evaluator, RulesRuntime, {
             'cPuct': 2.0,
             'maximumMilliseconds': 45000,
@@ -313,7 +359,7 @@ Comlink.expose({
     },
     async HCE_THINK(milliseconds) {
         const simulations = Math.max(16, Math.min(888, Math.trunc(Number(milliseconds) / 10) || 64));
-        await ensureInitialized();
+        const evaluator = await ensureInitialized('zero');
         const search = new MctsSearch(evaluator, RulesRuntime, {
             'cPuct': 2.0,
             'maximumMilliseconds': Math.max(500, Math.trunc(Number(milliseconds) || 1000)),

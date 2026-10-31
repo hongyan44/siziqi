@@ -60,8 +60,8 @@ bool claim_coin_match(std::string_view uuid_a, std::string_view uuid_b, int64_t 
 // 棋币购买权限等级：返回 0 成功、1 已拥有更高等级、2 棋币不足、-1 失败
 int purchase_level(std::string_view uuid, int target_level, int64_t price, int& level, int64_t& coin) noexcept;
 
-// 查询已购皮肤：棋子（黑白合并）/ 高级定制棋子 / 草 / 金菱草 / 棋盘 / 玄金棋盘 / 风格 UI（仅自己可见的外观光效）
-bool get_skins(std::string_view uuid, bool& piece, bool& piece_rouge, bool& grass, bool& grass_gold, bool& board, bool& board_gold, bool& theme) noexcept;
+// 查询已购皮肤：棋子（黑白合并）/ 高级定制棋子 / 草 / 金菱草 / 白玉玲珑 / 棋盘 / 玄金棋盘 / 风格 UI（仅自己可见的外观光效）
+bool get_skins(std::string_view uuid, bool& piece, bool& piece_rouge, bool& grass, bool& grass_gold, bool& grass_jade, bool& board, bool& board_gold, bool& theme, bool& theme_black) noexcept;
 // 棋币购买皮肤：返回 0 成功、1 已拥有、2 棋币不足、-1 失败
 int purchase_skin(std::string_view uuid, std::string_view item, int64_t price, bool& owned, int64_t& coin) noexcept;
 
@@ -82,6 +82,24 @@ bool get_vouchers(std::string_view uuid, int64_t& vouchers) noexcept;
 bool add_vouchers(std::string_view uuid, int64_t amount) noexcept;
 // 使用一张 3000 棋币兑换券：返回 0 成功、2 数量不足、-1 失败
 int use_voucher(std::string_view uuid, int64_t value, int64_t& coin, int64_t& vouchers) noexcept;
+
+// 500 棋币兑换券面值（残局投稿审核通过奖励，使用一张可增加等量棋币）
+inline constexpr int64_t COIN_VOUCHER_PUZZLE_VALUE = 500;
+// 查询 500 棋币兑换券数量
+bool get_vouchers_puzzle(std::string_view uuid, int64_t& vouchers) noexcept;
+// 增减 500 棋币兑换券（amount 可为负，数量不会低于 0）
+bool add_vouchers_puzzle(std::string_view uuid, int64_t amount) noexcept;
+// 使用一张 500 棋币兑换券：返回 0 成功、2 数量不足、-1 失败
+int use_voucher_puzzle(std::string_view uuid, int64_t value, int64_t& coin, int64_t& vouchers) noexcept;
+
+// 好友赠礼：500 棋币赠礼个数与最近购买自然日（东八区日序号）
+bool get_gift_vouchers(std::string_view uuid, int64_t& vouchers, int64_t& day) noexcept;
+// 棋币购买好友赠礼（每日限购 1 个）：返回 0 成功、2 棋币不足、3 今日已购、-1 失败
+int purchase_gift_voucher(std::string_view uuid, int64_t price, int64_t day, int64_t& vouchers, int64_t& coin) noexcept;
+// 赠送好友：扣减自己 1 个赠礼并给对方背包增加 1 张 500 棋币兑换券；返回 0 成功、2 数量不足、-1 失败
+int send_gift_voucher(std::string_view from, std::string_view to) noexcept;
+// 东八区自然日序号（毫秒时间戳 → 天），用于每日限购判定
+int64_t day_index(int64_t now_ms) noexcept;
 
 // 经验曲线：1→2 级 100，2→3 级 120，此后每级按上一级 1.2 倍向下取整
 int exp_level(int64_t exp) noexcept;

@@ -108,7 +108,13 @@
 </head>
 
 <body class='d-flex flex-column w-100 h-100 bg-light'>
-    <div id='button_music_wrap' class='position-fixed top-0 start-0 d-flex p-2' style='z-index: 1050;'>
+    <div id='button_home' class='position-fixed top-0 start-0 d-flex gap-1 p-2' style='z-index: 1050;'>
+        <sl-button variant='default' href='/pages/endgame/index.html' circle title='返回上一级' aria-label='返回上一级'>
+            <sl-icon name='arrow-left'></sl-icon>
+        </sl-button>
+        <sl-button variant='default' href='/' circle title='返回主页' aria-label='返回主页'>
+            <sl-icon name='house'></sl-icon>
+        </sl-button>
         <sl-button id='button_music_toggle' variant='default' circle title='单击切换下一首；1 秒内双击开始/停止播放' aria-label='单击切换下一首；1 秒内双击开始/停止播放'>
             <sl-icon id='icon_music_toggle' name='volume-up'></sl-icon>
         </sl-button>
@@ -298,7 +304,7 @@
                     <div class='d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2'>
                         <div>
                             <div class='fw-bold'>提交投稿</div>
-                            <div class='text-secondary small'>将编辑好的残局提交到服务器，由高等级用户审核后发布</div>
+                            <div class='text-secondary small'>点击后会先进入残局对局验证：获胜才进入待审队列，失败则自动驳回</div>
                         </div>
                         <sl-badge id='submit_level_badge' variant='primary' pill>等级 ≥ 2 可投稿</sl-badge>
                     </div>
@@ -317,7 +323,7 @@
                         </div>
                     </div>
                     <div class='d-flex flex-wrap align-items-center gap-2 mt-3'>
-                        <sl-button id='button_submit_puzzle' variant='primary' pill><sl-icon slot='prefix' name='cloud-arrow-up'></sl-icon>提交投稿</sl-button>
+                        <sl-button id='button_submit_puzzle' variant='primary' pill><sl-icon slot='prefix' name='cloud-arrow-up'></sl-icon>验证并投稿</sl-button>
                         <span id='submit_feedback' class='text-secondary small'></span>
                     </div>
                 </div>
@@ -328,7 +334,7 @@
                     <div class='d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2'>
                         <div>
                             <div class='fw-bold'>投稿审核</div>
-                            <div class='text-secondary small'>仅权限等级 ≥ 3 可见，通过后投稿才会正式发布</div>
+                            <div class='text-secondary small'>仅权限等级 ≥ 3 可见，通过后投稿才会正式发布，并向投稿人发放 1 张 500 棋币兑换券</div>
                         </div>
                         <div class='d-flex align-items-center gap-2'>
                             <sl-badge id='review_count' variant='warning' pill>0</sl-badge>
@@ -547,11 +553,16 @@
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
             ctx.clearRect(0, 0, size, size);
             const skins = Skins ? Skins.read() : { piece: false, grass: false, board: false, board_gold: false };
-            // 棋盘风格：棋盘皮肤（青玉 / 玄金）> 虚空舰队主题 > 默认白底
+            // 棋盘风格：棋盘皮肤（青玉 / 玄金）> 风格 UI（黑派 / 虚空舰队）> 默认白底
             const goldTheme = Boolean(Skins && skins.board_gold);
             const jadeTheme = Boolean(Skins && !goldTheme && skins.board);
-            const voidTheme = Boolean(Skins && !goldTheme && !jadeTheme && Skins.theme_active());
-            if (voidTheme) {
+            const blackTheme = Boolean(Skins && !goldTheme && !jadeTheme && skins.theme_black);
+            const voidTheme = Boolean(Skins && !goldTheme && !jadeTheme && !blackTheme && skins.theme);
+            // 黑派棋盘的网格、坐标与描边沿用玄金棋盘的镌刻金线规则
+            const goldStyle = goldTheme || blackTheme;
+            if (blackTheme) {
+                Skins.draw_board_black(ctx, size);
+            } else if (voidTheme) {
                 Skins.draw_board_void(ctx, size);
             } else if (goldTheme) {
                 Skins.draw_board_gold(ctx, size);
@@ -563,10 +574,12 @@
             }
             const pad = size * 0.062;
             const spacing = (size - pad * 2) / (boardSize - 1);
-            ctx.strokeStyle = voidTheme ? 'rgba(255, 255, 255, 0.9)' : (goldTheme ? '#e6c16a' : (jadeTheme ? '#1f4a37' : '#333'));
+            // 黑派主题的金线整体收敛，避免线条比棋子更抢眼
+            const goldCore = blackTheme ? 'rgba(180, 144, 74, 0.52)' : '#f1cb72';
+            ctx.strokeStyle = voidTheme ? 'rgba(255, 255, 255, 0.9)' : (blackTheme ? 'rgba(190, 152, 76, 0.62)' : (goldTheme ? '#e6c16a' : (jadeTheme ? '#1f4a37' : '#333')));
             ctx.lineWidth = 3;
             ctx.strokeRect(0.5, 0.5, size - 1, size - 1);
-            if (goldTheme) {
+            if (goldStyle) {
                 ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
                 ctx.lineWidth = 1;
                 ctx.strokeRect(2, 2, size - 4, size - 4);
@@ -576,13 +589,13 @@
             };
             for (let i = 0; i < boardSize; i++) {
                 const p = pad + i * spacing;
-                if (goldTheme) {
-                    // 暗缝 + 亮金芯，复刻镌刻金线的双线观感
-                    ctx.strokeStyle = 'rgba(8, 10, 13, 0.5)';
+                if (goldStyle) {
+                    // 暗缝 + 金芯，复刻镌刻金线的双线观感
+                    ctx.strokeStyle = blackTheme ? 'rgba(8, 10, 13, 0.62)' : 'rgba(8, 10, 13, 0.5)';
                     ctx.lineWidth = 2.6;
                     draw_line(p, pad, p, pad + spacing * (boardSize - 1));
                     draw_line(pad, p, pad + spacing * (boardSize - 1), p);
-                    ctx.strokeStyle = '#f1cb72';
+                    ctx.strokeStyle = goldCore;
                     ctx.lineWidth = 1.1;
                 } else {
                     ctx.strokeStyle = voidTheme
@@ -593,21 +606,21 @@
                 draw_line(p, pad, p, pad + spacing * (boardSize - 1));
                 draw_line(pad, p, pad + spacing * (boardSize - 1), p);
             }
-            const labelSize = Math.max(8, Math.floor(pad * (goldTheme ? 0.5 : 0.8)));
-            ctx.font = goldTheme
+            const labelSize = Math.max(8, Math.floor(pad * (goldStyle ? 0.5 : 0.8)));
+            ctx.font = goldStyle
                 ? `bold ${labelSize}px "Times New Roman", "Songti SC", Georgia, serif`
                 : `bold ${labelSize}px sans-serif`;
             ctx.fillStyle = voidTheme
                 ? 'rgba(226, 238, 255, 0.72)'
-                : (goldTheme ? '#ffd77a' : (jadeTheme ? 'rgba(24, 58, 43, 0.62)' : '#6f6f6f'));
+                : (blackTheme ? 'rgba(226, 186, 110, 0.78)' : (goldTheme ? '#ffd77a' : (jadeTheme ? 'rgba(24, 58, 43, 0.62)' : '#6f6f6f')));
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
             for (let i = 0; i < boardSize; i++) {
                 const p = pad + i * spacing;
-                // 横轴从左到右 1~9，纵轴从下到上 1~9；玄金棋盘使用罗马数字。
-                const bottomLabel = goldTheme ? Skins.to_roman(i + 1) : String(i + 1);
-                const leftLabel = goldTheme ? Skins.to_roman(boardSize - i) : String(boardSize - i);
+                // 横轴从左到右 1~9，纵轴从下到上 1~9；玄金 / 黑派棋盘使用罗马数字。
+                const bottomLabel = goldStyle ? Skins.to_roman(i + 1) : String(i + 1);
+                const leftLabel = goldStyle ? Skins.to_roman(boardSize - i) : String(boardSize - i);
                 ctx.fillText(bottomLabel, p, size - pad * 0.42);
-                ctx.fillText(leftLabel, pad * (goldTheme ? 0.5 : 0.42), p);
+                ctx.fillText(leftLabel, pad * (goldStyle ? 0.5 : 0.42), p);
             }
             cells.forEach((item, index) => {
                 const x = index % boardSize;
@@ -946,6 +959,17 @@
             node.textContent = message;
             node.className = `text-${variant} small`;
         };
+        const PENDING_SUBMIT_KEY = 'four-ascend-puzzle-submit-v1';
+        const readPendingSubmission = () => { try { const raw = localStorage.getItem(PENDING_SUBMIT_KEY); const value = raw ? JSON.parse(raw) : null; return value && typeof value.code === 'string' ? value : null; } catch (_) { return null; } };
+        const writePendingSubmission = (data) => { try { localStorage.setItem(PENDING_SUBMIT_KEY, JSON.stringify(data)); return true; } catch (_) { return false; } };
+        const clearPendingSubmission = () => { try { localStorage.removeItem(PENDING_SUBMIT_KEY); } catch (_) { /* 忽略清理失败 */ } };
+        // 目标关卡已有残局时不允许投稿（每日残局不受限制）。
+        const levelOccupied = async (level) => {
+            try {
+                const records = await window.http_puzzle_query();
+                return Array.isArray(records) && records.some((record) => Number(record.level) === Number(level));
+            } catch (_) { return false; }
+        };
         const submitPuzzle = async () => {
             const button = document.getElementById('button_submit_puzzle');
             const target = document.getElementById('submit_target').value === 'level' ? 'level' : 'daily';
@@ -961,16 +985,20 @@
             if (!token) { setSubmitFeedback('登录状态已失效，请重新登录后再投稿。', 'danger'); return; }
             button.disabled = true;
             try {
-                const code = EndgameArchive.encode(exportData());
-                const success = await window.http_puzzle_submit(token, target, level, title, code);
-                if (!success) throw new Error('服务端拒绝了本次投稿');
-                // 等级不足 2 的投稿已由服务端成功扣券，这里同步本地券数并刷新卡片状态。
-                if (current_level < 2 && submit_user) {
-                    submit_user.tickets = Math.max(0, submit_tickets() - 1);
-                    applySubmitAccount(submit_user);
+                // 投稿前检查目标关卡是否已被占用，避免投稿到已有残局的位置。
+                if (target === 'level' && await levelOccupied(level)) {
+                    setSubmitFeedback('此关已有残局，请换其他关。', 'danger');
+                    showAlert('此关已有残局，请换其他关。', 'danger');
+                    return;
                 }
-                setSubmitFeedback(target === 'daily' ? '投稿已提交，等待审核（每日残局）' : `投稿已提交，等待审核（第 ${level} 关）`, 'success');
-                showAlert(current_level < 2 ? '投稿已提交，已消耗 1 张单局投稿券' : '投稿已提交，等待审核');
+                const code = EndgameArchive.encode(exportData());
+                // 先记录待投稿数据，再进入残局对局验证；只有获胜后才会真正提交到待审队列。
+                if (!writePendingSubmission({ target, level, title, code, created_at: Date.now() })) {
+                    setSubmitFeedback('无法保存待投稿数据，请检查浏览器存储权限。', 'danger');
+                    return;
+                }
+                setSubmitFeedback('正在进入对局验证：获胜后投稿才会提交。', 'primary');
+                window.location.href = `/pages/endgame/challenge.html?mode=code&code=${encodeURIComponent(code)}&verify=submit`;
             } catch (error) {
                 setSubmitFeedback(error.message || '投稿失败，请稍后重试。', 'danger');
                 showAlert(`投稿失败：${error.message || '未知错误'}`, 'danger');
@@ -989,6 +1017,39 @@
             const pad = (number) => String(number).padStart(2, '0');
             return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
         };
+        const copyText = async (text) => {
+            const value = String(text || '');
+            if (!value) return false;
+            try { await navigator.clipboard.writeText(value); return true; }
+            catch (_) {
+                const area = document.createElement('textarea');
+                area.value = value; area.style.position = 'fixed'; area.style.opacity = '0';
+                document.body.append(area); area.select();
+                const ok = document.execCommand('copy');
+                area.remove();
+                return ok;
+            }
+        };
+        // 读取审核卡片上的可编辑字段（投稿位置 / 关卡 / 名称 / 残局码）
+        const reviewFormData = (nodes) => {
+            const target = nodes.target.value === 'level' ? 'level' : 'daily';
+            return {
+                target,
+                level: target === 'level' ? clamp(Math.floor(Number(nodes.level.value) || 1), 1, 100) : 0,
+                title: String(nodes.title.value || '').trim(),
+                code: String(nodes.code.value || '').trim()
+            };
+        };
+        const reviewFormError = (data) => {
+            if (!Array.from(data.title).length || Array.from(data.title).length > 10) return '残局名称不能为空，且最多10个中文字符。';
+            if (!data.code) return '残局码不能为空。';
+            try { EndgameArchive.decode(data.code); } catch (_) { return '残局码格式无效，请检查后重试。'; }
+            return '';
+        };
+        const reviewFormDirty = (item, data) => data.target !== (item.target === 'level' ? 'level' : 'daily')
+            || data.level !== Number(item.level || 0)
+            || data.title !== (item.title || '')
+            || data.code !== (item.code || '');
         const renderReviewList = (submissions) => {
             const list = document.getElementById('review_list');
             const empty = document.getElementById('review_empty');
@@ -997,42 +1058,126 @@
             document.getElementById('review_count').textContent = String(items.length);
             empty.classList.toggle('d-none', items.length > 0);
             items.forEach((item) => {
-                const row = document.createElement('div');
-                row.className = 'sequence-item border rounded p-2 d-flex align-items-center justify-content-between gap-2';
+                const card = document.createElement('div');
+                card.className = 'sequence-item border rounded p-2 d-flex flex-column gap-2';
+
+                // 概要：投稿位置、名称、提交人与时间
+                const head = document.createElement('div');
+                head.className = 'd-flex align-items-start justify-content-between gap-2 flex-wrap';
                 const info = document.createElement('div');
                 info.className = 'min-w-0';
                 const line1 = document.createElement('div');
                 line1.className = 'fw-bold small text-truncate';
-                line1.textContent = `${reviewTargetText(item)} · ${item.title || '未命名'}`;
+                line1.textContent = `#${item.id} · ${reviewTargetText(item)} · ${item.title || '未命名'}`;
                 const line2 = document.createElement('div');
                 line2.className = 'text-secondary small';
                 line2.textContent = `提交人：${item.creator_name || item.creator || '未知'} · ${formatSubmitTime(item.created_at)}`;
                 info.append(line1, line2);
+
+                // 可编辑字段：投稿位置 / 目标关卡 / 残局名称 / 残局码
+                const form = document.createElement('div');
+                form.className = 'row g-2';
+                const target = document.createElement('sl-select');
+                target.size = 'small'; target.label = '投稿位置'; target.className = 'col-6 col-md-3';
+                [['daily', '每日残局'], ['level', '残局闯关']].forEach(([value, text]) => {
+                    const option = document.createElement('sl-option');
+                    option.value = value; option.textContent = text;
+                    target.append(option);
+                });
+                target.value = item.target === 'level' ? 'level' : 'daily';
+                const level = document.createElement('sl-input');
+                level.size = 'small'; level.type = 'number'; level.label = '目标关卡'; level.className = 'col-6 col-md-3';
+                level.setAttribute('min', '1'); level.setAttribute('max', '100');
+                level.value = String(Number(item.level) || 1);
+                const title = document.createElement('sl-input');
+                title.size = 'small'; title.label = '残局名称'; title.className = 'col-12 col-md-6';
+                title.setAttribute('maxlength', '10');
+                title.value = item.title || '';
+                const code = document.createElement('sl-textarea');
+                code.size = 'small'; code.label = '残局码'; code.className = 'col-12';
+                code.setAttribute('rows', '2'); code.setAttribute('resize', 'auto');
+                code.value = item.code || '';
+                const syncLevelVisible = () => level.classList.toggle('d-none', (target.value === 'level' ? 'level' : 'daily') !== 'level');
+                target.addEventListener('sl-change', syncLevelVisible);
+                syncLevelVisible();
+                form.append(target, level, title, code);
+
+                const copy = document.createElement('sl-button');
+                copy.size = 'small'; copy.variant = 'default'; copy.outline = true; copy.textContent = '复制残局码';
+                copy.addEventListener('click', async () => {
+                    const ok = await copyText(String(code.value || '').trim() || item.code);
+                    showAlert(ok ? '残局码已复制到剪贴板。' : '复制失败，请手动选择残局码。', ok ? 'success' : 'danger');
+                });
+                head.append(info, copy);
+
+                // 操作：快速开始（按当前残局码进入对局）、保存修改、通过、驳回
                 const actions = document.createElement('div');
-                actions.className = 'd-flex gap-1 flex-shrink-0';
+                actions.className = 'd-flex flex-wrap gap-1 justify-content-end';
+                const quick = document.createElement('sl-button');
+                quick.size = 'small'; quick.variant = 'default'; quick.outline = true; quick.textContent = '快速开始';
+                quick.addEventListener('click', () => {
+                    const value = String(code.value || '').trim() || item.code;
+                    try { EndgameArchive.decode(value); } catch (_) { showAlert('残局码格式无效，无法开始挑战。', 'danger'); return; }
+                    window.location.href = `/pages/endgame/challenge.html?mode=code&code=${encodeURIComponent(value)}&from=review`;
+                });
+                const save = document.createElement('sl-button');
+                save.size = 'small'; save.variant = 'default'; save.outline = true; save.textContent = '保存修改';
+                save.addEventListener('click', () => saveReviewEdits(item, save, { target, level, title, code }));
                 const approve = document.createElement('sl-button');
                 approve.size = 'small'; approve.variant = 'primary'; approve.textContent = '通过';
-                approve.addEventListener('click', () => reviewSubmission(item, 'approve', approve));
+                approve.addEventListener('click', () => reviewSubmission(item, 'approve', approve, { target, level, title, code }));
                 const reject = document.createElement('sl-button');
                 reject.size = 'small'; reject.variant = 'danger'; reject.outline = true; reject.textContent = '驳回';
-                reject.addEventListener('click', () => reviewSubmission(item, 'reject', reject));
-                actions.append(approve, reject);
-                row.append(info, actions);
-                list.append(row);
+                reject.addEventListener('click', () => reviewSubmission(item, 'reject', reject, null));
+                actions.append(quick, save, approve, reject);
+
+                card.append(head, form, actions);
+                list.append(card);
             });
         };
-        const reviewSubmission = async (item, action, button) => {
+        // 保存审核修改：仅待审核投稿可改，保存后再刷新列表。
+        const saveReviewEdits = async (item, button, nodes) => {
             const token = window.get_token();
             if (!token) return showAlert('登录状态已失效，请重新登录。', 'danger');
+            const data = reviewFormData(nodes);
+            const error = reviewFormError(data);
+            if (error) return showAlert(error, 'danger');
+            if (!reviewFormDirty(item, data)) return showAlert('没有需要保存的修改。', 'info');
             button.disabled = true;
             try {
+                const saved = await window.http_puzzle_submission_update(token, item.id, data.target, data.level, data.title, data.code);
+                if (!saved) { showAlert('修改保存失败，请稍后重试。', 'danger'); return; }
+                showAlert('投稿修改已保存。', 'success');
+                await refresh_review();
+            } catch (_) {
+                showAlert('修改保存失败，请稍后重试。', 'danger');
+            } finally {
+                button.disabled = false;
+            }
+        };
+        const reviewSubmission = async (item, action, button, nodes) => {
+            const token = window.get_token();
+            if (!token) return showAlert('登录状态已失效，请重新登录。', 'danger');
+            let data = null;
+            if (action === 'approve') {
+                // 通过前先校验编辑内容；有改动时先落库，保证发布的是管理员最终确认的数据。
+                data = reviewFormData(nodes);
+                const error = reviewFormError(data);
+                if (error) return showAlert(error, 'danger');
+            }
+            button.disabled = true;
+            try {
+                if (action === 'approve' && reviewFormDirty(item, data)) {
+                    const saved = await window.http_puzzle_submission_update(token, item.id, data.target, data.level, data.title, data.code);
+                    if (!saved) { showAlert('修改未能保存，未执行审核。', 'danger'); return; }
+                }
                 const success = await window.http_puzzle_submission_review(token, item.id, action);
                 if (!success) {
                     // 通过失败通常意味着目标位置已被占用：等级 3 不能覆盖，仅等级 4 可覆盖。
                     showAlert(action === 'approve' ? '该位置已有残局，权限等级 3 不能覆盖，请联系管理员' : '驳回失败，请稍后重试', 'danger');
                     return;
                 }
-                showAlert(action === 'approve' ? '已通过该投稿' : '已驳回该投稿');
+                showAlert(action === 'approve' ? '已通过该投稿，已向投稿人发放 1 张 500 棋币兑换券' : '已驳回该投稿');
                 await refresh_review();
             } catch (error) {
                 showAlert(action === 'approve' ? '该位置已有残局，权限等级 3 不能覆盖，请联系管理员' : `驳回失败：${error.message || '未知错误'}`, 'danger');
@@ -1083,9 +1228,24 @@
         // 返回标签页时同步一次审核列表，避免长时间停留后数据过期；不做轮询。
         document.addEventListener('visibilitychange', () => { if (!document.hidden && submit_level() >= 3) refresh_review(); });
 
+        // 回到投稿页时清掉上一次未完成对局验证的待投稿数据（成功的投稿已由对局页清空并提交）。
+        const cleanupStalePending = () => {
+            let submitted = false;
+            try {
+                if (localStorage.getItem('four-ascend-puzzle-submit-done-v1')) {
+                    localStorage.removeItem('four-ascend-puzzle-submit-done-v1');
+                    submitted = true;
+                }
+            } catch (_) { /* 忽略读取失败 */ }
+            const stale = readPendingSubmission();
+            if (stale) clearPendingSubmission();
+            if (document.getElementById('submit_card').classList.contains('d-none')) return;
+            if (submitted) setSubmitFeedback('投稿已提交，等待审核。', 'success');
+            else if (stale) setSubmitFeedback('上次投稿未完成对局验证，投稿未提交。', 'warning');
+        };
         window.addEventListener('resize', redraw);
         setTool('black'); renderSequence(); renderBook(); renderSchedule(); renderGuide(); renderAiPreset(); redraw(); updateSummary();
-        loadSubmitUser();
+        loadSubmitUser().then(cleanupStalePending);
     </script>
 </body>
 

@@ -114,6 +114,20 @@ const ai_test = async (name, opt, synchronizeRandom = false) => {
             await ai_worker.ZERO_THINK(opt, synchronizeRandom);
             const ed = Math.round(performance.now() * 1000);
             toast.info(`单回合速度: ${(ed - st) / 1000}ms`);
+        } else if (name === '4ascend-fish') {
+            await ai_worker.FISH_RESET(
+                Math.floor(Date.now() / 1000) >>> 0,
+                (Math.floor(Date.now() / 1000) ^ crypto.getRandomValues(new Uint32Array(1))[0]) >>> 0,
+                0,
+                6,
+                select_server_mode.value === 'normal',
+            );
+            await ai_worker.FISH_TURN(xy2index(4, 4, 9));
+
+            const st = Math.round(performance.now() * 1000);
+            await ai_worker.FISH_THINK(opt, synchronizeRandom);
+            const ed = Math.round(performance.now() * 1000);
+            toast.info(`单回合速度: ${(ed - st) / 1000}ms`);
         } else if (name === '4ascend-hce') {
             await ai_worker.HCE_RESET(
                 0
@@ -137,7 +151,7 @@ const ai_test = async (name, opt, synchronizeRandom = false) => {
  * @return {number}
  */
 const ai_level = (name, opt) => {
-    if (name === '4ascend-zero') {
+    if (name === '4ascend-zero' || name === '4ascend-fish') {
         if (opt === '0') return 45;
         if (opt === '1') return 55;
         else if (opt === '2') return 115;
@@ -152,6 +166,13 @@ const ai_level = (name, opt) => {
         else if (opt === '4') return 8000;
         else if (opt === '5') return 11000;
     }
+};
+
+/** 对手引擎在界面上的显示名。 */
+const AI_NAMES = {
+    '4ascend-zero': 'ZERO',
+    '4ascend-hce': 'HCE',
+    '4ascend-fish': '四子鱼',
 };
 
 /** Only the hidden ??? level may inspect the live match RNG state. */
@@ -169,19 +190,20 @@ button_server_join.addEventListener('pointerdown', (event) => {
 
     const ai = select_server_ai.value;
     const mode = select_server_mode.value;
+    const health = Number(input_server_health.value);
 
     if (!name) return toast.error('请先选择对手！');
     else if (!opt) return toast.error('请先选择难度！');
     // else if (ai === '4ascend-zero' && mode === 'blight') return toast.error('ZERO不支持灾荒游戏模式！');
     else if (ai === '4ascend-hce' && mode === 'normal') return toast.error('HCE不支持普通游戏模式！');
-    else if (Number(input_server_health.value) > 10) return toast.error('生命值太大！');
+    else if (!Number.isInteger(health) || health < 2 || health > 100) return toast.error('生命值需为 2-100 的整数！');
 
     const archive = input_server_archive.value;
     if (archive !== '' && !ArchiveV0.load(BaseZalgo.decode(archive))) return toast.error('非法对局存档！');
 
     Ai.setup(
         input_server_archive.value,
-        Number(input_server_health.value),
+        health,
         input_server_board.value,
         select_server_balance.value,
         select_server_mode.value,
@@ -189,7 +211,7 @@ button_server_join.addEventListener('pointerdown', (event) => {
         select_server_color.value,
         select_server_ai.value,
         ai_level(name, select_server_level.value),
-        (name === '4ascend-zero' ? 'ZERO' : 'HCE') + `（${select_server_level.selectedOptions[0].textContent}）`,
+        (AI_NAMES[name] || name) + `（${select_server_level.selectedOptions[0].textContent}）`,
         ai_synchronize_random(name, select_server_level.value),
         select_server_level.value
     );

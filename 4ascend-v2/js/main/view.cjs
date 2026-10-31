@@ -143,6 +143,13 @@ const room_join = async (id, server) => {
             game_ws.start_resend(GameMessage.observer_heartbeat(id, token), 5000, 1000);
 
             toast.success('加入房间成功！');
+            // 每日任务：成功进入观战即记一次观战
+            if (typeof window.http_task_spectate === 'function') {
+                window.http_task_spectate(token).then((result) => {
+                    const reward = Number(result && result.task_reward) || 0;
+                    if (reward > 0) toast.success(`每日任务完成：+${reward} 棋币`);
+                }).catch(() => { });
+            }
             window.switch_wection(main_game, main_opt);
             is_main = false;
             button_home.classList.add('d-none');

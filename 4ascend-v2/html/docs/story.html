@@ -69,8 +69,8 @@
     </script>
 </head>
 <body class='d-flex flex-column w-100 h-100 bg-light'>
-    <div class='position-fixed top-0 start-0 d-flex p-2' style='z-index: 1050;'>
-        <sl-button variant='default' href='/' circle aria-label='返回主页' title='返回主页'><sl-icon name='arrow-left'></sl-icon></sl-button>
+    <div id='button_home' class='position-fixed top-0 start-0 d-flex gap-1 p-2' style='z-index: 1050;'>
+        <sl-button variant='default' href='/' circle aria-label='返回主页' title='返回主页'><sl-icon name='house'></sl-icon></sl-button>
         <sl-button id='button_music_toggle' variant='default' circle title='单击切换下一首；1 秒内双击开始/停止播放' aria-label='单击切换下一首'><sl-icon id='icon_music_toggle' name='volume-up'></sl-icon></sl-button>
     </div>
     <div class='d-flex flex-column w-100 h-100'>
@@ -184,7 +184,11 @@
             { 'label': '选择角色和对应的表情', 'icon': 'person-badge', 'kind': 'say', 'focus': 'char' },
             { 'label': '添加台词', 'icon': 'chat-left-text', 'kind': 'say', 'focus': 'text' },
             { 'label': '添加选择', 'icon': 'list-ul', 'kind': 'choice' },
+            { 'label': '添加标签', 'icon': 'bookmark', 'kind': 'label', 'focus': 'name' },
+            { 'label': '添加跳转', 'icon': 'signpost-2', 'kind': 'jump', 'focus': 'target' },
+            { 'label': '添加标注', 'icon': 'vector-pen', 'kind': 'mark', 'type': 'arrow', 'focus': 'target' },
             { 'label': '对局设置', 'icon': 'grid-3x3', 'kind': 'game', 'block': true },
+            { 'label': '结束此对局', 'icon': 'grid-3x3-gap', 'kind': 'game_end' },
             { 'label': '结束对局条件', 'icon': 'hourglass-split', 'kind': 'config', 'key': '结束对局' },
             { 'label': '步数触发对话', 'icon': 'chat-square-dots', 'kind': 'config', 'key': '步数对话' },
             { 'label': '继续对局', 'icon': 'arrow-return-left', 'kind': 'resume' },

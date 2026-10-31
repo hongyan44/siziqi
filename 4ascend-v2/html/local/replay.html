@@ -84,6 +84,55 @@
         }
     </style>
 
+    <!-- 局势分析 -->
+    <style>
+        .analysis-fab {
+            position: fixed;
+            right: 1rem;
+            bottom: 1rem;
+            z-index: 1050;
+        }
+
+        .analysis-panel {
+            position: fixed;
+            right: 1rem;
+            bottom: 4.5rem;
+            z-index: 1049;
+            width: min(340px, calc(100vw - 2rem));
+            padding: 0.75rem 0.9rem;
+            background: #fff;
+            border-radius: 0.75rem;
+            box-shadow: 0 0.5rem 1.5rem rgba(15, 23, 42, 0.18);
+        }
+
+        .analysis-bar {
+            height: 6px;
+            border-radius: 3px;
+            background: #e2e8f0;
+            overflow: hidden;
+        }
+
+        .analysis-bar-black {
+            height: 100%;
+            background: #3b82f6;
+            transition: width 0.2s ease;
+        }
+
+        .analysis-chart {
+            display: block;
+            width: 100%;
+            height: 110px;
+            cursor: pointer;
+        }
+
+        .analysis-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+    </style>
+
     <div id='loading' class='loading-a'>
         <div class='loading-p'></div>
         <p class='loading-t'>正在初始化...</p>
@@ -101,6 +150,7 @@
                 customElements.whenDefined('sl-alert'),
                 customElements.whenDefined('sl-tag'),
                 customElements.whenDefined('sl-dialog'),
+                customElements.whenDefined('sl-icon-button'),
             ]);
 
             if (document.readyState === 'loading') await new Promise((resolve) => document.addEventListener('DOMContentLoaded', resolve, { 'once': true }))
@@ -143,8 +193,8 @@
 
 
 <body class='d-flex flex-column w-100 h-100 bg-light'>
-    <div id='button_home' class='position-fixed top-0 start-0 d-flex p-2' style="z-index: 1050;">
-        <sl-button variant='default' href='/' circle>
+    <div id='button_home' class='position-fixed top-0 start-0 d-flex gap-1 p-2' style="z-index: 1050;">
+        <sl-button variant='default' href='/' circle title='返回主页' aria-label='返回主页'>
             <sl-icon name='house'></sl-icon>
         </sl-button>
     </div>
@@ -339,6 +389,61 @@
                 </a>
             </div>
         </footer>
+    </div>
+
+
+    <!-- 局势分析入口 -->
+    <div id='analysis_fab' class='analysis-fab d-none'>
+        <sl-button id='button_analysis_toggle' variant='primary' circle size='large' title='局势分析'
+            aria-label='局势分析'>
+            <sl-icon name='bar-chart'></sl-icon>
+        </sl-button>
+    </div>
+
+    <!-- 局势分析面板 -->
+    <div id='analysis_panel' class='analysis-panel d-none'>
+        <div class='d-flex align-items-center justify-content-between gap-2'>
+            <div class='fw-bold'>局势分析</div>
+            <sl-icon-button id='button_analysis_close' name='x-lg' label='关闭局势分析'></sl-icon-button>
+        </div>
+
+        <div class='d-flex align-items-center justify-content-between fw-bold mt-1' style='font-size: 0.85rem;'>
+            <span id='analysis_black_rate' class='text-dark'>黑方 50.0%</span>
+            <span id='analysis_white_rate' class='text-secondary'>白方 50.0%</span>
+        </div>
+
+        <div class='analysis-bar mt-1'>
+            <div id='analysis_bar_black' class='analysis-bar-black' style='width: 50%;'></div>
+        </div>
+
+        <canvas id='canvas_analysis' class='analysis-chart mt-2' height='110'></canvas>
+
+        <div id='analysis_turn' class='small fw-bold mt-1'>初始局面 · 黑方 50.0%</div>
+
+        <div id='analysis_counts' class='small text-muted mt-1' style='font-size: 0.72rem;'>
+            !! 0 · ! 0 · !? 0 · ?! 0 · ? 0 · ?? 0
+        </div>
+
+        <div class='d-flex flex-wrap align-items-center gap-2 mt-1 text-muted' style='font-size: 0.7rem;'>
+            <span class='d-flex align-items-center gap-1'>
+                <span class='analysis-dot' style='background: #8b5cf6;'></span>!! 妙手
+            </span>
+            <span class='d-flex align-items-center gap-1'>
+                <span class='analysis-dot' style='background: #22c55e;'></span>! 好棋
+            </span>
+            <span class='d-flex align-items-center gap-1'>
+                <span class='analysis-dot' style='background: #14b8a6;'></span>!? 有趣
+            </span>
+            <span class='d-flex align-items-center gap-1'>
+                <span class='analysis-dot' style='background: #eab308;'></span>?! 可疑
+            </span>
+            <span class='d-flex align-items-center gap-1'>
+                <span class='analysis-dot' style='background: #f97316;'></span>? 坏棋
+            </span>
+            <span class='d-flex align-items-center gap-1'>
+                <span class='analysis-dot' style='background: #ef4444;'></span>?? 大漏
+            </span>
+        </div>
     </div>
 
 

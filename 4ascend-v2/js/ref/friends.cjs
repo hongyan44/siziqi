@@ -356,6 +356,7 @@ const FriendList = require('./friend-list.cjs');
             profile_row('最近登录', FriendList.format_presence(data, Date.now())),
             profile_row('账号对局', `${games} 场`),
             profile_row('AI 对局', `${Number(data.ai_games) || 0} 场`),
+            profile_row('破解残局数', `${Number(data.puzzle_clears) || 0} 个`),
             profile_row('近100场胜率', recentGames > 0 ? `${rate}（${wins}/${recentGames}）` : rate)
         ]);
 
@@ -450,7 +451,6 @@ const FriendList = require('./friend-list.cjs');
         if (!node) return;
         node.classList.add('open');
         refresh_list();
-        refresh_online();
     };
 
     const close_drawer = () => {
@@ -472,6 +472,7 @@ const FriendList = require('./friend-list.cjs');
         const select = byId('select_friend_request_mode');
         if (select) select.value = state.request_mode;
         render_requests_page_by_state();
+        refresh_online();
         if (logged_in()) refresh_list();
     };
 
@@ -490,26 +491,45 @@ const FriendList = require('./friend-list.cjs');
     };
 
     // ---------- 好友数据 ----------
-    const refresh_list = async () => {
+    // 并发去重：长轮询版本变化、接受申请等都可能触发刷新，
+    // 同一时刻只保留一个在途请求，避免移动端短时间内叠加出大量请求与整页重绘。
+    let list_task = null;
+    let online_task = null;
+
+    const refresh_list = async (force) => {
         if (!logged_in() || !window.http_friend_list) return;
-        const result = await window.http_friend_list(token());
-        if (!result) return;
-        const my_id = byId('span_friend_my_id');
-        if (my_id) my_id.textContent = result.friend_id || '----';
-        state.request_mode = result.request_mode || 'manual';
-        latest_incoming = result.incoming || [];
-        latest_outgoing = result.outgoing || [];
-        latest_friends = result.friends || [];
-        render_requests_page(latest_incoming);
-        render_outgoing_page(latest_outgoing);
-        render_friends(result.friends || []);
-        state.requests = latest_incoming.length;
-        state.messages = Number(result.messages) || 0;
-        refresh_badge();
-        if (requests_open()) {
-            const select = byId('select_friend_request_mode');
-            if (select) select.value = state.request_mode;
+        if (list_task) {
+            // 默认复用仍在途的请求；force 时等它结束后再拉一次最新数据，
+            // 保证「接受/拒绝申请」后的列表不会因为旧响应而回滚。
+            if (!force) return list_task;
+            try { await list_task; } catch (_) { /* 在途请求失败时忽略，下面重新拉取 */ }
+            if (list_task) return list_task;
         }
+        list_task = (async () => {
+            try {
+                const result = await window.http_friend_list(token());
+                if (!result) return;
+                const my_id = byId('span_friend_my_id');
+                if (my_id) my_id.textContent = result.friend_id || '----';
+                state.request_mode = result.request_mode || 'manual';
+                latest_incoming = result.incoming || [];
+                latest_outgoing = result.outgoing || [];
+                latest_friends = result.friends || [];
+                render_requests_page(latest_incoming);
+                render_outgoing_page(latest_outgoing);
+                render_friends(result.friends || []);
+                state.requests = latest_incoming.length;
+                state.messages = Number(result.messages) || 0;
+                refresh_badge();
+                if (requests_open()) {
+                    const select = byId('select_friend_request_mode');
+                    if (select) select.value = state.request_mode;
+                }
+            } finally {
+                list_task = null;
+            }
+        })();
+        return list_task;
     };
 
     // 接受好友申请：跨线路网络抖动时请求可能已成功但响应丢失，
@@ -517,26 +537,29 @@ const FriendList = require('./friend-list.cjs');
     const accept_friend = async (uuid) => {
         if (!uuid) return false;
         if (await window.http_friend_accept(token(), uuid)) return true;
-        await refresh_list();
+        // 请求失败时强制拉取一次最新列表（跳过可能仍在途的旧请求），再据此判定是否已添加成功。
+        await refresh_list(true);
         return latest_friends.some((friend) => friend && friend.uuid === uuid);
     };
 
     const request_item = (user) => {
-        const item = h('div', { class: 'd-flex align-items-center gap-2 p-2 rounded border' }, [
+        const item = h('div', { class: 'friend-row d-flex align-items-center gap-2 p-2 rounded border' }, [
             avatar(user, '2rem'),
-            h('div', { class: 'flex-grow-1 min-w-0' }, [
+            h('div', { class: 'friend-row-main flex-grow-1 min-w-0' }, [
                 h('div', { class: 'd-flex align-items-center gap-1' }, [
                     name_node(user),
                     FriendList.is_admin(user) ? admin_badge() : null
                 ]),
                 h('small', { class: 'text-secondary', text: '请求添加你为好友' })
             ]),
-            h('sl-button', { size: 'small', variant: 'success', outline: '', text: '接受' }),
-            h('sl-button', { size: 'small', variant: 'danger', outline: '', text: '拒绝' })
+            h('div', { class: 'friend-row-actions' }, [
+                h('sl-button', { size: 'small', variant: 'success', outline: '', text: '接受' }),
+                h('sl-button', { size: 'small', variant: 'danger', outline: '', text: '拒绝' })
+            ])
         ]);
         const buttons = Array.from(item.querySelectorAll('sl-button'));
-        buttons[0].addEventListener('click', () => accept_user(user));
-        buttons[1].addEventListener('click', () => reject_user(user));
+        buttons[0].addEventListener('click', () => accept_user(user, item));
+        buttons[1].addEventListener('click', () => reject_user(user, item));
         return item;
     };
 
@@ -560,9 +583,9 @@ const FriendList = require('./friend-list.cjs');
             return;
         }
         outgoing.forEach((user) => {
-            box.append(h('div', { class: 'd-flex align-items-center gap-2 p-2 rounded border' }, [
+            box.append(h('div', { class: 'friend-row d-flex align-items-center gap-2 p-2 rounded border' }, [
                 avatar(user, '2rem'),
-                h('div', { class: 'flex-grow-1 min-w-0' }, [
+                h('div', { class: 'friend-row-main flex-grow-1 min-w-0' }, [
                     h('div', { class: 'd-flex align-items-center gap-1' }, [
                         name_node(user),
                         FriendList.is_admin(user) ? admin_badge() : null
@@ -573,19 +596,48 @@ const FriendList = require('./friend-list.cjs');
         });
     };
 
-    const accept_user = async (user) => {
-        const ok = await accept_friend(user.uuid);
-        if (!ok) return notify('error', '接受失败');
-        notify('success', '已添加好友');
-        refresh_list();
-        if (drawer_open()) refresh_online();
+    // 申请处理期间禁用该行按钮：既防止重复点击叠加请求，也让移动端有明确的进行中反馈。
+    const set_row_busy = (item, busy) => {
+        if (!item) return;
+        Array.from(item.querySelectorAll('sl-button')).forEach((button) => { button.disabled = Boolean(busy); });
+        if (busy) item.dataset.busy = '1';
+        else delete item.dataset.busy;
     };
 
-    const reject_user = async (user) => {
-        const ok = await window.http_friend_reject(token(), user.uuid);
-        if (!ok) return notify('error', '操作失败');
-        refresh_list();
-        if (drawer_open()) refresh_online();
+    const drop_incoming = (uuid) => {
+        latest_incoming = latest_incoming.filter((value) => value && value.uuid !== uuid);
+        state.requests = latest_incoming.length;
+        refresh_badge();
+        render_requests_page(latest_incoming);
+    };
+
+    const accept_user = async (user, item) => {
+        if (item && item.dataset.busy) return;
+        set_row_busy(item, true);
+        try {
+            const ok = await accept_friend(user.uuid);
+            if (!ok) return notify('error', '接受失败');
+            notify('success', '已添加好友');
+            drop_incoming(user.uuid);
+            // 只更新在线列表里这一行的关系，不再整表重拉，避免移动端二次卡顿。
+            update_online_relation(user.uuid, 'friend');
+            refresh_list(true);
+        } finally {
+            set_row_busy(item, false);
+        }
+    };
+
+    const reject_user = async (user, item) => {
+        if (item && item.dataset.busy) return;
+        set_row_busy(item, true);
+        try {
+            const ok = await window.http_friend_reject(token(), user.uuid);
+            if (!ok) return notify('error', '操作失败');
+            drop_incoming(user.uuid);
+            refresh_list(true);
+        } finally {
+            set_row_busy(item, false);
+        }
     };
 
     const render_friends = (friends) => {
@@ -604,9 +656,9 @@ const FriendList = require('./friend-list.cjs');
     const friend_item = (friend, now) => {
         const online = Boolean(friend.online);
         const battle = FriendList.battle_label(online);
-        const item = h('div', { class: 'd-flex align-items-center gap-2 p-2 rounded border' }, [
+        const item = h('div', { class: 'friend-row d-flex align-items-center gap-2 p-2 rounded border' }, [
             avatar(friend, '2.2rem'),
-            h('div', { class: 'flex-grow-1 min-w-0' }, [
+            h('div', { class: 'friend-row-main flex-grow-1 min-w-0' }, [
                 h('div', { class: 'd-flex align-items-center gap-1' }, [
                     name_node(friend),
                     FriendList.is_admin(friend) ? admin_badge() : null,
@@ -614,15 +666,17 @@ const FriendList = require('./friend-list.cjs');
                 ]),
                 h('small', { class: 'text-secondary', text: FriendList.format_presence(friend, now) })
             ]),
-            h('sl-button', { size: 'small', variant: 'default', outline: '', text: '消息' }),
-            h('sl-button', {
-                size: 'small',
-                variant: online ? 'primary' : 'default',
-                outline: '',
-                text: battle.text,
-                title: battle.title
-            }),
-            h('sl-button', { size: 'small', variant: 'danger', outline: '', title: '删除好友' }, [h('sl-icon', { name: 'trash' })])
+            h('div', { class: 'friend-row-actions' }, [
+                h('sl-button', { size: 'small', variant: 'default', outline: '', text: '消息' }),
+                h('sl-button', {
+                    size: 'small',
+                    variant: online ? 'primary' : 'default',
+                    outline: '',
+                    text: battle.text,
+                    title: battle.title
+                }),
+                h('sl-button', { size: 'small', variant: 'danger', outline: '', title: '删除好友' }, [h('sl-icon', { name: 'trash' })])
+            ])
         ]);
         const buttons = Array.from(item.querySelectorAll('sl-button'));
         buttons[0].addEventListener('click', () => open_chat(friend));
@@ -651,13 +705,16 @@ const FriendList = require('./friend-list.cjs');
     };
 
     // ---------- 近七天活跃玩家（所有玩家可见） ----------
+    let latest_online = [];
+
     const add_online_player = async (player) => {
         const outcome = await window.http_friend_request(token(), player.friend_id);
         if (!outcome) return notify('error', '发送申请失败');
         if (outcome.relation === 'denied') return notify('info', '对方不接受好友申请');
         notify('success', outcome.relation === 'friend' ? '你们已成为好友' : '好友申请已发送');
-        await refresh_list();
-        await refresh_online();
+        // 本地更新该行的关系按钮，不再整表重拉在线玩家列表。
+        update_online_relation(player.uuid, outcome.relation);
+        refresh_list(true);
     };
 
     // 关系按钮：陌生人可添加；对方禁止申请时禁用；其余关系只展示状态
@@ -678,27 +735,47 @@ const FriendList = require('./friend-list.cjs');
         return holder;
     };
 
+    // 就地更新某位玩家在活跃列表中的关系，避免为了一个按钮状态重拉整张列表。
+    const update_online_relation = (uuid, relation) => {
+        if (!uuid) return;
+        latest_online.forEach((player) => {
+            if (player && player.uuid === uuid) player.relation = relation;
+        });
+        const box = byId('div_friend_online');
+        if (!box) return;
+        const row = Array.from(box.children).find((node) => node.dataset && node.dataset.uuid === uuid);
+        if (!row) return;
+        const player = latest_online.find((item) => item && item.uuid === uuid);
+        if (!player) return;
+        const actions = row.querySelector('.friend-row-actions');
+        if (actions) actions.replaceChildren(online_relation_button(player));
+    };
+
     const online_item = (player, now) => {
-        const item = h('div', { class: 'd-flex align-items-center gap-2 p-2 rounded border' }, [
+        const item = h('div', {
+            class: 'friend-row d-flex align-items-center gap-2 p-2 rounded border',
+            'data-uuid': player.uuid
+        }, [
             avatar(player, '2.2rem'),
-            h('div', { class: 'flex-grow-1 min-w-0' }, [
+            h('div', { class: 'friend-row-main flex-grow-1 min-w-0' }, [
                 h('div', { class: 'd-flex align-items-center gap-1' }, [
                     name_node(player),
                     FriendList.is_admin(player) ? admin_badge() : null,
                     h('span', { class: player.online ? 'friend-dot online' : 'friend-dot' })
                 ]),
                 h('small', { class: 'text-secondary', text: FriendList.format_presence(player, now) })
-            ])
+            ]),
+            h('div', { class: 'friend-row-actions' }, [online_relation_button(player)])
         ]);
-        item.append(online_relation_button(player));
         return item;
     };
 
     const render_online = (players) => {
         const box = byId('div_friend_online');
         if (!box) return;
-        box.replaceChildren();
         const sorted = FriendList.sort_friends(players || []);
+        latest_online = sorted;
+        box.replaceChildren();
         if (!sorted.length) {
             box.append(h('div', { class: 'text-secondary small py-2', text: '近七天内没有活跃玩家' }));
             return;
@@ -713,13 +790,21 @@ const FriendList = require('./friend-list.cjs');
             if (section) section.classList.add('d-none');
             return;
         }
-        const result = await window.http_friend_online(token());
-        if (!result || !Array.isArray(result.players)) {
-            if (section) section.classList.add('d-none');
-            return;
-        }
-        if (section) section.classList.remove('d-none');
-        render_online(result.players);
+        if (online_task) return online_task;
+        online_task = (async () => {
+            try {
+                const result = await window.http_friend_online(token());
+                if (!result || !Array.isArray(result.players)) {
+                    if (section) section.classList.add('d-none');
+                    return;
+                }
+                if (section) section.classList.remove('d-none');
+                render_online(result.players);
+            } finally {
+                online_task = null;
+            }
+        })();
+        return online_task;
     };
 
     const do_refresh_online = async () => {
@@ -810,6 +895,29 @@ const FriendList = require('./friend-list.cjs');
         }
     };
 
+    // 在聊天界面直接赠送好友赠礼：扣减自己背包里 1 个，对方获得 1 张 500 棋币兑换券
+    const send_gift = async () => {
+        const chat = state.chat;
+        const button = byId('button_friend_chat_gift');
+        if (!chat || !window.http_user_voucher_gift_send) return;
+        if (button) button.disabled = true;
+        let result = null;
+        try {
+            result = await window.http_user_voucher_gift_send(token(), chat.friend.uuid);
+        } catch (_) {
+            result = null;
+        } finally {
+            if (state.chat === chat && button) button.disabled = false;
+        }
+        if (!result) return notify('error', '赠送失败，请稍后重试');
+        if (!result.ok) {
+            if (result.reason === 'none') return notify('info', '背包里没有好友赠礼，去商店购买一个吧');
+            return notify('error', '赠送失败，请稍后重试');
+        }
+        notify('success', '已送出好友赠礼，对方背包获得 1 张 500 棋币兑换券');
+        await refresh_chat();
+    };
+
     // ---------- 搜索 ----------
     const do_search = async () => {
         const input = byId('input_friend_search');
@@ -845,16 +953,16 @@ const FriendList = require('./friend-list.cjs');
         if (label.disabled) action.setAttribute('disabled', '');
         if (label.action) action.addEventListener('click', () => run_search_action(label.action, result));
 
-        box.append(h('div', { class: 'd-flex align-items-center gap-2 p-2 rounded border' }, [
+        box.append(h('div', { class: 'friend-row d-flex align-items-center gap-2 p-2 rounded border' }, [
             avatar(result, '2rem'),
-            h('div', { class: 'flex-grow-1 min-w-0' }, [
+            h('div', { class: 'friend-row-main flex-grow-1 min-w-0' }, [
                 h('div', { class: 'd-flex align-items-center gap-1' }, [
                     name_node(result),
                     FriendList.is_admin(result) ? admin_badge() : null
                 ]),
                 h('small', { class: 'text-secondary', text: result.friend_id || '' })
             ]),
-            action
+            h('div', { class: 'friend-row-actions' }, [action])
         ]));
     };
 
@@ -945,6 +1053,9 @@ const FriendList = require('./friend-list.cjs');
         // 内嵌聊天
         const send = byId('button_friend_chat_send');
         if (send) send.addEventListener('click', send_chat);
+
+        const chat_gift = byId('button_friend_chat_gift');
+        if (chat_gift) chat_gift.addEventListener('click', send_gift);
 
         const chat_input = byId('input_friend_chat');
         if (chat_input) chat_input.addEventListener('keydown', (event) => {

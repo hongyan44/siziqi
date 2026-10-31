@@ -159,7 +159,13 @@
 </head>
 
 <body class='d-flex flex-column w-100 h-100 bg-light'>
-    <div id='button_music_wrap' class='position-fixed top-0 start-0 d-flex p-2' style='z-index: 1050;'>
+    <div id='button_home' class='position-fixed top-0 start-0 d-flex gap-1 p-2' style='z-index: 1050;'>
+        <sl-button variant='default' href='/pages/mod/match.html' circle title='返回上一级' aria-label='返回上一级'>
+            <sl-icon name='arrow-left'></sl-icon>
+        </sl-button>
+        <sl-button variant='default' href='/' circle title='返回主页' aria-label='返回主页'>
+            <sl-icon name='house'></sl-icon>
+        </sl-button>
         <sl-button id='button_music_toggle' variant='default' circle title='单击切换下一首；1 秒内双击开始/停止播放' aria-label='单击切换下一首；1 秒内双击开始/停止播放'>
             <sl-icon id='icon_music_toggle' name='volume-up'></sl-icon>
         </sl-button>
@@ -185,9 +191,6 @@
             <div id='rules_body' class='d-flex flex-column gap-4 px-2 mt-3'></div>
         </main>
 
-        <footer class='text-center text-muted py-1' style='font-size: 0.74rem;'>
-            <a href='/pages/mod/match.html' class='text-decoration-none text-secondary'>返回赛事大厅</a>
-        </footer>
     </div>
 
     <!-- 预热仅在编辑器中动态创建的组件，让自动加载器在首屏就完成注册 -->

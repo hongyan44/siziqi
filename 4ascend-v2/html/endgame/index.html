@@ -156,8 +156,8 @@
 </head>
 
 <body class='d-flex flex-column w-100 h-100 bg-light'>
-    <div class='position-fixed top-0 start-0 d-flex p-2 endgame-corner-actions' style='z-index: 1050;'>
-        <sl-button variant='default' href='/' circle aria-label='返回主页' title='返回主页'><sl-icon name='arrow-left'></sl-icon></sl-button>
+    <div id='button_home' class='position-fixed top-0 start-0 d-flex p-2 endgame-corner-actions' style='z-index: 1050;'>
+        <sl-button variant='default' href='/' circle aria-label='返回主页' title='返回主页'><sl-icon name='house'></sl-icon></sl-button>
         <sl-button id='button_music_toggle' variant='default' circle title='单击切换下一首；1 秒内双击开始/停止播放' aria-label='单击切换下一首；1 秒内双击开始/停止播放'>
             <sl-icon id='icon_music_toggle' name='volume-up'></sl-icon>
         </sl-button>
@@ -250,9 +250,6 @@
             </div>
         </main>
 
-        <footer class='text-center text-muted py-1' style='font-size: 0.74rem;'>
-            <a href='/' class='text-decoration-none text-secondary'>返回功能选择</a>
-        </footer>
     </div>
 
     <sl-dialog id='dialog_challenge' class='challenge-dialog d-none' label='残局挑战'>
@@ -515,18 +512,20 @@
             challengeCanvas.width = size * dpr; challengeCanvas.height = size * dpr;
             challengeContext.setTransform(dpr, 0, 0, dpr, 0, 0);
             const skins = previewSkins ? previewSkins.read() : { piece: false, grass: false, board: false, board_gold: false };
-            // 棋盘风格：棋盘皮肤（青玉 / 玄金）> 虚空舰队主题 > 默认白底
+            // 棋盘风格：棋盘皮肤（青玉 / 玄金）> 风格 UI（黑派 / 虚空舰队）> 默认白底
             const goldTheme = Boolean(previewSkins && skins.board_gold);
             const jadeTheme = Boolean(previewSkins && !goldTheme && skins.board);
-            const voidTheme = Boolean(previewSkins && !goldTheme && !jadeTheme && previewSkins.theme_active());
-            if (voidTheme) previewSkins.draw_board_void(challengeContext, size);
+            const blackTheme = Boolean(previewSkins && !goldTheme && !jadeTheme && skins.theme_black);
+            const voidTheme = Boolean(previewSkins && !goldTheme && !jadeTheme && !blackTheme && skins.theme);
+            if (blackTheme) previewSkins.draw_board_black(challengeContext, size);
+            else if (voidTheme) previewSkins.draw_board_void(challengeContext, size);
             else if (goldTheme) previewSkins.draw_board_gold(challengeContext, size);
             else if (jadeTheme) previewSkins.draw_board_jade(challengeContext, size);
             else { challengeContext.fillStyle = '#fff'; challengeContext.fillRect(0, 0, size, size); }
             const pad = size * 0.1; const spacing = (size - pad * 2) / 8;
             challengeContext.strokeStyle = voidTheme
                 ? 'rgba(255, 255, 255, 0.62)'
-                : (goldTheme ? 'rgba(245, 205, 110, 0.86)' : (jadeTheme ? 'rgba(31, 74, 55, 0.42)' : '#d0d0d0'));
+                : (blackTheme ? 'rgba(180, 144, 74, 0.52)' : (goldTheme ? 'rgba(245, 205, 110, 0.86)' : (jadeTheme ? 'rgba(31, 74, 55, 0.42)' : '#d0d0d0')));
             challengeContext.lineWidth = 1;
             for (let i = 0; i < 9; i++) { const point = pad + i * spacing; challengeContext.beginPath(); challengeContext.moveTo(point, pad); challengeContext.lineTo(point, size - pad); challengeContext.stroke(); challengeContext.beginPath(); challengeContext.moveTo(pad, point); challengeContext.lineTo(size - pad, point); challengeContext.stroke(); }
             previewCells.forEach((item, index) => { if (item.stone === 'none') return; const x = index % 9; const y = Math.floor(index / 9); const px = pad + x * spacing; const py = pad + y * spacing; const color = item.stone === 'black' ? '#2c3e50' : '#ecf0f1'; if (previewSkins && previewSkins.draw_stone(challengeContext, px, py, spacing * 0.31, color, { skins })) return; challengeContext.beginPath(); challengeContext.arc(px, py, spacing * 0.31, 0, Math.PI * 2); challengeContext.fillStyle = color; challengeContext.fill(); if (item.stone === 'white') { challengeContext.strokeStyle = '#8b949e'; challengeContext.stroke(); } });

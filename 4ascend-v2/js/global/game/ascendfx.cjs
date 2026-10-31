@@ -563,7 +563,12 @@ class AscendFx {
             const loser_elem = targets ? targets[loser_side] : null;
             result.damageLeft = loser_side === 'left' ? strikers.length : 0;
             result.damageRight = loser_side === 'right' ? strikers.length : 0;
-            const summary_timer = strikers.length > 0 ? setTimeout(() => on_summary && on_summary(), Math.max(0, strikers.length * 420 - 1000)) : null;
+
+            // 超大规模逐个攻击提速：实际造成伤害的棋子（抵消后剩余，含纯卖血）>14 加速 50%，>7 加速 25%
+            const attack_speed = strikers.length > 14 ? 1.5 : (strikers.length > 7 ? 1.25 : 1);
+            const fly_dur = 300 / attack_speed;
+            const hit_gap = 120 / attack_speed;
+            const summary_timer = strikers.length > 0 ? setTimeout(() => on_summary && on_summary(), Math.max(0, strikers.length * (fly_dur + hit_gap) - 1000)) : null;
 
             if (strikers.length > 0) {
                 // 第一枚棋子起飞前提交完整伤害，HP 不会在抵消阶段提前变化
@@ -580,7 +585,7 @@ class AscendFx {
                     // 飞血期间暂停圆周定位，但保留在顶层画布绘制
                     s.flying = true;
 
-                    await tween(300, (k) => {
+                    await tween(fly_dur, (k) => {
                         const e = ease_in_cubic(k);
                         s.x = sx + (tx - sx) * e;
                         s.y = sy + (ty - sy) * e;
@@ -601,7 +606,7 @@ class AscendFx {
                         this.effect.ring(hit_x, hit_y, r, s.color, 0, 400, 2.2);
                         this.effect.burst(hit_x, hit_y, r, s.color, 12, 520);
                     }
-                    await delay(120);
+                    await delay(hit_gap);
                 }
 
                 // 仅保留 HP 卡片震动，不再创建任何浮动文字

@@ -61,6 +61,21 @@ const dialog_leave = document.getElementById('dialog_leave');
 const buttom_leave = document.getElementById('buttom_leave');
 
 
+const analysis_fab = document.getElementById('analysis_fab');
+const button_analysis_toggle = document.getElementById('button_analysis_toggle');
+const analysis_panel = document.getElementById('analysis_panel');
+const button_analysis_close = document.getElementById('button_analysis_close');
+const analysis_black_rate = document.getElementById('analysis_black_rate');
+const analysis_white_rate = document.getElementById('analysis_white_rate');
+const analysis_bar_black = document.getElementById('analysis_bar_black');
+const analysis_turn = document.getElementById('analysis_turn');
+const analysis_counts = document.getElementById('analysis_counts');
+const canvas_analysis = document.getElementById('canvas_analysis');
+
+
+const { ReplayAnalysis } = require('./replay-analysis.cjs');
+
+
 const GameMessage = window.GameExports.Message;
 const GameClient = window.GameExports.Client;
 const GameTimer = window.GameExports.Timer;
@@ -469,6 +484,9 @@ const setup = (archive) => {
     game_top_card.style.width = `${size}px`;
     game_buttom_card.style.width = `${size}px`;
 
+    // 回放就绪后才显示局势分析入口
+    if (analysis_fab) analysis_fab.classList.remove('d-none');
+
     gl_archive = archive;
 };
 
@@ -514,9 +532,20 @@ const run = async () => {
     const info_sound = [];
     const info_color = [];
 
+    // 局势分析用的纯数字盘面帧（0空 1黑 2白）
+    const info_grid = [];
+    const info_winner = [];
+
     const snapshot = (sound = null, view = null, title = null) => {
         const datas = [];
         board.data.forEach((pos) => datas.push([pos.x, pos.y, pos.stone, pos.plant]));
+
+        const grid = new Uint8Array(81);
+        const plants = new Uint8Array(81);
+        board.data.forEach((pos, index) => {
+            grid[index] = pos.stone === STONE_ENUM.BLACK ? 1 : pos.stone === STONE_ENUM.WHITE ? 2 : 0;
+            plants[index] = pos.plant === PLANT_ENUM.ONE ? 1 : pos.plant === PLANT_ENUM.TWO ? 2 : 0;
+        });
 
         const p1 = game_power(STONE_ENUM.BLACK, board.data);
         const p2 = game_power(STONE_ENUM.WHITE, board.data);
@@ -543,6 +572,14 @@ const run = async () => {
             i_plant_color
         ]);
         info_title.push(title || (state.turn_player === PLAYER_ENUM.BLACK ? '⚫等待（黑方）落子' : '⚪等待（白方）落子'));
+
+        info_grid.push({
+            'grid': grid,
+            'plants': plants,
+            'hp': [state.hp[0], state.hp[1]],
+            'turn': state.turn_player === PLAYER_ENUM.WHITE ? 1 : 0,
+        });
+        info_winner.push(is_win === PLAYER_ENUM.BLACK ? 0 : is_win === PLAYER_ENUM.WHITE ? 1 : null);
     };
 
     let is_win;
@@ -577,6 +614,214 @@ const run = async () => {
     let ptr = -1;
     let pid = null;
     let gl_snapshot_ptr = -1;
+
+
+    // -------------------------------------------------------------------------
+    // 局势分析
+    // -------------------------------------------------------------------------
+    const ANALYSIS_ORDER = ['brilliant', 'good', 'interesting', 'dubious', 'mistake', 'blunder'];
+    const ANALYSIS_COLORS = {
+        'brilliant': '#8b5cf6',
+        'good': '#22c55e',
+        'interesting': '#14b8a6',
+        'dubious': '#eab308',
+        'mistake': '#f97316',
+        'blunder': '#ef4444',
+    };
+    const ANALYSIS_LABELS = {
+        'brilliant': '妙手',
+        'good': '好棋',
+        'interesting': '有趣',
+        'dubious': '可疑',
+        'mistake': '坏棋',
+        'blunder': '大漏',
+    };
+    const ANALYSIS_SYMBOLS = {
+        'brilliant': '!!',
+        'good': '!',
+        'interesting': '!?',
+        'dubious': '?!',
+        'mistake': '?',
+        'blunder': '??',
+    };
+
+    const analysis_frames = info_grid.map((frame, index) => ({
+        'grid': frame.grid,
+        'plants': frame.plants,
+        'hp': frame.hp,
+        'turn': frame.turn,
+        'winner': info_winner[index],
+    }));
+
+    let analysis_result = null;
+
+    const analysis_open = () => Boolean(analysis_panel) && !analysis_panel.classList.contains('d-none');
+
+    const ensure_analysis = () => {
+        if (!analysis_result) analysis_result = ReplayAnalysis.analyze(analysis_frames);
+        return analysis_result;
+    };
+
+    /**
+     * @description: 绘制胜率曲线
+     * @param {object} result
+     * @param {number} index
+     * @return {void}
+     */
+    const draw_analysis_chart = (result, index) => {
+        if (!canvas_analysis) return;
+
+        const dpr = window.devicePixelRatio || 1;
+        const width = Math.max(1, canvas_analysis.clientWidth);
+        const height = Math.max(1, canvas_analysis.clientHeight);
+
+        canvas_analysis.width = Math.round(width * dpr);
+        canvas_analysis.height = Math.round(height * dpr);
+
+        const ctx = canvas_analysis.getContext('2d');
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, width, height);
+
+        const pad_x = 8;
+        const pad_y = 14;
+        const inner_w = Math.max(1, width - pad_x * 2);
+        const inner_h = Math.max(1, height - pad_y * 2);
+
+        // 50% 基准线
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.5)';
+        ctx.setLineDash([3, 3]);
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(pad_x, pad_y + inner_h / 2);
+        ctx.lineTo(pad_x + inner_w, pad_y + inner_h / 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // 上下阵营提示
+        ctx.fillStyle = 'rgba(100, 116, 139, 0.9)';
+        ctx.font = '10px sans-serif';
+        ctx.fillText('黑', pad_x, pad_y - 4);
+        ctx.fillText('白', pad_x, height - 3);
+
+        const rates = result.rates;
+        if (!rates.length) return;
+
+        const x_of = (i) => rates.length === 1 ? pad_x + inner_w / 2 : pad_x + (i / (rates.length - 1)) * inner_w;
+        const y_of = (rate) => pad_y + (1 - rate) * inner_h;
+
+        // 胜率折线
+        ctx.strokeStyle = '#3b82f6';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        rates.forEach((rate, i) => {
+            const x = x_of(i);
+            const y = y_of(rate);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+
+        // 每手质量点
+        result.moves.forEach((move, i) => {
+            const x = x_of(i);
+            const y = y_of(rates[i]);
+            const radius = move.label === 'brilliant'
+                ? 3
+                : move.label === 'interesting' || move.label === 'dubious' ? 1.7 : 2.6;
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.fillStyle = ANALYSIS_COLORS[move.label];
+            ctx.fill();
+        });
+
+        // 当前帧
+        if (index >= 0 && index < rates.length) {
+            const x = x_of(index);
+            const y = y_of(rates[index]);
+
+            ctx.strokeStyle = 'rgba(15, 23, 42, 0.35)';
+            ctx.setLineDash([2, 2]);
+            ctx.beginPath();
+            ctx.moveTo(x, pad_y);
+            ctx.lineTo(x, pad_y + inner_h);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            ctx.strokeStyle = '#0f172a';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(x, y, 4, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+    };
+
+    /**
+     * @description: 刷新局势分析面板
+     * @return {void}
+     */
+    const render_analysis = () => {
+        if (!analysis_open()) return;
+
+        const result = ensure_analysis();
+        const index = ptr;
+        const rate = index >= 0 && index < result.rates.length ? result.rates[index] : 0.5;
+
+        if (analysis_black_rate) analysis_black_rate.innerText = `黑方 ${(rate * 100).toFixed(1)}%`;
+        if (analysis_white_rate) analysis_white_rate.innerText = `白方 ${((1 - rate) * 100).toFixed(1)}%`;
+        if (analysis_bar_black) analysis_bar_black.style.width = `${(rate * 100).toFixed(2)}%`;
+
+        if (analysis_turn) {
+            if (index < 0) {
+                analysis_turn.innerText = '初始局面 · 黑方 50.0%';
+                analysis_turn.style.color = '';
+            } else {
+                const move = result.moves[index];
+                const mover = info_turn[index] === PLAYER_ENUM.WHITE ? '黑方' : '白方';
+                const sign = move.delta >= 0 ? '+' : '';
+                const symbol = ANALYSIS_SYMBOLS[move.label];
+                analysis_turn.innerText = `第 ${index + 1} 手 · ${mover} · ${symbol} ${ANALYSIS_LABELS[move.label]}（${sign}${(move.delta * 100).toFixed(1)}%）`;
+                analysis_turn.style.color = ANALYSIS_COLORS[move.label];
+            }
+        }
+
+        if (analysis_counts) {
+            analysis_counts.innerText = ANALYSIS_ORDER
+                .map((label) => `${ANALYSIS_SYMBOLS[label]} ${result.counts[label]}`)
+                .join(' · ');
+        }
+
+        draw_analysis_chart(result, index);
+    };
+
+    if (button_analysis_toggle) button_analysis_toggle.addEventListener('click', () => {
+        if (!analysis_panel) return;
+        if (analysis_panel.classList.contains('d-none')) {
+            analysis_panel.classList.remove('d-none');
+            render_analysis();
+        } else {
+            analysis_panel.classList.add('d-none');
+        }
+    });
+
+    if (button_analysis_close) button_analysis_close.addEventListener('click', () => {
+        if (analysis_panel) analysis_panel.classList.add('d-none');
+    });
+
+    if (canvas_analysis) canvas_analysis.addEventListener('click', (event) => {
+        const result = ensure_analysis();
+        const total = result.rates.length;
+        if (!total) return;
+
+        const rect = canvas_analysis.getBoundingClientRect();
+        const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+        ptr = total === 1 ? 0 : Math.round(ratio * (total - 1));
+        gen.dispatch(ptr);
+    });
+
+    window.addEventListener('resize', () => {
+        if (analysis_open() && analysis_result) draw_analysis_chart(analysis_result, ptr);
+    });
+
 
     /**
      * @description: 当前暂停局面转为残局码
@@ -757,9 +1002,14 @@ const run = async () => {
             game_p2_ascend.innerText = p2[1];
         }
 
-        // 回合
+        // 回合（开启分析时用着手质量颜色标注最新落点）
+        let view_color = '#00FFC5';
+        if (analysis_open()) {
+            const move = ensure_analysis().moves[p];
+            if (move) view_color = ANALYSIS_COLORS[move.label];
+        }
         const view = info_view[p];
-        if (view) gl_ui.draw_stone_turn(view[0], view[1], '#00FFC5', 5);
+        if (view) gl_ui.draw_stone_turn(view[0], view[1], view_color, 5);
 
         // 声音
         const sound = info_sound[p];
@@ -805,6 +1055,9 @@ const run = async () => {
 
             if (color[4]) game_info_plant_cd.classList.add(color[4]);
         }
+
+        // 局势分析面板
+        render_analysis();
     }
 };
 

@@ -26,6 +26,7 @@
 #include <cstdlib>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 
@@ -37,6 +38,8 @@ namespace {
 constexpr int64_t ONLINE_WINDOW_MS = 60 * 1000;
 // 活跃展示窗口：所有玩家都能查看近七天登录过的玩家（含资料与好友申请入口）。
 constexpr int64_t ACTIVE_WINDOW_MS = 7LL * 24 * 60 * 60 * 1000;
+// 活跃列表单次最多返回的人数：限制响应体与移动端解密/渲染开销，只展示最近活跃的玩家。
+constexpr size_t ACTIVE_LIST_LIMIT = 60;
 // 对战邀请有效期：超时后不再提示，并顺手清理。
 constexpr int64_t INVITE_TTL_MS = 2 * 60 * 1000;
 // 私信有效期：30 天，过期即不可见并清理。
@@ -547,7 +550,8 @@ void friend_message_list(cinatra::coro_http_request& request, cinatra::coro_http
     reply("friend_message_list", result, response);
 }
 
-// 近七天活跃玩家列表（所有登录用户可见）：枚举最近 7 天内登录过的玩家及其与自己的关系
+// 近七天活跃玩家列表（所有登录用户可见）：按活跃时间倒序取最近的若干位玩家及其与自己的关系。
+// 只取少量玩家并省略陌生人头像，避免响应体过大（base64 头像 + 前端纯 JS 解密）拖垮移动端。
 void friend_online(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
     auto body = api_body(request.get_body());
     if (!body) return;
@@ -558,16 +562,15 @@ void friend_online(cinatra::coro_http_request& request, cinatra::coro_http_respo
 
     const auto now = Libs::Only::Time::timestamp_ms();
 
-    std::vector<std::string> uuids;
-    Manager::User::all_user(uuids);
+    // 先在内存中的在线记录里筛选并排序，后续只为这少量玩家查询数据库。
+    std::vector<std::pair<int64_t, std::string>> actives;
+    Manager::Friend::list_active(now - ACTIVE_WINDOW_MS, ACTIVE_LIST_LIMIT, actives);
 
     jsoncons::json players = jsoncons::json::array();
-    for (const auto& other : uuids) {
+    for (const auto& active : actives) {
+        const auto& other = active.second;
+        const auto seen = active.first;
         if (other.empty()) continue;
-
-        int64_t seen = 0;
-        if (!Manager::Friend::last_seen(other, seen) || seen <= 0) continue;
-        if ((now - seen) > ACTIVE_WINDOW_MS) continue;
 
         jsoncons::json item = jsoncons::json::object();
         fill_user(item, other);
@@ -601,6 +604,9 @@ void friend_online(cinatra::coro_http_request& request, cinatra::coro_http_respo
         item["request_mode"] = mode;
         item["online"]       = (now - seen) <= ONLINE_WINDOW_MS;
         item["last_seen"]    = seen;
+
+        // 陌生人不下发头像：该列表人数多、头像体积大，前端解密与图片解码是主要卡顿来源。
+        if (relation != "friend" && relation != "self") item["avatar"] = "";
 
         players.push_back(std::move(item));
     }

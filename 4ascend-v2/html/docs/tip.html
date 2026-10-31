@@ -40,6 +40,7 @@
     <script src='https://quantil.jsdelivr.net/npm/marked@3.0.8/lib/marked.min.js'></script>
 
     <!-- MY -->
+    <link href='/css/global.min.css?v=replace' rel='stylesheet'>
     <link href='/css/docs.min.css?v=replace' rel='stylesheet'>
 
     <script src='/js/risk/api.min.js?v=replace'></script>
@@ -306,7 +307,24 @@
 
 
 <body class='p-0'>
-    <div id='content' class='markdown-body'></div>
+    <div id='button_home' class='position-fixed top-0 start-0 d-flex gap-1 p-2' style='z-index: 1050;'>
+        <sl-button variant='default' href='/' circle aria-label='返回主页' title='返回主页'>
+            <sl-icon name='house'></sl-icon>
+        </sl-button>
+        <sl-button id='button_music_toggle' variant='default' circle title='单击切换下一首；1 秒内双击开始/停止播放'
+            aria-label='单击切换下一首'>
+            <sl-icon id='icon_music_toggle' name='volume-up'></sl-icon>
+        </sl-button>
+    </div>
+
+    <main class='docs-main'>
+        <header class='docs-hero'>
+            <sl-icon class='docs-hero-icon' name='book-half'></sl-icon>
+            <div class='docs-hero-title'>使用教程</div>
+            <p class='docs-hero-sub'>四子棋 · 操作手册与核心机制</p>
+        </header>
+        <div id='content' class='markdown-body'></div>
+    </main>
 
     <div id='admin_bar' class='d-none'>
         <sl-badge variant='warning' pill>管理员模式</sl-badge>

@@ -32,6 +32,22 @@ void room_delete() noexcept {
     std::erase_if(rooms, [now](const auto& item) { return item.second->exp <= now; });
 };
 
+// 连接断开：房间与观战者里保存的都是原始连接指针，
+// 连接被释放后地址可能被新连接复用，若不清理会让 sync_player2player 把
+// 本房间的消息投递到别的房间的玩家（例如把“对方逃跑”的通知发给无关对局）。
+void client_detach(cinatra::coro_http_connection* client) noexcept {
+    if (client == nullptr) return;
+
+    for (const auto& [_, room] : rooms) {
+        if (room->player1->client == client) room->player1->client = nullptr;
+        if (room->player2->client == client) room->player2->client = nullptr;
+
+        for (const auto& [__, observer] : room->observers) {
+            if (observer->client == client) observer->client = nullptr;
+        }
+    }
+};
+
 // 观战者删除
 void observer_delete(std::shared_ptr<Room> room) noexcept {
     auto now = Libs::Only::Time::timestamp_ms() - 20 * 1000; // 20s

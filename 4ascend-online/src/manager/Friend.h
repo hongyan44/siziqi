@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 
@@ -37,6 +38,8 @@ void close() noexcept;
 bool touch(std::string_view uuid, int64_t now) noexcept;
 // 查询最后活跃时间；从未活跃返回 false
 bool last_seen(std::string_view uuid, int64_t& out) noexcept;
+// 按活跃时间倒序取出 since 之后活跃的至多 limit 位玩家（uuid + last_seen，内存查询，不落库）
+bool list_active(int64_t since, size_t limit, std::vector<std::pair<int64_t, std::string>>& out) noexcept;
 
 // 变更版本号：好友系统任一影响该用户的变更都会自增，供长轮询即时唤醒
 void bump(std::string_view uuid) noexcept;

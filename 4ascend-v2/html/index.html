@@ -142,6 +142,25 @@
             min-width: 0;
         }
 
+        /* 好友行：昵称优先展示。侧栏固定 320px、窄屏下按钮挤占空间时，操作按钮整组换行，
+           让昵称拿到接近整行的宽度，避免昵称被截断成只剩两三个字。 */
+        .friend-drawer .friend-row {
+            flex-wrap: wrap;
+            row-gap: 0.4rem;
+        }
+
+        .friend-drawer .friend-row-main {
+            flex: 1 1 8.5rem;
+            min-width: 8.5rem;
+        }
+
+        .friend-drawer .friend-row-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            margin-left: auto;
+        }
+
         .friend-drawer-body {
             display: grid;
             grid-template-columns: 320px minmax(0, 1fr);
@@ -262,6 +281,31 @@
             z-index: 3;
             display: flex;
             flex-direction: column;
+        }
+
+        /* 好友申请页左右分栏：左侧近七天活跃玩家，右侧申请设置与申请列表 */
+        .friend-requests-body {
+            display: grid;
+            grid-template-columns: 320px minmax(0, 1fr);
+            flex-grow: 1;
+            min-height: 0;
+        }
+
+        .friend-requests-side {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            padding: 0.75rem;
+            overflow-y: auto;
+            border-right: 1px solid var(--sl-color-neutral-200);
+        }
+
+        .friend-requests-main {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            padding: 0.75rem;
+            overflow-y: auto;
         }
 
         /* 申请入口固定为圆形按钮（人像 + 号） */
@@ -411,6 +455,40 @@
             color: #92400e;
         }
 
+        /* 500 棋币兑换券：青绿配色，残局投稿通过奖励，与冠军券区分 */
+        .bag-ticket-icon.is-voucher-500 {
+            border-color: #0f766e;
+            background: repeating-linear-gradient(135deg, #ecfdf5, #ecfdf5 6px, #d1fae5 6px, #d1fae5 12px);
+            color: #0f766e;
+            box-shadow: inset 0 1px 0 #fff;
+        }
+
+        .bag-ticket-icon.is-voucher-500 span {
+            font-size: 0.6rem;
+            letter-spacing: 0.02em;
+        }
+
+        .bag-ticket-icon.is-voucher-500 i {
+            color: #115e59;
+        }
+
+        /* 好友赠礼：红金配色，表示可赠送好友的 500 棋币礼包 */
+        .bag-ticket-icon.is-gift {
+            border-color: #b91c1c;
+            background: repeating-linear-gradient(135deg, #fff1f2, #fff1f2 6px, #fecdd3 6px, #fecdd3 12px);
+            color: #b91c1c;
+            box-shadow: inset 0 1px 0 #fff;
+        }
+
+        .bag-ticket-icon.is-gift span {
+            font-size: 0.58rem;
+            letter-spacing: 0.02em;
+        }
+
+        .bag-ticket-icon.is-gift i {
+            color: #9f1239;
+        }
+
         .bag-item-main {
             flex: 1;
             min-width: 0;
@@ -514,6 +592,16 @@
                 border-right: none;
                 border-bottom: 1px solid var(--sl-color-neutral-200);
             }
+
+            .friend-requests-body {
+                grid-template-columns: minmax(0, 1fr);
+                grid-template-rows: 45% minmax(0, 1fr);
+            }
+
+            .friend-requests-side {
+                border-right: none;
+                border-bottom: 1px solid var(--sl-color-neutral-200);
+            }
         }
 
         /* 风格 UI：内容层压在主题插画之上，插画只做氛围不挡交互 */
@@ -595,6 +683,182 @@
         html.theme-void .bag-ach-desc,
         html.theme-void .bag-empty {
             color: #8499b8;
+        }
+
+        /* 风格 UI「黑派」：主页局部覆盖，配合 global.css 的 html.theme-black */
+        html.theme-black .loading-a {
+            background: #060608;
+        }
+
+        html.theme-black .loading-t {
+            color: #928b7a;
+        }
+
+        html.theme-black .category-title {
+            color: #cdbf9f;
+            border-left-color: #e6bf6e;
+        }
+
+        html.theme-black .friend-drawer .friend-drawer-panel {
+            background: #121217;
+            color: #e6ddcb;
+            box-shadow: 0 16px 56px rgba(0, 0, 0, 0.7);
+        }
+
+        html.theme-black .friend-drawer-detail {
+            background: #0c0c0f;
+        }
+
+        html.theme-black .friend-chat-list,
+        html.theme-black .friend-chat-bubble,
+        html.theme-black .friend-requests-view {
+            background: #17171d;
+            border-color: rgba(214, 178, 94, 0.32);
+            color: #e6ddcb;
+        }
+
+        /* 我的背包：黑派主题配色 */
+        html.theme-black .backpack-tab {
+            border-color: rgba(214, 178, 94, 0.28);
+            background: #191920;
+            color: #cdbf9f;
+        }
+
+        html.theme-black .backpack-tab.active {
+            border-color: #d0a553;
+            background: #d0a553;
+            color: #14120e;
+        }
+
+        html.theme-black .bag-coin {
+            border-color: rgba(214, 178, 94, 0.36);
+            background: linear-gradient(135deg, #191920, #131318);
+            box-shadow: none;
+        }
+
+        html.theme-black .bag-coin-label {
+            color: #d8bd86;
+        }
+
+        html.theme-black .bag-coin-value {
+            color: #f4cd84;
+        }
+
+        html.theme-black .bag-item,
+        html.theme-black .bag-ach {
+            border-color: rgba(214, 178, 94, 0.28);
+            background: #131318;
+        }
+
+        html.theme-black .bag-item-name,
+        html.theme-black .bag-ach-name {
+            color: #efe6d4;
+        }
+
+        html.theme-black .bag-item-desc,
+        html.theme-black .bag-ach-desc,
+        html.theme-black .bag-empty {
+            color: #9d957f;
+        }
+
+        /* 每日任务：右下角圆形入口 + 任务列表 */
+        #button_task_toggle::part(base) {
+            border-radius: 50%;
+        }
+
+        #dialog_task::part(panel) {
+            max-width: 560px;
+        }
+
+        .task-group-title {
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: var(--sl-color-neutral-500);
+            margin-top: 0.15rem;
+        }
+
+        .task-row {
+            display: flex;
+            align-items: center;
+            gap: 0.7rem;
+            padding: 0.62rem 0.8rem;
+            border: 1px solid var(--sl-color-neutral-200);
+            border-radius: 0.8rem;
+            background: #fff;
+        }
+
+        .task-row.done {
+            border-color: rgba(22, 163, 74, 0.35);
+            background: #f6fdf8;
+        }
+
+        .task-row.claimable {
+            border-color: rgba(217, 119, 6, 0.45);
+            background: #fffaf0;
+        }
+
+        .task-row-icon {
+            line-height: 0;
+            font-size: 1.3rem;
+            color: var(--sl-color-neutral-400);
+        }
+
+        .task-row.done .task-row-icon {
+            color: #16a34a;
+        }
+
+        .task-row-main {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .task-row-title {
+            font-weight: 700;
+            font-size: 0.92rem;
+            color: var(--sl-color-neutral-800);
+        }
+
+        .task-row.done .task-row-title {
+            color: #15803d;
+        }
+
+        .task-row-sub {
+            font-size: 0.76rem;
+            color: var(--sl-color-neutral-500);
+            margin-top: 0.12rem;
+        }
+
+        .task-row-reward {
+            font-weight: 800;
+            font-size: 0.84rem;
+            color: #b45309;
+            white-space: nowrap;
+        }
+
+        .task-row-refresh,
+        .task-row-claim {
+            flex: 0 0 auto;
+        }
+
+        /* 全服消息：右上角喇叭入口 + 内容弹窗 */
+        #button_notice_toggle::part(base) {
+            border-radius: 50%;
+        }
+
+        #dialog_notice::part(panel) {
+            max-width: 560px;
+        }
+
+        .notice-title {
+            font-size: 1rem;
+            color: var(--sl-color-neutral-900);
+        }
+
+        .notice-content {
+            white-space: pre-wrap;
+            line-height: 1.65;
+            color: var(--sl-color-neutral-800);
+            word-break: break-word;
         }
     </style>
 
@@ -710,9 +974,26 @@
         </div>
     </div>
 
+    <!-- 黑派背景插画：开启黑派主题时才显示 -->
+    <div class='black-backdrop'></div>
+
+    <!-- 黑派动态装饰层：顶部日轮 / 放射金芒 / 悬浮金尘 -->
+    <div class='black-fx' aria-hidden='true'>
+        <div class='black-sun'></div>
+        <div class='black-rays'><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class='black-dust'><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    </div>
+
     <div id='button_music_wrap' class='position-fixed top-0 start-0 d-flex p-2' style='z-index: 1050;'>
         <sl-button id='button_music_toggle' variant='default' circle title='单击切换下一首；1 秒内双击开始/停止播放' aria-label='单击切换下一首；1 秒内双击开始/停止播放'>
             <sl-icon id='icon_music_toggle' name='volume-up'></sl-icon>
+        </sl-button>
+    </div>
+
+    <!-- 全服消息：右上角小喇叭，默认隐藏，有消息时才显示 -->
+    <div id='button_notice_wrap' class='position-fixed top-0 end-0 d-flex p-2 d-none' style='z-index: 1050;'>
+        <sl-button id='button_notice_toggle' variant='default' circle title='全服消息' aria-label='全服消息'>
+            <sl-icon name='megaphone'></sl-icon>
         </sl-button>
     </div>
     <div class='d-flex flex-column w-100 h-100 theme-shell'>
@@ -1121,6 +1402,19 @@
                         <sl-button id='button_user_color_save' variant='success'>保存颜色</sl-button>
                     </div>
                 </div>
+
+                <div id='block_notice_admin' class='border-top pt-3 mt-1 d-none'>
+                    <div class='text-secondary small mb-2'>全服消息（管理员 level 4）</div>
+                    <sl-input id='input_notice_title' label='标题（选填）' placeholder='例如：系统维护通知'
+                        maxlength='256'></sl-input>
+                    <sl-textarea id='textarea_notice_content' class='mt-2' label='消息内容'
+                        placeholder='输入要发送给全服玩家的消息' rows='4' resize='none' maxlength='65536'></sl-textarea>
+                    <div class='d-flex flex-wrap gap-2 mt-2'>
+                        <sl-button id='button_notice_publish' variant='success'>发布全服消息</sl-button>
+                        <sl-button id='button_notice_clear_admin' variant='default' outline>清除当前消息</sl-button>
+                    </div>
+                    <small class='text-secondary d-block mt-2'>发布后旧消息自动失效；清除后主页右上角喇叭会立即隐藏。</small>
+                </div>
             </div>
 
         <div slot='footer' class='gap-2'>
@@ -1233,60 +1527,67 @@
                 <div class='d-flex flex-column gap-3'>
                     <span class='text-muted fw-bold'>皮肤设置</span>
                     <div class='d-flex flex-column gap-2'>
-                        <div class='d-flex align-items-center justify-content-between gap-3 border rounded px-3 py-2'>
+                        <div class='d-flex align-items-center justify-content-between gap-3 border rounded px-3 py-2 d-none' data-skin-row='piece'>
                             <div class='min-w-0'>
-                                <div class='fw-bold'>棋子皮肤</div>
-                                <small id='text_skin_piece' class='text-secondary d-block'>棋子经典材质，同时替换黑白双方棋子</small>
+                                <div class='fw-bold'>棋子皮肤：止变</div>
                             </div>
                             <sl-switch id='switch_skin_piece' size='small' disabled></sl-switch>
                         </div>
 
-                        <div class='d-flex align-items-center justify-content-between gap-3 border rounded px-3 py-2'>
+                        <div class='d-flex align-items-center justify-content-between gap-3 border rounded px-3 py-2 d-none' data-skin-row='piece_rouge'>
                             <div class='min-w-0'>
                                 <div class='fw-bold'>棋子皮肤：Le Rouge et Le Noir</div>
-                                <small id='text_skin_piece_rouge' class='text-secondary d-block'>红皮革层叠与黑布镶金，成打时纹理加深</small>
                             </div>
                             <sl-switch id='switch_skin_piece_rouge' size='small' disabled></sl-switch>
                         </div>
 
-                        <div class='d-flex align-items-center justify-content-between gap-3 border rounded px-3 py-2'>
+                        <div class='d-flex align-items-center justify-content-between gap-3 border rounded px-3 py-2 d-none' data-skin-row='grass'>
                             <div class='min-w-0'>
-                                <div class='fw-bold'>反曲点皮肤</div>
-                                <small id='text_skin_grass' class='text-secondary d-block'>中心蓝色高亮，外圈黑红交替渐变环</small>
+                                <div class='fw-bold'>草皮肤：反曲点</div>
                             </div>
                             <sl-switch id='switch_skin_grass' size='small' disabled></sl-switch>
                         </div>
 
-                        <div class='d-flex align-items-center justify-content-between gap-3 border rounded px-3 py-2'>
+                        <div class='d-flex align-items-center justify-content-between gap-3 border rounded px-3 py-2 d-none' data-skin-row='grass_gold'>
                             <div class='min-w-0'>
                                 <div class='fw-bold'>草皮肤：黄金</div>
-                                <small id='text_skin_grass_gold' class='text-secondary d-block'>金色菱形渐变，中心高光</small>
                             </div>
                             <sl-switch id='switch_skin_grass_gold' size='small' disabled></sl-switch>
                         </div>
 
-                        <div class='d-flex align-items-center justify-content-between gap-3 border rounded px-3 py-2'>
+                        <div class='d-flex align-items-center justify-content-between gap-3 border rounded px-3 py-2 d-none' data-skin-row='grass_jade'>
                             <div class='min-w-0'>
-                                <div class='fw-bold'>棋盘皮肤</div>
-                                <small id='text_skin_board' class='text-secondary d-block'>玉中乾坤棋盘</small>
+                                <div class='fw-bold'>草皮肤：白玉玲珑</div>
+                            </div>
+                            <sl-switch id='switch_skin_grass_jade' size='small' disabled></sl-switch>
+                        </div>
+
+                        <div class='d-flex align-items-center justify-content-between gap-3 border rounded px-3 py-2 d-none' data-skin-row='board'>
+                            <div class='min-w-0'>
+                                <div class='fw-bold'>棋盘皮肤：玉中乾坤</div>
                             </div>
                             <sl-switch id='switch_skin_board' size='small' disabled></sl-switch>
                         </div>
 
-                        <div class='d-flex align-items-center justify-content-between gap-3 border rounded px-3 py-2'>
+                        <div class='d-flex align-items-center justify-content-between gap-3 border rounded px-3 py-2 d-none' data-skin-row='board_gold'>
                             <div class='min-w-0'>
-                                <div class='fw-bold'>玄金棋盘</div>
-                                <small id='text_skin_board_gold' class='text-secondary d-block'>黑石盘面，亮金色网格与罗马数字</small>
+                                <div class='fw-bold'>棋盘皮肤：黑派</div>
                             </div>
                             <sl-switch id='switch_skin_board_gold' size='small' disabled></sl-switch>
                         </div>
 
-                        <div class='d-flex align-items-center justify-content-between gap-3 border rounded px-3 py-2'>
+                        <div class='d-flex align-items-center justify-content-between gap-3 border rounded px-3 py-2 d-none' data-skin-row='theme'>
                             <div class='min-w-0'>
-                                <div class='fw-bold'>替换UI：幽蓝时空</div>
-                                <small id='text_skin_theme' class='text-secondary d-block'>蓝黑主调的星际舰桥界面，红色警示点缀</small>
+                                <div class='fw-bold'>UI替换：幽蓝时空</div>
                             </div>
                             <sl-switch id='switch_skin_theme' size='small' disabled></sl-switch>
+                        </div>
+
+                        <div class='d-flex align-items-center justify-content-between gap-3 border rounded px-3 py-2 d-none' data-skin-row='theme_black'>
+                            <div class='min-w-0'>
+                                <div class='fw-bold'>UI替换：保存神域</div>
+                            </div>
+                            <sl-switch id='switch_skin_theme_black' size='small' disabled></sl-switch>
                         </div>
                     </div>
                     <small class='text-secondary'>未拥有的皮肤可在棋币商店购买；开关只影响本机显示。</small>
@@ -1367,16 +1668,6 @@
                         <div id='div_friend_search_result' class='mt-2'></div>
                     </section>
 
-                    <section id='section_friend_online'>
-                        <div class='d-flex align-items-center justify-content-between mb-2 gap-2'>
-                            <div class='category-title fw-bold mb-0'>近七天活跃玩家</div>
-                            <sl-button id='button_friend_online_refresh' size='small' variant='default' outline>
-                                <sl-icon slot='prefix' name='arrow-clockwise'></sl-icon>刷新
-                            </sl-button>
-                        </div>
-                        <div id='div_friend_online' class='d-flex flex-column gap-2'></div>
-                    </section>
-
                     <section>
                         <div class='category-title fw-bold mb-2'>好友列表</div>
                         <div id='div_friend_list' class='d-flex flex-column gap-2'></div>
@@ -1400,6 +1691,9 @@
                         <div class='d-flex align-items-center gap-2 friend-chat-composer'>
                             <sl-input id='input_friend_chat' class='flex-grow-1' placeholder='输入消息…'
                                 maxlength='1000'></sl-input>
+                            <sl-button id='button_friend_chat_gift' variant='default' outline circle title='赠送好友赠礼'>
+                                <sl-icon name='gift'></sl-icon>
+                            </sl-button>
                             <sl-button id='button_friend_chat_send' variant='primary'>发送</sl-button>
                         </div>
                     </div>
@@ -1427,23 +1721,36 @@
                         <span class='fw-bold'>好友申请</span>
                     </div>
                 </div>
-                <div class='p-3 d-flex flex-column gap-3 flex-grow-1 overflow-auto'>
-                    <section>
-                        <div class='category-title fw-bold mb-2'>申请设置</div>
-                        <sl-select id='select_friend_request_mode' size='small' value='manual'>
-                            <sl-option value='deny'>不允许申请好友</sl-option>
-                            <sl-option value='manual'>好友申请需要同意</sl-option>
-                            <sl-option value='auto'>好友申请自动同意</sl-option>
-                        </sl-select>
-                    </section>
-                    <section>
-                        <div class='category-title fw-bold mb-2'>收到的申请</div>
-                        <div id='div_friend_requests_page' class='d-flex flex-column gap-2'></div>
-                    </section>
-                    <section>
-                        <div class='category-title fw-bold mb-2'>发出的申请</div>
-                        <div id='div_friend_outgoing_page' class='d-flex flex-column gap-2'></div>
-                    </section>
+                <div class='friend-requests-body'>
+                    <aside class='friend-requests-side'>
+                        <section id='section_friend_online'>
+                            <div class='d-flex align-items-center justify-content-between mb-2 gap-2'>
+                                <div class='category-title fw-bold mb-0'>近七天活跃玩家</div>
+                                <sl-button id='button_friend_online_refresh' size='small' variant='default' outline>
+                                    <sl-icon slot='prefix' name='arrow-clockwise'></sl-icon>刷新
+                                </sl-button>
+                            </div>
+                            <div id='div_friend_online' class='d-flex flex-column gap-2'></div>
+                        </section>
+                    </aside>
+                    <div class='friend-requests-main'>
+                        <section>
+                            <div class='category-title fw-bold mb-2'>申请设置</div>
+                            <sl-select id='select_friend_request_mode' size='small' value='manual'>
+                                <sl-option value='deny'>不允许申请好友</sl-option>
+                                <sl-option value='manual'>好友申请需要同意</sl-option>
+                                <sl-option value='auto'>好友申请自动同意</sl-option>
+                            </sl-select>
+                        </section>
+                        <section>
+                            <div class='category-title fw-bold mb-2'>收到的申请</div>
+                            <div id='div_friend_requests_page' class='d-flex flex-column gap-2'></div>
+                        </section>
+                        <section>
+                            <div class='category-title fw-bold mb-2'>发出的申请</div>
+                            <div id='div_friend_outgoing_page' class='d-flex flex-column gap-2'></div>
+                        </section>
+                    </div>
                 </div>
             </section>
         </div>
@@ -1459,6 +1766,43 @@
                 style='font-size: 0.6rem;'>0</span>
         </div>
     </div>
+
+    <!-- 每日任务：右下角入口，完成后红点显示已完成任务数 -->
+    <div id='button_task_wrap' class='position-fixed bottom-0 end-0 d-flex p-2 d-none' style='z-index: 1050;'>
+        <div class='position-relative'>
+            <sl-button id='button_task_toggle' variant='default' circle title='每日任务'>
+                <sl-icon name='clipboard-check'></sl-icon>
+            </sl-button>
+            <span id='badge_task_dot'
+                class='d-none position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger'
+                style='font-size: 0.6rem;'>0</span>
+        </div>
+    </div>
+
+    <!-- 每日任务详情 -->
+    <sl-dialog id='dialog_task' class='d-none' label='每日任务'>
+        <div class='d-flex flex-column gap-3'>
+            <div class='text-secondary small'>每天 0 点刷新 6 个任务（3 个多人 · 2 个单人 · 1 个投稿）。完成后需点击任务右侧的「领取奖励」领取棋币与等额经验；点击「刷新」只替换该任务，其进度将清零，投稿任务不可刷新。</div>
+            <div id='div_task_list' class='d-flex flex-column gap-2'></div>
+        </div>
+        <div slot='footer' class='d-flex align-items-center gap-2'>
+            <span id='span_task_refresh' class='text-secondary small flex-grow-1 text-start'></span>
+            <sl-button id='button_task_close' variant='neutral' size='small'>关闭</sl-button>
+        </div>
+    </sl-dialog>
+
+
+    <!-- 全服消息详情 -->
+    <sl-dialog id='dialog_notice' class='d-none' label='全服消息'>
+        <div class='d-flex flex-column gap-2'>
+            <div id='span_notice_time' class='text-secondary small'></div>
+            <div id='span_notice_title' class='notice-title fw-bold d-none'></div>
+            <div id='div_notice_content' class='notice-content'></div>
+        </div>
+        <div slot='footer'>
+            <sl-button id='button_notice_close' variant='neutral'>关闭</sl-button>
+        </div>
+    </sl-dialog>
 
 
     <!-- 我的背包：复用好友弹窗尺寸，分类展示消耗品 / 成就 / 外观 -->
@@ -1485,6 +1829,15 @@
             </div>
         </div>
     </div>
+
+    <!-- 好友赠礼：从背包选择一位好友赠送 -->
+    <sl-dialog id='dialog_gift_friend' label='赠送好友赠礼' class='d-none'>
+        <div class='d-flex flex-column gap-2'>
+            <div class='text-secondary small'>选择一位好友，赠送 1 个「好友赠礼：500棋币」，对方背包将获得 1 张 500 棋币兑换券。</div>
+            <div id='div_gift_friend_list' class='d-flex flex-column gap-2' style='max-height: 20rem; overflow-y: auto;'></div>
+        </div>
+        <sl-button slot='footer' id='button_gift_friend_close' variant='neutral'>取消</sl-button>
+    </sl-dialog>
 
     <div class='d-none'>
         <sl-alert></sl-alert>

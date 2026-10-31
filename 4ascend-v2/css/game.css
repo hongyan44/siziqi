@@ -138,6 +138,33 @@
     color: initial !important;
 }
 
+/* 深空/虚空主题：底板本身是深色，低血量的暗红几乎与背景融为一体，
+   因此整体抬高亮度与饱和度，并加一层同色辉光保证红血时仍然可读。 */
+html.theme-void .hp-color-p1 {
+    --light: calc(52% + var(--hp-color-p1) * 0.28%);
+    --sat: calc(70% + var(--hp-color-p1) * 0.3%);
+    text-shadow: 0 0 6px currentColor;
+}
+
+html.theme-void .hp-color-p2 {
+    --light: calc(52% + var(--hp-color-p2) * 0.28%);
+    --sat: calc(70% + var(--hp-color-p2) * 0.3%);
+    text-shadow: 0 0 6px currentColor;
+}
+
+/* 保存神域（黑派）主题同样是深色底板，血量颜色需要相同的亮度补偿。 */
+html.theme-black .hp-color-p1 {
+    --light: calc(52% + var(--hp-color-p1) * 0.28%);
+    --sat: calc(70% + var(--hp-color-p1) * 0.3%);
+    text-shadow: 0 0 6px currentColor;
+}
+
+html.theme-black .hp-color-p2 {
+    --light: calc(52% + var(--hp-color-p2) * 0.28%);
+    --sat: calc(70% + var(--hp-color-p2) * 0.3%);
+    text-shadow: 0 0 6px currentColor;
+}
+
 .text-color {
     transition: color 0.5s ease;
 }

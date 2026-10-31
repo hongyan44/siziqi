@@ -784,23 +784,27 @@ const game_leave = async () => {
             }
         }
         gl_cf_client.stop_resend(2000);
-        const lef = result;
+        const lef = Boolean(result);
 
-        // 心跳太远判断为离线，20s
+        // 心跳太远判断为离线，60s（与好友对局保持一致，避免短暂切队/后台节流被误判）
+        let exp = 0;
         gl_cf_client.start_resend(GameMessage.room_foeex(gl_cf_room, gl_cf_token), 1000, 2000);
         for await (const event of gl_cf_client) {
             if (event.type === '$$$') throw Error();
             if (event.type === 'message' && event.data.op === 'room_foeex') {
-                result = event.data.result;
+                exp = Number(event.data.result) || 0;
                 break;
             }
         }
         gl_cf_client.stop_resend(2000);
-        // console.log(lef, result, Date.now() - 25 * 1000, result >= Date.now() - 25 * 1000);
 
-        // 如果没有离线就不判断
-        if (!lef && result >= await window.http_time_ms() - 25 * 1000) continue;
-        // alert('对方离线');
+        // 只有拿到有效的心跳与服务端时间时才允许判定离线；
+        // 接口失败（空值/非数字）必须视为“无法判断”，绝不能据此提前结算。
+        const server_now = Number(await window.http_time_ms());
+        const gone = Number.isFinite(server_now) && server_now > 0 && exp > 0 && exp < server_now - 60 * 1000;
+
+        // 都没有离开则继续检测
+        if (!lef && !gone) continue;
 
         gl_leavevv = true;
         gl_cf_client.send(GameMessage.ranked_endgame(
@@ -852,9 +856,17 @@ const game_end = async () => {
     const foe_hp = gl_foe_color === PLAYER_ENUM.BLACK ? gl_state.hp[0] : gl_state.hp[1];
     const winner = win_p === 'my' ? (gl_my_color === PLAYER_ENUM.BLACK ? 'A' : 'B') : win_p === 'foe' ? (gl_foe_color === PLAYER_ENUM.BLACK ? 'A' : 'B') : 'none';
 
-    span_end_time.innerText = format_ms(await window.http_time_ms() - gl_time);
+    const now_ms = await window.http_time_ms();
+    const duration_s = Math.max(0, Math.floor((now_ms - gl_time) / 1000));
+    span_end_time.innerText = format_ms(now_ms - gl_time);
     span_end_hp.innerText = `${my_hp} vs ${foe_hp}`;
     span_end_score.innerText = `我方 (${add_sub(my_p)}) | 对方 (${add_sub(foe_p)})`;
+
+    // 快棋成就：不足 1 分钟的胜负（需至少完成一回合）
+    if (duration_s < 60 && gl_state.turn_count > 0 && typeof window.achievement_event === 'function') {
+        if (win_p === 'my') window.achievement_event('fast_win');
+        else if (win_p === 'foe') window.achievement_event('fast_loss');
+    }
 
     // alert(String(gl_leavevv) + "||" + String(gl_leave));
     span_end_win.innerText = win_p === 'my' ? gl_my_name : gl_foe_name;
@@ -872,7 +884,7 @@ const game_end = async () => {
             black_uuid: gl_my_color === PLAYER_ENUM.BLACK ? gl_my_uuid : gl_foe_uuid,
             white_uuid: gl_my_color === PLAYER_ENUM.WHITE ? gl_my_uuid : gl_foe_uuid,
             time: Math.floor(gl_time / 1000),
-            duration: Math.max(0, Math.floor((await window.http_time_ms() - gl_time) / 1000)),
+            duration: duration_s,
             mode: gl_cf_mode === 'night' ? 2 : gl_cf_mode === 'blight' ? 1 : 0,
             category: 'ranked',
             first: gl_first_index,
@@ -890,6 +902,9 @@ const game_end = async () => {
             if (coin_reward > 0 || exp_reward > 0) {
                 toast.success(`本局获得 ${coin_reward} 棋币 · ${exp_reward} 经验`);
             }
+            // 每日任务奖励（完成时服务端自动入账）
+            const task_reward = Number(uploaded && uploaded.task_reward) || 0;
+            if (task_reward > 0) toast.success(`每日任务完成：+${task_reward} 棋币`);
         }).catch((error) => {
             console.error('排位回放上传失败:', error);
         });
@@ -1704,8 +1719,12 @@ const run = async () => {
         if (win) {
             gl_wins = true;
             if (gl_ui) gl_ui.set_turn_flash(false);
-            // 成就：赢下真人对局
-            if (win === my_color && typeof window.achievement_event === 'function') window.achievement_event('online_win');
+            // 成就：赢下真人对局（附带回合数与本方进攻回合，用于风格成就）
+            if (win === my_color && typeof window.achievement_event === 'function') window.achievement_event('online_win', {
+                'turn_count': state.turn_count,
+                'attack_turns': state.attack_turns ? state.attack_turns[my_index] : [],
+                'board_empty': Boolean(gl_board && gl_board.stone_count === 0),
+            });
             game_msg.innerText = win === my_color ? `🏆|${my_name}|胜利${my_icon}` : `💀|${foe_name}|胜利${foe_icon}`;
             span_end_win.innerText = win === my_color ? my_name : foe_name;
             gl_end = true;

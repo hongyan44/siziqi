@@ -7,9 +7,11 @@
 #include "api/http/Contest.h"
 #include "api/http/Docs.h"
 #include "api/http/Friend.h"
+#include "api/http/Notice.h"
 #include "api/http/Puzzle.h"
 #include "api/http/Replay.h"
 #include "api/http/Story.h"
+#include "api/http/Task.h"
 #include "api/http/Time.h"
 #include "api/http/User.h"
 
@@ -20,11 +22,13 @@
 #include "manager/Contest.h"
 #include "manager/Docs.h"
 #include "manager/Friend.h"
+#include "manager/Notice.h"
 #include "manager/Puzzle.h"
 #include "manager/Replay.h"
 #include "manager/Ranked.h"
 #include "manager/Sms.h"
 #include "manager/Story.h"
+#include "manager/Task.h"
 #include "manager/User.h"
 
 #include "libs/only/Flie.h"
@@ -59,6 +63,8 @@ inline void init() {
     Manager::Contest::init();
     Manager::Docs::init();
     Manager::Story::init();
+    Manager::Task::init();
+    Manager::Notice::init();
     Manager::Friend::init();
     // Manager::Token::init();
 
@@ -80,6 +86,8 @@ inline void init() {
         Manager::Contest::close();
         Manager::Docs::close();
         Manager::Story::close();
+        Manager::Task::close();
+        Manager::Notice::close();
         Manager::Friend::close();
         // Manager::Token::close();
 
@@ -137,6 +145,9 @@ static async_simple::coro::Lazy<void> handle_websocket(cinatra::coro_http_reques
         if (ec) break;
     }
 
+    // 连接关闭：先清掉房间/观战者里指向该连接的原始指针，
+    // 否则指针指向的内存被新连接复用时，房间消息会被投递到无关玩家。
+    Online::Friend::client_detach(connect);
     std::erase(ws_clients, connect);
 }
 // ===================================================================
@@ -154,6 +165,8 @@ inline void api(cinatra::coro_http_server& server) {
     Api::Http::Contest::load(server);
     Api::Http::Docs::load(server);
     Api::Http::Story::load(server);
+    Api::Http::Task::load(server);
+    Api::Http::Notice::load(server);
     Api::Http::Time::load(server);
 
 

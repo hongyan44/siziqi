@@ -29,9 +29,11 @@ sqlite3_stmt* p_sub_insert         = nullptr;
 sqlite3_stmt* p_sub_list_creator   = nullptr;
 sqlite3_stmt* p_sub_list_all       = nullptr;
 sqlite3_stmt* p_sub_load_pending   = nullptr;
+sqlite3_stmt* p_sub_update         = nullptr;
 sqlite3_stmt* p_sub_review         = nullptr;
 
 sqlite3_stmt* p_claim_clear        = nullptr;
+sqlite3_stmt* p_count_clears       = nullptr;
 
 void bind_text(sqlite3_stmt* statement, int index, std::string_view value) noexcept {
     sqlite3_bind_text(statement, index, value.data(), static_cast<int>(value.size()), SQLITE_TRANSIENT);
@@ -143,6 +145,7 @@ void init() noexcept {
         &p_sub_load_pending,
         nullptr
     );
+    sqlite3_prepare_v2(db, "UPDATE puzzle_submissions SET target = ?, level = ?, title = ?, code = ? WHERE id = ? AND status = 0", -1, &p_sub_update, nullptr);
     sqlite3_prepare_v2(db, "UPDATE puzzle_submissions SET status = ?, reviewer = ?, reviewed_at = ? WHERE id = ? AND status = 0", -1, &p_sub_review, nullptr);
 
     // 首次通关记录：同一账号在同一关卡/同一每日残局版本下只记一次。
@@ -166,6 +169,14 @@ void init() noexcept {
         &p_claim_clear,
         nullptr
     );
+    // 玩家资料展示用：主键 (uuid, target, ref) 已保证同一残局只记一条，直接计数即为不同残局数。
+    sqlite3_prepare_v2(
+        db,
+        "SELECT COUNT(*) FROM puzzle_clears WHERE uuid = ?",
+        -1,
+        &p_count_clears,
+        nullptr
+    );
 }
 
 void close() noexcept {
@@ -179,8 +190,10 @@ void close() noexcept {
     sqlite3_finalize(p_sub_list_creator);
     sqlite3_finalize(p_sub_list_all);
     sqlite3_finalize(p_sub_load_pending);
+    sqlite3_finalize(p_sub_update);
     sqlite3_finalize(p_sub_review);
     sqlite3_finalize(p_claim_clear);
+    sqlite3_finalize(p_count_clears);
     p_insert = nullptr;
     p_update = nullptr;
     p_delete = nullptr;
@@ -193,6 +206,7 @@ void close() noexcept {
     p_sub_load_pending = nullptr;
     p_sub_review = nullptr;
     p_claim_clear = nullptr;
+    p_count_clears = nullptr;
     if (db) sqlite3_close(db);
     db = nullptr;
 }
@@ -295,6 +309,24 @@ bool add_submission(std::string_view target, uint32_t level, std::string_view ti
     return rc == SQLITE_DONE && id != 0;
 }
 
+// 审核前修改投稿：只允许改动仍处于待审核（status=0）的记录。
+bool update_submission(uint64_t id, std::string_view target, uint32_t level, std::string_view title, std::string_view code) noexcept {
+    if (!db || !p_sub_update || id == 0 || (target != "daily" && target != "level") || title.empty() || code.empty()) return false;
+    if (target == "level" && (level < 1 || level > 100)) return false;
+    const uint32_t sub_level = target == "level" ? level : 0;
+
+    bind_text(p_sub_update, 1, target);
+    sqlite3_bind_int(p_sub_update, 2, static_cast<int>(sub_level));
+    bind_text(p_sub_update, 3, title);
+    bind_text(p_sub_update, 4, code);
+    sqlite3_bind_int64(p_sub_update, 5, static_cast<sqlite3_int64>(id));
+
+    const int rc = sqlite3_step(p_sub_update);
+    const int changed = sqlite3_changes(db);
+    reset(p_sub_update);
+    return rc == SQLITE_DONE && changed == 1;
+}
+
 bool list_submissions(std::string_view creator, int status_filter, std::vector<Submission>& out) noexcept {
     out.clear();
     if (!db) return false;
@@ -330,8 +362,9 @@ bool list_submissions(std::string_view creator, int status_filter, std::vector<S
     return rc == SQLITE_DONE;
 }
 
-bool review_submission(uint64_t id, bool approve, std::string_view reviewer, uint64_t now, bool allow_overwrite, bool& slot_occupied) noexcept {
+bool review_submission(uint64_t id, bool approve, std::string_view reviewer, uint64_t now, bool allow_overwrite, bool& slot_occupied, std::string& creator) noexcept {
     slot_occupied = false;
+    creator.clear();
     if (!db || !p_sub_load_pending || !p_sub_review || id == 0 || reviewer.empty()) return false;
 
     // 只处理仍处于待审核状态的投稿。
@@ -350,6 +383,7 @@ bool review_submission(uint64_t id, bool approve, std::string_view reviewer, uin
     record.creator = column_text(p_sub_load_pending, 4);
     record.created_at = static_cast<uint64_t>(sqlite3_column_int64(p_sub_load_pending, 5));
     reset(p_sub_load_pending);
+    creator = record.creator;
 
     // 拒绝：直接标记状态，不做发布。
     if (!approve) {
@@ -419,6 +453,17 @@ bool claim_clear(std::string_view uuid, std::string_view target, int64_t ref, ui
     reset(p_claim_clear);
     // INSERT OR IGNORE 只有真正插入新记录时 changed 才为 1。
     return rc == SQLITE_DONE && changed == 1;
+}
+
+bool count_clears(std::string_view uuid, int64_t& count) noexcept {
+    count = 0;
+    if (!db || !p_count_clears || uuid.empty()) return false;
+
+    bind_text(p_count_clears, 1, uuid);
+    const int rc = sqlite3_step(p_count_clears);
+    if (rc == SQLITE_ROW) count = sqlite3_column_int64(p_count_clears, 0);
+    reset(p_count_clears);
+    return rc == SQLITE_ROW;
 }
 } // namespace Puzzle
 } // namespace Manager

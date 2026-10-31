@@ -282,6 +282,32 @@ bool last_seen(std::string_view uuid, int64_t& out) noexcept {
     return true;
 }
 
+bool list_active(int64_t since, size_t limit, std::vector<std::pair<int64_t, std::string>>& out) noexcept {
+    out.clear();
+    if (limit == 0) return true;
+
+    std::vector<std::pair<int64_t, std::string>> candidates;
+    candidates.reserve(presence.size());
+    for (const auto& entry : presence) {
+        if (entry.second < since) continue;
+        candidates.emplace_back(entry.second, entry.first);
+    }
+
+    const auto newer = [](const std::pair<int64_t, std::string>& a, const std::pair<int64_t, std::string>& b) noexcept {
+        return a.first > b.first;
+    };
+    // 只需要最近 limit 位：先用 partial_sort 取顶部，再决定是否整体排序。
+    if (candidates.size() > limit) {
+        std::partial_sort(candidates.begin(), candidates.begin() + limit, candidates.end(), newer);
+        candidates.resize(limit);
+    } else {
+        std::sort(candidates.begin(), candidates.end(), newer);
+    }
+
+    out = std::move(candidates);
+    return true;
+}
+
 
 void bump(std::string_view uuid) noexcept {
     if (uuid.empty()) return;

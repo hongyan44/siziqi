@@ -263,10 +263,12 @@ button_server_join.addEventListener('pointerdown', (event) => {
     const server = select_server_region.value;
     const room = input_server_room.value;
     const archive = input_server_archive.value;
+    const health = Number(input_server_health.value);
 
     if (!server) return toast.error('请先选择服务器！');
     else if (room.length !== 6) return toast.error('非法房间号！');
     else if (archive !== '' && !ArchiveV0.load(BaseZalgo.decode(archive))) return toast.error('非法对局存档！');
+    else if (!Number.isInteger(health) || health < 2 || health > 100) return toast.error('生命值需为 2-100 的整数！');
 
     localStorage.setItem('data', JSON.stringify({ server }));
 

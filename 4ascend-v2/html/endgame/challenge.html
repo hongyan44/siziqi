@@ -61,8 +61,9 @@
     </style>
 </head>
 <body class='d-flex flex-column w-100 h-100 bg-light'>
-    <div class='position-fixed top-0 start-0 d-flex p-2' style='z-index: 1050;'>
-        <sl-button variant='default' href='/pages/endgame/index.html' circle aria-label='返回残局系统'><sl-icon name='arrow-left'></sl-icon></sl-button>
+    <div id='button_home' class='position-fixed top-0 start-0 d-flex gap-1 p-2' style='z-index: 1050;'>
+        <sl-button variant='default' href='/pages/endgame/index.html' circle aria-label='返回上一级' title='返回上一级'><sl-icon name='arrow-left'></sl-icon></sl-button>
+        <sl-button variant='default' href='/' circle aria-label='返回主页' title='返回主页'><sl-icon name='house'></sl-icon></sl-button>
     </div>
     <div class='d-flex flex-column w-100 h-100'>
         <header class='text-center py-2'>
@@ -177,7 +178,7 @@
             <div class='d-flex justify-content-between align-items-center p-3 bg-light rounded shadow-sm'><span class='text-secondary small'>挑战用时</span><span id='challenge_result_time' class='fw-bold text-dark'>+00:00</span></div>
             <div id='challenge_result_reward' class='d-flex d-none justify-content-between align-items-center p-3 bg-light rounded shadow-sm'><span class='text-secondary small'>首次通关奖励</span><span id='challenge_result_reward_value' class='fw-bold text-success'>+50 经验 · +50 棋币</span></div>
         </div>
-        <div class='d-flex flex-column gap-2'><sl-button id='challenge_result_restart' variant='primary'><sl-icon slot='prefix' name='arrow-repeat'></sl-icon>再试一次</sl-button><sl-button id='challenge_result_back' variant='default'><sl-icon slot='prefix' name='arrow-left'></sl-icon>返回残局系统</sl-button></div>
+        <div class='d-flex flex-column gap-2'><sl-button id='challenge_result_restart' variant='primary'><sl-icon slot='prefix' name='arrow-repeat'></sl-icon>再试一次</sl-button><sl-button id='challenge_result_copy' variant='default'><sl-icon slot='prefix' name='clipboard'></sl-icon>复制残局码</sl-button><sl-button id='challenge_result_submit_back' class='d-none' variant='default'><sl-icon slot='prefix' name='arrow-left'></sl-icon><span id='challenge_result_submit_back_label'>返回投稿页</span></sl-button><sl-button id='challenge_result_levels' class='d-none' variant='default'><sl-icon slot='prefix' name='grid-3x3-gap'></sl-icon>返回选关</sl-button><sl-button id='challenge_result_back' variant='default'><sl-icon slot='prefix' name='arrow-left'></sl-icon>返回残局系统</sl-button></div>
     </sl-dialog>
     <sl-alert id='challenge_alert' variant='success' duration='2600' closable><sl-icon slot='icon' name='check2-circle'></sl-icon><span id='challenge_alert_text'>挑战已完成</span></sl-alert>
     <script>
@@ -187,6 +188,22 @@
         const isCodeChallenge = params.get('mode') === 'code';
         const archiveCode = params.get('code') || '';
         const challengeLevel = Number.parseInt(params.get('level') || '', 10);
+        // 投稿验证：从投稿页跳转而来，胜利后自动提交待审投稿，失败则自动驳回。
+        const verifySubmissionMode = params.get('verify') === 'submit';
+        // 审核预览：管理员在待审投稿里点「快速开始」进入，只对局，不记录奖励与关卡进度。
+        const reviewPreviewMode = params.get('from') === 'review';
+        const previewMode = verifySubmissionMode || reviewPreviewMode;
+        const PENDING_SUBMIT_KEY = 'four-ascend-puzzle-submit-v1';
+        const readPendingSubmission = () => {
+            try {
+                const raw = localStorage.getItem(PENDING_SUBMIT_KEY);
+                const value = raw ? JSON.parse(raw) : null;
+                return value && typeof value.code === 'string' && value.code ? value : null;
+            } catch (_) { return null; }
+        };
+        const clearPendingSubmission = () => {
+            try { localStorage.removeItem(PENDING_SUBMIT_KEY); } catch (_) { /* 清理失败不影响对局 */ }
+        };
         const LEVEL_STORAGE_KEY = 'four-ascend-endgame-levels-v1';
         const markLevelCompleted = () => {
             if (!isCodeChallenge || !Number.isInteger(challengeLevel) || challengeLevel < 1 || challengeLevel > 100) return;
@@ -247,6 +264,8 @@
         let timerStartedAt = 0;
         let timerHandle = null;
         let challengeElapsed = 0;
+        // 白方 AI 在各个位置显示的称呼：默认“每日挑战”，关卡模式下替换为关卡名。
+        let whiteAiName = '每日挑战';
         let lastAiDecision = null;
         // 引导落子：按作者顺序依次提示玩家落点；未命中当前引导点则取消后续全部引导。
         let guide = null;
@@ -276,8 +295,8 @@
             const blackHp = state.hp[0];
             const whiteHp = state.hp[1];
             const playerWon = winner === PLAYER_ENUM.BLACK;
-            // 成就：破解残局（按不同盘面去重计数）
-            if (playerWon && typeof window.achievement_event === 'function') window.achievement_event('endgame_win', { 'endgame_id': endgameIdentity() });
+            // 成就：破解残局（按不同盘面去重计数）；投稿验证/审核预览不计入成就。
+            if (playerWon && !previewMode && typeof window.achievement_event === 'function') window.achievement_event('endgame_win', { 'endgame_id': endgameIdentity() });
             const dialog = document.getElementById('challenge_result');
             dialog.classList.remove('d-none');
             dialog.classList.toggle('is-win', playerWon);
@@ -285,13 +304,76 @@
             document.getElementById('challenge_result_icon').name = playerWon ? 'trophy' : 'x-octagon';
             document.getElementById('challenge_result_title').textContent = playerWon ? '残局破解成功' : '挑战失败';
             document.getElementById('challenge_result_subtitle').textContent = `${reason} · 黑方 ${blackHp} / 白方 ${whiteHp}`;
-            document.getElementById('challenge_result_winner').textContent = playerWon ? '黑方 · 我方' : '白方 · 每日挑战';
+            document.getElementById('challenge_result_winner').textContent = playerWon ? '黑方 · 我方' : `白方 · ${whiteAiName}`;
             document.getElementById('challenge_result_hp').textContent = `${blackHp} vs ${whiteHp}`;
             document.getElementById('challenge_result_time').textContent = formatElapsed(elapsed);
             const rewardRow = document.getElementById('challenge_result_reward');
             if (rewardRow) rewardRow.classList.add('d-none');
+            // 仅在闯关模式（带合法关卡号）显示“返回选关”，每日挑战/残局码模式保持隐藏。
+            const levelsButton = document.getElementById('challenge_result_levels');
+            if (levelsButton) levelsButton.classList.toggle('d-none', !(!previewMode && isCodeChallenge && Number.isInteger(challengeLevel) && challengeLevel >= 1 && challengeLevel <= 100));
+            // 投稿验证/审核预览结束后提供返回投稿页入口。
+            const submitBack = document.getElementById('challenge_result_submit_back');
+            if (submitBack) {
+                submitBack.classList.toggle('d-none', !previewMode);
+                const label = document.getElementById('challenge_result_submit_back_label');
+                if (label) label.textContent = reviewPreviewMode ? '返回投稿审核' : '返回投稿页';
+            }
+            // 投稿验证只允许一次对局：失败即自动驳回，不再原地重试，需回投稿页重新发起。
+            const restartButton = document.getElementById('challenge_result_restart');
+            if (restartButton) restartButton.classList.toggle('d-none', verifySubmissionMode);
             dialog.show();
-            if (playerWon) claimClearReward();
+            if (playerWon && !previewMode) claimClearReward();
+            // 投稿验证：胜利则提交待审投稿；失败则自动驳回（不生成待审记录）。
+            if (verifySubmissionMode) handleVerifySettlement(playerWon, dialog);
+        };
+        const handleVerifySettlement = async (playerWon, dialog) => {
+            const pending = readPendingSubmission();
+            if (!pending || pending.code !== archiveCode) {
+                clearPendingSubmission();
+                setStatus('投稿验证信息已失效，本次投稿未提交。', 'danger');
+                return;
+            }
+            if (!playerWon) {
+                clearPendingSubmission();
+                document.getElementById('challenge_result_title').textContent = '验证失败 · 投稿已驳回';
+                setStatus('对局验证失败，本次投稿已自动驳回。', 'warning');
+                showAlert('对局验证失败，本次投稿已自动驳回。', 'warning');
+                return;
+            }
+            const ok = await submitVerifiedPuzzle(pending);
+            if (ok) {
+                document.getElementById('challenge_result_title').textContent = '验证通过 · 投稿已提交';
+                setStatus('对局验证通过，投稿已提交，等待审核。', 'success');
+            }
+        };
+        // 投稿验证胜利后提交待审投稿；无论成功与否都清空本地待投稿记录。
+        const submitVerifiedPuzzle = async (pending) => {
+            const token = typeof window.get_token === 'function' ? window.get_token() : null;
+            if (!token || typeof window.http_puzzle_submit !== 'function') {
+                clearPendingSubmission();
+                showAlert('登录状态已失效，投稿未提交。', 'danger');
+                return false;
+            }
+            try {
+                const submitted = await window.http_puzzle_submit(token, pending.target, Number(pending.level) || 0, pending.title, pending.code);
+                clearPendingSubmission();
+                if (submitted) {
+                    // 标记投稿成功，回到投稿页时提示“等待审核”。
+                    try { localStorage.setItem('four-ascend-puzzle-submit-done-v1', '1'); } catch (_) { /* 忽略标记失败 */ }
+                    const task_reward = Math.max(0, Math.trunc(Number(submitted.task_reward) || 0));
+                    showAlert(task_reward > 0
+                        ? `对局验证通过，投稿已提交，等待审核。每日任务完成：+${task_reward} 棋币 · +${task_reward} 经验。`
+                        : '对局验证通过，投稿已提交，等待审核。', 'success');
+                    return true;
+                }
+                showAlert('对局验证通过，但投稿提交失败（该位置可能已被占用，或投稿券不足）。', 'danger');
+                return false;
+            } catch (_) {
+                clearPendingSubmission();
+                showAlert('投稿提交失败，请回到投稿页重试。', 'danger');
+                return false;
+            }
         };
         const setStatus = (message, variant = 'primary') => { const status = document.getElementById('challenge_status'); status.className = `alert alert-${variant} py-2 mb-0 small challenge-loading`; status.textContent = message; };
         const formatElapsed = (elapsed) => { const total = Math.max(0, Math.floor(elapsed / 1000)); return `+${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`; };
@@ -366,7 +448,7 @@
             const whiteAscendCount = game ? game.board.data.filter((pos) => pos.stone === STONE_ENUM.WHITE_ASCEND).length : 0;
             const blackAscendPlants = Math.max(0, blackPower - blackAscendCount);
             const whiteAscendPlants = Math.max(0, whitePower - whiteAscendCount);
-            document.getElementById('challenge_turn').textContent = playerTurn ? '黑方 · 我方' : '白方 · 每日挑战';
+            document.getElementById('challenge_turn').textContent = playerTurn ? '黑方 · 我方' : `白方 · ${whiteAiName}`;
             document.getElementById('challenge_moves').textContent = String(moves.length);
             syncHpDisplay(blackHp, whiteHp);
             document.getElementById('game_p1_ascend').textContent = `PR：${blackAscendCount}+${blackAscendPlants}`;
@@ -592,7 +674,8 @@
             const win = game.ed_win();
             if (win) {
                 challengeOver = true;
-                markLevelCompleted();
+                // 只有玩家（黑方）获胜才计入闯关完成；投稿验证/审核预览不记录进度。
+                if (!previewMode && win === PLAYER_ENUM.BLACK) markLevelCompleted();
                 stopTimer();
                 renderInfo();
                 const blackWin = win === PLAYER_ENUM.BLACK;
@@ -921,6 +1004,22 @@
             renderInfo();
         };
 
+        // 白方 AI 的名字显示当前关卡名：优先用选关页传入的标题，否则按关卡号查询服务端记录。
+        const applyLevelTitle = async () => {
+            if (!isCodeChallenge) return;
+            const node = document.getElementById('game_p2_name');
+            if (!node) return;
+            const fromUrl = (params.get('title') || '').trim();
+            if (fromUrl) { whiteAiName = fromUrl; node.textContent = fromUrl; return; }
+            if (!Number.isInteger(challengeLevel) || challengeLevel < 1 || challengeLevel > 100) return;
+            if (typeof window.http_puzzle_query !== 'function') return;
+            try {
+                const records = await window.http_puzzle_query();
+                const record = Array.isArray(records) ? records.find((item) => Number(item.level) === challengeLevel) : null;
+                if (record && record.title) { whiteAiName = record.title; node.textContent = record.title; }
+            } catch (_) { /* 查询失败时保留默认名字 */ }
+        };
+
         const loadDailyChallenge = async () => {
             if (isCodeChallenge || typeof window.http_puzzle_daily_query !== 'function') return;
             try {
@@ -929,6 +1028,7 @@
                 challengeData = EndgameArchive.decode(daily.code);
                 importedArchive = true;
                 document.getElementById('game_p2_name').textContent = daily.title || '每日挑战';
+                whiteAiName = daily.title || '每日挑战';
                 document.getElementById('challenge_subtitle').textContent = '服务端每日挑战，命中正着后白方自动应手';
             } catch (error) {
                 console.warn('每日挑战残局加载失败，使用内置兼容盘面。', error);
@@ -943,12 +1043,41 @@
             document.getElementById('challenge_result').hide();
             resetChallenge();
         });
+        document.getElementById('challenge_result_levels').addEventListener('click', () => {
+            // 带关卡号返回选关页，选关页会自动翻到该关所在的一页。
+            const level = Number.isInteger(challengeLevel) ? challengeLevel : 1;
+            window.location.href = `/pages/endgame/levels.html?level=${level}`;
+        });
+        // 挑战结束后可复制当前残局码，方便把盘面带走或再导入。
+        document.getElementById('challenge_result_copy').addEventListener('click', async () => {
+            let code = '';
+            try { code = EndgameArchive.encode(challengeData); } catch (_) { code = ''; }
+            if (!code) { showAlert('残局码生成失败，请稍后重试。', 'danger'); return; }
+            try {
+                await navigator.clipboard.writeText(code);
+                showAlert('残局码已复制到剪贴板。', 'success');
+            } catch (_) {
+                const area = document.createElement('textarea');
+                area.value = code;
+                area.style.position = 'fixed';
+                area.style.opacity = '0';
+                document.body.append(area);
+                area.select();
+                const copied = document.execCommand('copy');
+                area.remove();
+                showAlert(copied ? '残局码已复制到剪贴板。' : '复制失败，请手动选择残局码。', copied ? 'success' : 'danger');
+            }
+        });
+        document.getElementById('challenge_result_submit_back').addEventListener('click', () => {
+            window.location.href = '/pages/endgame/submit.html';
+        });
         document.getElementById('challenge_result_back').addEventListener('click', () => {
             window.location.href = '/pages/endgame/index.html';
         });
         window.addEventListener('resize', () => { if (ui && game) redraw(); refreshGuide(); });
         (async () => {
             await loadDailyChallenge();
+            await applyLevelTitle();
             resetChallenge();
             // 登录玩家已设置昵称颜色时，用自己的彩色昵称替换默认名字
             if (typeof window.name_color_apply_self === 'function') {
