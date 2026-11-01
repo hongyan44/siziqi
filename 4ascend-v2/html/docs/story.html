@@ -115,7 +115,7 @@
                         <div class='small text-secondary mt-2'>
                             <div><code>[角色|表情] 台词</code> 对话框：角色名取自「角色管理」，表情名取自该角色的表情；省略表情则使用代表图，如 <code>[导员ZERO] 你好</code>。</div>
                             <div>台词支持 <code>&lt;玩家名称&gt;</code> 占位符。</div>
-                            <div><code>? 提示</code> 选择节点，紧跟若干 <code>- 选项 -&gt; 标签</code>。</div>
+                            <div><code>? [角色|表情] 提示</code> 选择节点，紧跟若干 <code>- 选项 -&gt; 标签</code>；角色与表情可选（写法则同台词），留空时对话框显示「请选择」。</div>
                             <div><code>:标签</code> 标签定义；<code>-&gt; 标签</code> 跳转；<code>结束</code> 或 <code>剧终</code> 收尾。</div>
                             <div><code>% IF 胜利 -&gt; 标签</code> / <code>% ELSE -&gt; 标签</code> 条件分支：条件取自最近一次对局结果（胜利 / 失败 / 平局），未命中则继续往下执行，因此 <code>IF</code> 可叠加多个，最后由 <code>ELSE</code> 兜底。</div>
                             <div><code>* 对局 标题</code> 对局块开始：其后的配置、代码与对话都归入该对局，直到 <code>结束此对局</code> 为止（编辑器会把整块包进同一个蓝色圆角对局框）。</div>
@@ -214,7 +214,7 @@
             const kind = command ? command.kind : 'say';
             const row = { 'kind': kind };
             if (kind === 'say') { row.character = ''; row.expression = ''; row.text = ''; }
-            if (kind === 'choice') { row.prompt = ''; row.options = [{ 'text': '', 'target': '' }]; }
+            if (kind === 'choice') { row.character = ''; row.expression = ''; row.prompt = ''; row.options = [{ 'text': '', 'target': '' }]; }
             if (kind === 'label') row.name = '';
             if (kind === 'jump') row.target = '';
             if (kind === 'game') row.title = '';
@@ -231,7 +231,7 @@
             const list = [];
             parsed.nodes.forEach((node) => {
                 if (node.type === 'say') list.push({ 'kind': 'say', 'character': node.speaker || '', 'expression': node.expression || '', 'text': node.text || '' });
-                else if (node.type === 'choice') list.push({ 'kind': 'choice', 'prompt': node.prompt || '', 'options': (node.options || []).map((item) => ({ 'text': item.text, 'target': item.target })) });
+                else if (node.type === 'choice') list.push({ 'kind': 'choice', 'character': node.speaker || '', 'expression': node.expression || '', 'prompt': node.prompt || '', 'options': (node.options || []).map((item) => ({ 'text': item.text, 'target': item.target })) });
                 else if (node.type === 'label') list.push({ 'kind': 'label', 'name': node.name || '' });
                 else if (node.type === 'jump') list.push({ 'kind': 'jump', 'target': node.target || '' });
                 else if (node.type === 'end') list.push({ 'kind': 'end' });
@@ -267,7 +267,8 @@
             rows.forEach((row) => {
                 if (row.kind === 'say') lines.push(row.expression ? `[${row.character}|${row.expression}] ${row.text}` : `[${row.character}] ${row.text}`);
                 else if (row.kind === 'choice') {
-                    lines.push(`? ${row.prompt}`);
+                    const face = row.character ? (row.expression ? `[${row.character}|${row.expression}] ` : `[${row.character}] `) : '';
+                    lines.push(`? ${face}${row.prompt}`);
                     (row.options || []).forEach((option) => lines.push(`- ${option.text} -> ${option.target}`));
                 } else if (row.kind === 'label') lines.push(`:${row.name}`);
                 else if (row.kind === 'jump') lines.push(`-> ${row.target}`);
@@ -318,7 +319,9 @@
                 <select class='form-select form-select-sm' data-role='expr' style='width: 126px;' title='表情'>${exprOptionsHtml(row.character, row.expression)}</select>
                 <input class='form-control form-control-sm' data-role='text' style='flex: 1 1 200px; min-width: 140px;' placeholder='台词' value='${attr(row.text)}'>`;
             if (row.kind === 'choice') return `
-                <input class='form-control form-control-sm' data-role='prompt' style='flex: 1 1 100%;' placeholder='选择提示' value='${attr(row.prompt)}'>
+                <select class='form-select form-select-sm' data-role='char' style='width: 148px;' title='角色'>${charOptionsHtml(row.character)}</select>
+                <select class='form-select form-select-sm' data-role='expr' style='width: 126px;' title='表情'>${exprOptionsHtml(row.character, row.expression)}</select>
+                <input class='form-control form-control-sm' data-role='prompt' style='flex: 1 1 200px; min-width: 140px;' placeholder='选择提示' value='${attr(row.prompt)}'>
                 <div class='editor-options'>${(row.options || []).map((option, index) => `
                     <div class='editor-option'>
                         <input class='form-control form-control-sm' data-role='opt-text' data-option-index='${index}' style='flex: 1 1 auto;' placeholder='选项文字' value='${attr(option.text)}'>

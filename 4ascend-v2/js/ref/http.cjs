@@ -729,14 +729,15 @@ window.http_story_character_query = async () => {
 };
 
 /**
- * @description: 新增剧情角色（仅管理员，图片为 data URL）
+ * @description: 新增剧情角色（仅管理员；image 为 200×300 缩略图，original 为原图 data URL）
  * @param {string} token
  * @param {string} name 角色名
- * @param {string} image 代表图 data URL
+ * @param {string} image 代表图缩略图 data URL
+ * @param {string} [original] 代表图原图 data URL（原图落盘，供管理员下载）
  * @return {Promise<{id: number} | void>}
  */
-window.http_story_character_add = async (token, name, image) => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/character_update`, { token, action: 'character', name, image }, 60000);
+window.http_story_character_add = async (token, name, image, original = '') => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/character_update`, { token, action: 'character', name, image, original }, 60000);
     if (!rjson || !rjson.status) return;
     return rjson.result;
 };
@@ -748,8 +749,8 @@ window.http_story_character_add = async (token, name, image) => {
  * @param {string} image 新代表图 data URL
  * @return {Promise<{id: number} | void>}
  */
-window.http_story_character_update_rep = async (token, character_id, image) => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/character_update`, { token, action: 'update_rep', character_id, image }, 60000);
+window.http_story_character_update_rep = async (token, character_id, image, original = '') => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/character_update`, { token, action: 'update_rep', character_id, image, original }, 60000);
     if (!rjson || !rjson.status) return;
     return rjson.result;
 };
@@ -774,8 +775,8 @@ window.http_story_character_delete = async (token, character_id) => {
  * @param {string} image 表情图 data URL
  * @return {Promise<{id: number} | void>}
  */
-window.http_story_expression_add = async (token, character_id, name, image) => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/character_update`, { token, action: 'expression', character_id, name, image }, 60000);
+window.http_story_expression_add = async (token, character_id, name, image, original = '') => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/character_update`, { token, action: 'expression', character_id, name, image, original }, 60000);
     if (!rjson || !rjson.status) return;
     return rjson.result;
 };
@@ -789,6 +790,37 @@ window.http_story_expression_add = async (token, character_id, name, image) => {
  */
 window.http_story_expression_delete = async (token, character_id, expression_id) => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/character_update`, { token, action: 'delete_expression', character_id, expression_id }, 60000);
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+
+/**
+ * @description: 覆盖已有表情图片（仅管理员；把旧大图压缩为缩略图并转存原图时使用）
+ * @param {string} token
+ * @param {number} character_id
+ * @param {number} expression_id
+ * @param {string} image 新缩略图 data URL
+ * @param {string} [original] 原图 data URL
+ * @return {Promise<{id: number} | void>}
+ */
+window.http_story_expression_image_update = async (token, character_id, expression_id, image, original = '') => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/character_update`, { token, action: 'update_expression_image', character_id, expression_id, image, original }, 60000);
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+
+/**
+ * @description: 管理员下载剧情角色/表情原图（服务端磁盘原图，返回 data URL）
+ * @param {string} token
+ * @param {string} kind rep（角色代表图）/ expression（表情）
+ * @param {number} character_id
+ * @param {number} [expression_id] kind=expression 时必填
+ * @return {Promise<{name: string, image: string} | void>}
+ */
+window.http_story_image_download = async (token, kind, character_id, expression_id = 0) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/image_download`, { token, kind, character_id, expression_id }, 60000);
     if (!rjson || !rjson.status) return;
     return rjson.result;
 };

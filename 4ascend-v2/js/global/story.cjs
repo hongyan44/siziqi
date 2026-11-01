@@ -240,7 +240,19 @@ class StoryScript {
             }
 
             if (text_.startsWith('?')) {
-                pending = { 'type': 'choice', 'prompt': text_.slice(1).trim(), 'options': [] };
+                // 选择节点可携带角色表情：? [角色|表情] 提示（与对话台词写法一致，可省略）
+                let body = text_.slice(1).trim();
+                let speaker = '';
+                let expression = '';
+                const face = body.match(/^\[([^\]]*)\]\s*(.*)$/);
+                if (face) {
+                    const raw = face[1].trim();
+                    const split = raw.indexOf('|');
+                    speaker = split < 0 ? raw : raw.slice(0, split).trim();
+                    expression = split < 0 ? '' : raw.slice(split + 1).trim();
+                    body = face[2].trim();
+                }
+                pending = { 'type': 'choice', 'speaker': speaker, 'expression': expression, 'prompt': body, 'options': [] };
                 nodes.push(pending);
                 return;
             }
@@ -382,7 +394,8 @@ class StoryScript {
         nodes.forEach((node) => {
             if (node.type === 'say') lines.push(node.expression ? `[${node.speaker}|${node.expression}] ${node.text}` : `[${node.speaker}] ${node.text}`);
             else if (node.type === 'choice') {
-                lines.push(`? ${node.prompt}`);
+                const face = node.speaker ? (node.expression ? `[${node.speaker}|${node.expression}] ` : `[${node.speaker}] `) : '';
+                lines.push(`? ${face}${node.prompt}`);
                 (node.options || []).forEach((item) => lines.push(`- ${item.text} -> ${item.target}`));
             } else if (node.type === 'game') {
                 const config = node.config || normalizeGameConfig(node.config_raw || {});

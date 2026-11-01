@@ -533,4 +533,44 @@ const TYPES = ['say', 'choice', 'label', 'say', 'game', 'label', 'say', 'end', '
     console.log('PASS: 结束此对局块标记');
 }
 
+// 33) 选择节点可携带角色表情：? [角色|表情] 提示
+{
+    const src = '[A] hi\n? [导员ZERO|微笑] 选择是否观看\n- 观看 -> 教程\n- 不观看 -> 结束\n:教程\n[A] 开始\n结束';
+    const parsed = StoryScript.parse(src);
+    assert.deepEqual(parsed.errors, [], '选择角色表情不应产生解析错误');
+    const choice = parsed.nodes[1];
+    assert.equal(choice.type, 'choice');
+    assert.equal(choice.speaker, '导员ZERO', '应解析出角色名');
+    assert.equal(choice.expression, '微笑', '应解析出表情名');
+    assert.equal(choice.prompt, '选择是否观看', '提示文字不应带角色前缀');
+    assert.equal(choice.options.length, 2, '选项不应受影响');
+
+    // 只写角色不写表情
+    const onlyChar = StoryScript.parse('? [导员ZERO] 提示\n- 继续 -> 结束\n结束').nodes[0];
+    assert.equal(onlyChar.speaker, '导员ZERO');
+    assert.equal(onlyChar.expression, '');
+    assert.equal(onlyChar.prompt, '提示');
+
+    // 旧写法：无角色表情，保持兼容
+    const legacy = StoryScript.parse('? 旧提示\n- 继续 -> 结束\n结束').nodes[0];
+    assert.equal(legacy.speaker, '');
+    assert.equal(legacy.expression, '');
+    assert.equal(legacy.prompt, '旧提示');
+
+    // 还原后保持角色表情，并可再次解析
+    const out = StoryScript.stringify(parsed);
+    assert.ok(out.includes('? [导员ZERO|微笑] 选择是否观看'), `选择角色表情应完整还原：${out}`);
+    const again = StoryScript.parse(out).nodes[1];
+    assert.equal(again.speaker, '导员ZERO');
+    assert.equal(again.expression, '微笑');
+    assert.equal(again.prompt, '选择是否观看');
+    assert.deepEqual(StoryScript.validate(out), [], '还原后应校验通过');
+
+    // 运行时选择逻辑不变
+    const rt = new StoryRuntime(parsed);
+    assert.equal(rt.advance().type, 'choice');
+    assert.equal(rt.choose(0).text, '开始', '选项仍能跳转到目标标签');
+    console.log('PASS: 选择节点角色表情');
+}
+
 console.log('story-script: ALL PASS');

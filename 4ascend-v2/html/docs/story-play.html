@@ -288,7 +288,7 @@
         };
 
         // 表情框高 = 文本区高的 3/4；必须按 .dialogue-body 测量：
-        // 若按 .dialogue-inner 测量，已加载的角色图片会以固有尺寸（512×768）撑大黑框，
+        // 若按 .dialogue-inner 测量，已加载的角色图片会以固有尺寸（200×300）撑大黑框，
         // 算出的高度其实来自图片本身，导致表情图越画越大、占满对话框。
         const layoutFace = () => {
             const inner = document.querySelector('#dialogue .dialogue-inner');
@@ -545,7 +545,7 @@
                 return;
             }
             if (node.type === 'choice') {
-                renderFace('请选择', '');
+                renderFace(node.speaker || '请选择', node.expression || '');
                 typeText(applyPlaceholders(node.prompt));
                 const options = $('dialogue_options');
                 options.innerHTML = '';

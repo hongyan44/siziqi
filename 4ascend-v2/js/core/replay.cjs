@@ -71,6 +71,11 @@ const analysis_bar_black = document.getElementById('analysis_bar_black');
 const analysis_turn = document.getElementById('analysis_turn');
 const analysis_counts = document.getElementById('analysis_counts');
 const canvas_analysis = document.getElementById('canvas_analysis');
+const analysis_source = document.getElementById('analysis_source');
+const analysis_best = document.getElementById('analysis_best');
+const button_analysis_best = document.getElementById('button_analysis_best');
+const analysis_ai_state = document.getElementById('analysis_ai_state');
+const analysis_badge = document.getElementById('analysis_badge');
 
 
 const { ReplayAnalysis } = require('./replay-analysis.cjs');
@@ -85,7 +90,7 @@ const GameSound = window.GameExports.Sound;
 const ShToast = window.UiExports.ShToast;
 const BaseZalgo = window.UtilsExports.BaseZalgo;
 
-const { GameNormal, GameBlight, GameNight, Board, OVER_ENUM, ASCEND_ENUM, PLANT_ENUM, PLAYER_ENUM, STONE_ENUM, Pos, Rand, State, ATK, AIC, ArchiveV0, RandAIC, RandUnity, RandOther } = window.FAscendExports;
+const { GameNormal, GameBlight, GameNight, Board, OVER_ENUM, ASCEND_ENUM, PLANT_ENUM, PLAYER_ENUM, STONE_ENUM, Pos, Rand, State, ATK, AIC, ArchiveV0, RandAIC, RandUnity, RandOther, RulesRuntime } = window.FAscendExports;
 const EndgameArchive = window.EndgameExports.EndgameArchive;
 
 const toast = new ShToast();
@@ -517,6 +522,9 @@ const run = async () => {
     else if (mode === 1) game = new GameBlight(board, state, rand_aic, rand_unity);
     else if (mode === 2) game = new GameNight(board, state, rand_aic, rand_unity);
 
+    // 残局 AI 快照需要首手方与模型历史轨道，这里与真实对局保持一致。
+    RulesRuntime.initialize(game, state.turn_player);
+
 
     // 加载所有信息
     const info_canvas = [];
@@ -535,6 +543,10 @@ const run = async () => {
     // 局势分析用的纯数字盘面帧（0空 1黑 2白）
     const info_grid = [];
     const info_winner = [];
+
+    // 残局 AI 评估用：每手落子前的 RulesRuntime 快照与最近 7 个纯棋子盘面
+    const info_snapshot = [];
+    const solid_boards = [];
 
     const snapshot = (sound = null, view = null, title = null) => {
         const datas = [];
@@ -587,8 +599,17 @@ const run = async () => {
     turns.forEach((pos) => {
         if (is_win) return;
         const [x, y] = pos;
+
+        // 残局 AI 需要精确的落子前局面：完整快照 + 最近 7 个纯棋子盘面
+        const solid = RulesRuntime.solidBoard(game);
+        const before = RulesRuntime.snapshot(game);
+        before.history = solid_boards.map((board) => Array.from(board));
+
         // 回放严格复用真实对局顺序，并在本回合所有结算完成后保存完整帧。
         if (!game.ed_tr_1(x, y)) return;
+        info_snapshot.push(before);
+        solid_boards.push(solid);
+        if (solid_boards.length > 7) solid_boards.shift();
         game.ed_as_1();
         game.ed_as_2();
         game.ed_tr_2();
@@ -662,13 +683,370 @@ const run = async () => {
         return analysis_result;
     };
 
+    // -------------------------------------------------------------------------
+    // 回放 AI（ZeroAI SIM=120 整场扫盘 / 残局 AI SIM=888 正着分析）
+    // -------------------------------------------------------------------------
+    const SWEEP_SIMULATIONS = 120;
+    const BEST_SIMULATIONS = 888;
+
+    // 整场扫盘结果（每手落子后的胜率与着手质量）
+    const analysis_sweep_cache = new Map();
+    const analysis_sweep_failures = new Set();
+    // 点击「正着分析」后由 888 SIM 残局 AI 给出的正着
+    const analysis_best_cache = new Map();
+    const analysis_best_failures = new Set();
+
+    let analysis_ai_thread = null;
+    let analysis_ai_worker = null;
+    let analysis_ai_ready = false;
+    let analysis_ai_failed = false;
+    let analysis_ai_init = null;
+
+    // Worker 串行任务队列：正着分析插队优先，整场扫盘按序补齐
+    let analysis_jobs = [];
+    let analysis_job_running = null;
+
     /**
-     * @description: 绘制胜率曲线
-     * @param {object} result
+     * @description: 懒加载回放 AI Worker（首次需要下载 ONNX 模型）
+     * @return {Promise<boolean>}
+     */
+    const ensure_analysis_ai = () => {
+        if (analysis_ai_ready) return Promise.resolve(true);
+        if (analysis_ai_failed) return Promise.resolve(false);
+        if (typeof Worker === 'undefined' || typeof Comlink === 'undefined') {
+            analysis_ai_failed = true;
+            return Promise.resolve(false);
+        }
+        if (analysis_ai_init) return analysis_ai_init;
+
+        analysis_ai_init = (async () => {
+            try {
+                analysis_ai_thread = new Worker('/js/worker/ai.min.js');
+                analysis_ai_worker = Comlink.wrap(analysis_ai_thread);
+                await analysis_ai_worker.AI_INIT();
+                analysis_ai_ready = true;
+                return true;
+            } catch (error) {
+                console.warn('回放 AI 加载失败，回退静态评估。', error);
+                analysis_ai_failed = true;
+                if (analysis_ai_thread) analysis_ai_thread.terminate();
+                analysis_ai_thread = null;
+                analysis_ai_worker = null;
+                return false;
+            }
+        })();
+        return analysis_ai_init;
+    };
+
+    /**
+     * @description: 按 AI 的 q 值判定国际象棋式标识
+     * 本手与正着同档时比较正着领先次优解的差距，否则按相对正着的损失分档。
+     * @param {object | null} result
+     * @return {'brilliant' | 'good' | 'interesting' | 'dubious' | 'mistake' | 'blunder' | null}
+     */
+    const analysis_ai_label = (result) => {
+        if (!result || !Number.isFinite(result.bestQ) || !Number.isFinite(result.actualQ)) return null;
+
+        const regret = Math.max(0, result.bestQ - result.actualQ);
+        if (regret >= 0.14) return 'blunder';
+        if (regret >= 0.06) return 'mistake';
+        if (regret >= 0.02) return 'dubious';
+
+        const second = Number.isFinite(result.secondQ) ? result.secondQ : result.bestQ;
+        const gap = Math.max(0, result.bestQ - second);
+        if (gap >= 0.07) return 'brilliant';
+        if (gap >= 0.035) return 'good';
+        return 'interesting';
+    };
+
+    /**
+     * @description: 行棋方 q 值（-1~1）换算成该方胜率
+     * @param {number} q
+     * @return {number | null}
+     */
+    const analysis_side_rate = (q) => {
+        if (!Number.isFinite(q)) return null;
+        return Math.min(1, Math.max(0, (1 + q) / 2));
+    };
+
+    /**
+     * @description: 整场扫盘中某一手落子后的黑方胜率
+     * @param {number} index
+     * @return {number | null}
+     */
+    const analysis_sweep_black_rate = (index) => {
+        const item = index >= 0 ? analysis_sweep_cache.get(index) : null;
+        if (!item) return null;
+        const side = analysis_side_rate(Number.isFinite(item.actualQ) ? item.actualQ : item.winRate);
+        if (side === null) return null;
+        return item.mover === 0 ? side : 1 - side;
+    };
+
+    /**
+     * @description: 888 SIM 正着分析中某一手落子后的黑方胜率
+     * @param {number} index
+     * @return {number | null}
+     */
+    const analysis_best_black_rate = (index) => {
+        const item = index >= 0 ? analysis_best_cache.get(index) : null;
+        if (!item) return null;
+        const side = analysis_side_rate(item.actualQ);
+        if (side === null) return null;
+        return item.mover === 0 ? side : 1 - side;
+    };
+
+    /**
+     * @description: 某一手的标识：优先正着分析，其次整场扫盘，最后回退静态评估
+     * @param {number} index
+     * @return {string | null}
+     */
+    const analysis_label_of = (index) => {
+        const best = index >= 0 ? analysis_best_cache.get(index) : null;
+        if (best && best.label) return best.label;
+        const sweep = index >= 0 ? analysis_sweep_cache.get(index) : null;
+        if (sweep && sweep.label) return sweep.label;
+        const move = index >= 0 ? ensure_analysis().moves[index] : null;
+        return move ? move.label : null;
+    };
+
+    /**
+     * @description: 某一手的黑方胜率：正着分析 > 整场扫盘 > 静态评估
+     * @param {number} index
+     * @param {number} static_rate
+     * @return {number}
+     */
+    const analysis_point_rate = (index, static_rate) => {
+        if (index < 0) return 0.5;
+        const frame = analysis_frames[index];
+        if (frame && (frame.winner === 0 || frame.winner === 1)) return frame.winner === 0 ? 1 : 0;
+
+        const best = analysis_best_black_rate(index);
+        if (best !== null) return best;
+        const sweep = analysis_sweep_black_rate(index);
+        if (sweep !== null) return sweep;
+        return Number.isFinite(static_rate) ? static_rate : 0.5;
+    };
+
+    /**
+     * @description: 是否仍有 AI 任务在排队或执行
+     * @return {boolean}
+     */
+    const analysis_ai_busy = () => Boolean(analysis_job_running) || analysis_jobs.length > 0;
+
+    /**
+     * @description: 任务入队；正着分析优先于整场扫盘
+     * @param {{type: 'sweep' | 'best', index: number}} job
+     * @return {void}
+     */
+    const analysis_push_job = (job) => {
+        if (!job || job.index < 0 || job.index >= info_snapshot.length) return;
+
+        if (job.type === 'best') {
+            if (analysis_best_cache.has(job.index) || analysis_best_failures.has(job.index)) return;
+            analysis_jobs = analysis_jobs.filter((item) => !(item.type === 'best' && item.index === job.index));
+            analysis_jobs.unshift(job);
+        } else {
+            if (analysis_sweep_cache.has(job.index) || analysis_sweep_failures.has(job.index)) return;
+            if (analysis_jobs.some((item) => item.type === 'sweep' && item.index === job.index)) return;
+            analysis_jobs.push(job);
+        }
+
+        analysis_job_pump();
+    };
+
+    const analysis_job_pump = () => {
+        if (!analysis_open()) {
+            analysis_jobs = [];
+            return;
+        }
+        if (analysis_job_running || !analysis_jobs.length) return;
+
+        const job = analysis_jobs.shift();
+        analysis_job_running = job;
+
+        (async () => {
+            try {
+                const ready = await ensure_analysis_ai();
+                if (!ready) return;
+
+                const view = info_view[job.index];
+                const actual = view ? view[1] * 9 + view[0] : null;
+                const result = job.type === 'best'
+                    ? await analysis_ai_worker.REPLAY_EVAL(info_snapshot[job.index], BEST_SIMULATIONS, actual)
+                    : await analysis_ai_worker.REPLAY_SWEEP(info_snapshot[job.index], SWEEP_SIMULATIONS, actual);
+
+                if (result && Number.isInteger(result.action) && result.action >= 0) {
+                    result.label = analysis_ai_label(result);
+                    if (job.type === 'best') analysis_best_cache.set(job.index, result);
+                    else analysis_sweep_cache.set(job.index, result);
+                } else if (job.type === 'best') {
+                    analysis_best_failures.add(job.index);
+                } else {
+                    analysis_sweep_failures.add(job.index);
+                }
+            } catch (error) {
+                console.warn('回放 AI 评估失败。', error);
+                if (job.type === 'best') analysis_best_failures.add(job.index);
+                else analysis_sweep_failures.add(job.index);
+            } finally {
+                analysis_job_running = null;
+                if (analysis_open()) {
+                    if (ptr === job.index) refresh_analysis_overlay();
+                    render_analysis();
+                }
+                // 单个失败不应阻塞其余任务，继续补齐下一手
+                analysis_job_pump();
+            }
+        })();
+    };
+
+    /**
+     * @description: 把某一手的扫盘任务提到队首（切到该手时优先分析）
      * @param {number} index
      * @return {void}
      */
-    const draw_analysis_chart = (result, index) => {
+    const analysis_sweep_prioritize = (index) => {
+        if (!analysis_open() || analysis_ai_failed) return;
+        if (index < 0 || index >= info_snapshot.length) return;
+        if (analysis_sweep_cache.has(index) || analysis_sweep_failures.has(index)) return;
+        if (analysis_job_running && analysis_job_running.type === 'sweep' && analysis_job_running.index === index) return;
+
+        const rest = analysis_jobs.filter((item) => !(item.type === 'sweep' && item.index === index));
+        analysis_jobs = [{ 'type': 'sweep', 'index': index }, ...rest];
+        analysis_job_pump();
+    };
+
+    /**
+     * @description: 补齐整场扫盘；当前手优先，其余按顺序排队
+     * @return {void}
+     */
+    const analysis_sweep_all = () => {
+        if (!analysis_open() || analysis_ai_failed) return;
+
+        analysis_sweep_prioritize(ptr);
+        for (let i = 0; i < info_snapshot.length; i++) {
+            if (i === ptr) continue;
+            analysis_push_job({ 'type': 'sweep', 'index': i });
+        }
+        render_analysis();
+    };
+
+    /**
+     * @description: 用户点击「正着分析」后请求 888 SIM 残局 AI
+     * @param {number} index
+     * @return {void}
+     */
+    const analysis_best_request = (index) => {
+        if (!analysis_open() || analysis_ai_failed) return;
+        if (index < 0 || index >= info_snapshot.length) return;
+        if (analysis_best_cache.has(index) || analysis_best_failures.has(index)) return;
+        if (analysis_job_running && analysis_job_running.type === 'best' && analysis_job_running.index === index) return;
+        analysis_push_job({ 'type': 'best', 'index': index });
+        render_analysis();
+    };
+
+    /**
+     * @description: 正着分析给出的推荐落点
+     * @param {number} index
+     * @return {object | null}
+     */
+    const analysis_ai_best_of = (index) => {
+        const ai = index >= 0 ? analysis_best_cache.get(index) : null;
+        if (!ai || !Number.isInteger(ai.action) || ai.action < 0) return null;
+        return ai;
+    };
+
+    /**
+     * @description: 在棋盘上用浅蓝圆框标出残局 AI 推荐的落点
+     * @param {number} index
+     * @return {void}
+     */
+    const draw_analysis_ai_move = (index) => {
+        const ai = analysis_ai_best_of(index);
+        if (!ai || !gl_ui || !gl_ui.canvas_view_move) return;
+
+        const ctx = gl_ui.canvas_view_move.getContext('2d');
+        const x = gl_ui.offset + ai.x * gl_ui.spacing;
+        const y = gl_ui.offset + ai.y * gl_ui.spacing;
+        // 比实落子圈略大，保证两者重合时仍能看到推荐框
+        const radius = gl_ui.spacing * gl_ui.stone_radius * 1.45;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.strokeStyle = '#7DD3FC';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        ctx.restore();
+    };
+
+    /**
+     * @description: 在当前落子点右上角显示着手标识（纯 UI 叠加）
+     * @param {number} index
+     * @return {void}
+     */
+    const update_move_badge = (index) => {
+        if (!analysis_badge) return;
+
+        const view = index >= 0 ? info_view[index] : null;
+        if (!analysis_open() || !view) {
+            analysis_badge.classList.add('d-none');
+            return;
+        }
+
+        const label = analysis_label_of(index);
+        if (!label) {
+            analysis_badge.classList.add('d-none');
+            return;
+        }
+
+        // 棋盘几何按比例换算，窗口缩放时位置保持一致
+        const x_px = gl_ui.offset + view[0] * gl_ui.spacing + gl_ui.spacing * gl_ui.stone_radius * 0.78;
+        const y_px = gl_ui.offset + view[1] * gl_ui.spacing - gl_ui.spacing * gl_ui.stone_radius * 0.78;
+        const left = Math.min(Math.max((x_px / gl_ui.size) * 100, 4), 96);
+        const top = Math.min(Math.max((y_px / gl_ui.size) * 100, 4), 96);
+
+        analysis_badge.style.left = `${left}%`;
+        analysis_badge.style.top = `${top}%`;
+        analysis_badge.style.background = ANALYSIS_COLORS[label];
+        analysis_badge.innerText = ANALYSIS_SYMBOLS[label];
+        analysis_badge.classList.remove('d-none');
+    };
+
+    /**
+     * @description: 只刷新当前帧的落点圈与着手标识，不重放整帧
+     * @return {void}
+     */
+    const refresh_analysis_overlay = () => {
+        if (ptr < 0) return;
+        const view = info_view[ptr];
+        if (!view) return;
+
+        gl_ui.canvas_view_turn.getContext('2d').clearRect(0, 0, gl_ui.size, gl_ui.size);
+        gl_ui.clear_view_move();
+
+        if (!analysis_open()) {
+            if (analysis_badge) analysis_badge.classList.add('d-none');
+            gl_ui.draw_stone_turn(view[0], view[1], '#00FFC5', 5);
+            return;
+        }
+
+        const label = analysis_label_of(ptr);
+        if (label) {
+            gl_ui.draw_stone_turn(view[0], view[1], ANALYSIS_COLORS[label], 5);
+            update_move_badge(ptr);
+        }
+        draw_analysis_ai_move(ptr);
+    };
+
+    /**
+     * @description: 绘制胜率曲线（优先 ZeroAI SIM=120 扫盘数据，未分析的手回退静态估算）
+     * @param {object} result
+     * @param {number} index
+     * @param {number | null} current_rate 当前手胜率
+     * @return {void}
+     */
+    const draw_analysis_chart = (result, index, current_rate = null) => {
         if (!canvas_analysis) return;
 
         const dpr = window.devicePixelRatio || 1;
@@ -703,7 +1081,7 @@ const run = async () => {
         ctx.fillText('黑', pad_x, pad_y - 4);
         ctx.fillText('白', pad_x, height - 3);
 
-        const rates = result.rates;
+        const rates = analysis_frames.map((frame, i) => analysis_point_rate(i, result.rates[i]));
         if (!rates.length) return;
 
         const x_of = (i) => rates.length === 1 ? pad_x + inner_w / 2 : pad_x + (i / (rates.length - 1)) * inner_w;
@@ -721,23 +1099,26 @@ const run = async () => {
         });
         ctx.stroke();
 
-        // 每手质量点
+        // 每手质量点（残局 AI 已评估的手优先用 AI 标识，与徽标保持一致）
         result.moves.forEach((move, i) => {
+            const label = analysis_label_of(i) || move.label;
+            if (!label) return;
+
             const x = x_of(i);
             const y = y_of(rates[i]);
-            const radius = move.label === 'brilliant'
+            const radius = label === 'brilliant'
                 ? 3
-                : move.label === 'interesting' || move.label === 'dubious' ? 1.7 : 2.6;
+                : label === 'interesting' || label === 'dubious' ? 1.7 : 2.6;
             ctx.beginPath();
             ctx.arc(x, y, radius, 0, Math.PI * 2);
-            ctx.fillStyle = ANALYSIS_COLORS[move.label];
+            ctx.fillStyle = ANALYSIS_COLORS[label];
             ctx.fill();
         });
 
         // 当前帧
         if (index >= 0 && index < rates.length) {
             const x = x_of(index);
-            const y = y_of(rates[index]);
+            const y = y_of(Number.isFinite(current_rate) ? current_rate : rates[index]);
 
             ctx.strokeStyle = 'rgba(15, 23, 42, 0.35)';
             ctx.setLineDash([2, 2]);
@@ -764,47 +1145,114 @@ const run = async () => {
 
         const result = ensure_analysis();
         const index = ptr;
-        const rate = index >= 0 && index < result.rates.length ? result.rates[index] : 0.5;
+        const static_rate = index >= 0 && index < result.rates.length ? result.rates[index] : 0.5;
+        const rate = analysis_point_rate(index, static_rate);
+        const best = index >= 0 ? analysis_best_cache.get(index) || null : null;
+        const sweep = index >= 0 ? analysis_sweep_cache.get(index) || null : null;
+        const total = info_snapshot.length;
 
         if (analysis_black_rate) analysis_black_rate.innerText = `黑方 ${(rate * 100).toFixed(1)}%`;
         if (analysis_white_rate) analysis_white_rate.innerText = `白方 ${((1 - rate) * 100).toFixed(1)}%`;
         if (analysis_bar_black) analysis_bar_black.style.width = `${(rate * 100).toFixed(2)}%`;
+        if (analysis_source) {
+            analysis_source.innerText = analysis_ai_failed
+                ? '胜率来源：静态估算（ZeroAI 不可用）'
+                : `胜率来源：ZeroAI · SIM=120（${analysis_sweep_cache.size}/${total} 手，未分析部分为静态估算）`;
+        }
 
         if (analysis_turn) {
             if (index < 0) {
-                analysis_turn.innerText = '初始局面 · 黑方 50.0%';
+                analysis_turn.innerText = '初始局面 · 请进入某一手查看胜率与着手质量';
                 analysis_turn.style.color = '';
             } else {
+                const label = analysis_label_of(index);
                 const move = result.moves[index];
                 const mover = info_turn[index] === PLAYER_ENUM.WHITE ? '黑方' : '白方';
-                const sign = move.delta >= 0 ? '+' : '';
-                const symbol = ANALYSIS_SYMBOLS[move.label];
-                analysis_turn.innerText = `第 ${index + 1} 手 · ${mover} · ${symbol} ${ANALYSIS_LABELS[move.label]}（${sign}${(move.delta * 100).toFixed(1)}%）`;
-                analysis_turn.style.color = ANALYSIS_COLORS[move.label];
+                const item = best || sweep;
+                let detail;
+                if (item && Number.isFinite(item.actualQ)) {
+                    detail = `本手胜率 ${(analysis_side_rate(item.actualQ) * 100).toFixed(1)}%`;
+                    if (Number.isFinite(item.bestQ)) {
+                        detail += ` · 正着 ${(analysis_side_rate(item.bestQ) * 100).toFixed(1)}%`;
+                    }
+                } else {
+                    detail = `${move.delta >= 0 ? '+' : ''}${(move.delta * 100).toFixed(1)}%`;
+                }
+                const quality = label ? `${ANALYSIS_SYMBOLS[label]} ${ANALYSIS_LABELS[label]}` : '未评估';
+                analysis_turn.innerText = `第 ${index + 1} 手 · ${mover} · ${quality}（${detail}）`;
+                analysis_turn.style.color = label ? ANALYSIS_COLORS[label] : '';
             }
         }
 
-        if (analysis_counts) {
-            analysis_counts.innerText = ANALYSIS_ORDER
-                .map((label) => `${ANALYSIS_SYMBOLS[label]} ${result.counts[label]}`)
-                .join(' · ');
+        if (analysis_best) {
+            if (index < 0) {
+                analysis_best.innerText = '请先进入回放的某一手';
+            } else if (best) {
+                const actual = info_view[index];
+                const same = actual && actual[0] === best.x && actual[1] === best.y;
+                const q = Number.isFinite(best.bestQ) ? `胜率 ${(analysis_side_rate(best.bestQ) * 100).toFixed(1)}%` : '—';
+                analysis_best.innerHTML = `<div>第 ${best.x + 1} 列 · 第 ${9 - best.y} 行 `
+                    + `<span style="color: #0f172a; font-weight: 700;">${q}</span>`
+                    + (same ? ' <span style="color: #16a34a; font-weight: 700;">本手即正着</span>' : '')
+                    + `</div><div class="text-muted" style="font-size: 0.68rem;">`
+                    + `${best.source} · ${best.simulations} 模拟 · ${Math.round(best.milliseconds)}ms</div>`;
+            } else if (analysis_ai_failed) {
+                analysis_best.innerText = 'ZeroAI 不可用';
+            } else if (analysis_best_failures.has(index)) {
+                analysis_best.innerText = '该手评估失败';
+            } else if (analysis_job_running && analysis_job_running.type === 'best' && analysis_job_running.index === index) {
+                analysis_best.innerText = '正在用 888 SIM 残局 AI 分析本手正着…';
+            } else {
+                analysis_best.innerText = '点击「正着分析」按钮，用 888 SIM 残局 AI 计算本手正着';
+            }
         }
 
-        draw_analysis_chart(result, index);
+        if (analysis_ai_state) {
+            if (analysis_ai_failed) analysis_ai_state.innerText = 'ZeroAI 不可用';
+            else if (analysis_ai_busy()) analysis_ai_state.innerText = `分析中… ${analysis_sweep_cache.size}/${total} 手`;
+            else if (analysis_ai_ready) analysis_ai_state.innerText = `ZeroAI 已就绪 · ${analysis_sweep_cache.size}/${total} 手`;
+            else analysis_ai_state.innerText = '加载中…';
+        }
+
+        if (button_analysis_best) {
+            const running = analysis_job_running && analysis_job_running.type === 'best' && analysis_job_running.index === index;
+            button_analysis_best.disabled = Boolean(index < 0 || analysis_ai_failed || best || running);
+        }
+
+        if (analysis_counts) {
+            const counts = Object.fromEntries(ANALYSIS_ORDER.map((label) => [label, 0]));
+            let analyzed = 0;
+            analysis_frames.forEach((frame, i) => {
+                if (!analysis_sweep_cache.has(i) && !analysis_best_cache.has(i)) return;
+                analyzed++;
+                const label = analysis_label_of(i);
+                if (label) counts[label] += 1;
+            });
+            analysis_counts.innerText = `已分析 ${analyzed}/${total} 手 · `
+                + ANALYSIS_ORDER.map((label) => `${ANALYSIS_SYMBOLS[label]} ${counts[label]}`).join(' · ');
+        }
+
+        draw_analysis_chart(result, index, rate);
     };
 
     if (button_analysis_toggle) button_analysis_toggle.addEventListener('click', () => {
         if (!analysis_panel) return;
         if (analysis_panel.classList.contains('d-none')) {
             analysis_panel.classList.remove('d-none');
-            render_analysis();
+            analysis_sweep_all();
         } else {
             analysis_panel.classList.add('d-none');
         }
+        refresh_analysis_overlay();
     });
 
     if (button_analysis_close) button_analysis_close.addEventListener('click', () => {
         if (analysis_panel) analysis_panel.classList.add('d-none');
+        refresh_analysis_overlay();
+    });
+
+    if (button_analysis_best) button_analysis_best.addEventListener('click', () => {
+        analysis_best_request(ptr);
     });
 
     if (canvas_analysis) canvas_analysis.addEventListener('click', (event) => {
@@ -819,7 +1267,7 @@ const run = async () => {
     });
 
     window.addEventListener('resize', () => {
-        if (analysis_open() && analysis_result) draw_analysis_chart(analysis_result, ptr);
+        if (analysis_open() && analysis_result) render_analysis();
     });
 
 
@@ -972,6 +1420,7 @@ const run = async () => {
         gl_ui.canvas_stone_ascend.getContext('2d').clearRect(0, 0, gl_ui.size, gl_ui.size);
         gl_ui.canvas_plant.getContext('2d').clearRect(0, 0, gl_ui.size, gl_ui.size);
         gl_ui.canvas_view_turn.getContext('2d').clearRect(0, 0, gl_ui.size, gl_ui.size);
+        gl_ui.clear_view_move();
 
         const points = info_canvas[p];
         points.forEach((pos) => {
@@ -1004,12 +1453,23 @@ const run = async () => {
 
         // 回合（开启分析时用着手质量颜色标注最新落点）
         let view_color = '#00FFC5';
+        let analysis_label = null;
         if (analysis_open()) {
-            const move = ensure_analysis().moves[p];
-            if (move) view_color = ANALYSIS_COLORS[move.label];
+            analysis_label = analysis_label_of(p);
+            if (analysis_label) view_color = ANALYSIS_COLORS[analysis_label];
         }
         const view = info_view[p];
         if (view) gl_ui.draw_stone_turn(view[0], view[1], view_color, 5);
+
+        // 当前落子点右上角显示着手标识（纯 UI 叠加）
+        if (analysis_label) {
+            update_move_badge(p);
+        } else if (analysis_badge) {
+            analysis_badge.classList.add('d-none');
+        }
+
+        // 残局 AI 推荐落点（浅蓝圆框）
+        if (analysis_open()) draw_analysis_ai_move(p);
 
         // 声音
         const sound = info_sound[p];
@@ -1058,6 +1518,7 @@ const run = async () => {
 
         // 局势分析面板
         render_analysis();
+        analysis_sweep_prioritize(p);
     }
 };
 

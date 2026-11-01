@@ -185,6 +185,73 @@ const thinkAndCommit = async (engine, simulations, synchronizeRandom = false) =>
 };
 
 
+/**
+ * 回放评估：在落子前快照上运行 ONNX 推理 + MCTS，返回正着 / 本手 / 次优的 q 值。
+ * @param {object} snapshot RulesRuntime 快照（实际落子之前的局面）
+ * @param {number} simulations MCTS 模拟次数
+ * @param {number|null} actualAction 实际落点（flat index）
+ * @param {boolean} useTactics 是否叠加残局战术（斩杀 / 防自杀）矫正正着
+ * @return {Promise<object>}
+ */
+const replayEvaluate = async (snapshot, simulations, actualAction, useTactics) => {
+    const game = RulesRuntime.fromSnapshot(snapshot);
+    const mover = game.state.turn_player;
+    const fallback = useTactics ? 888 : 120;
+    const requested = clampInteger(simulations, fallback, useTactics ? 64 : 16, 3000);
+
+    // 正着优先采用残局战术矫正（斩杀 / 防自杀），无命中时回退 MCTS 首选。
+    const tactical = useTactics ? endgameTactics.chooseMove(game) : null;
+    const tacticalAction = tactical && Number.isInteger(tactical.action) ? tactical.action : null;
+
+    const evaluator = await ensureInitialized('zero');
+    const search = new MctsSearch(evaluator, RulesRuntime, {
+        'cPuct': 2.0,
+        'maximumMilliseconds': 45000,
+    });
+    const result = await search.search(game, requested);
+    const top = Array.isArray(result.top) ? result.top : [];
+
+    // 取某一落点对行棋方的价值；MCTS 未展开时用一次模型评估兜底。
+    const valueOf = async (action) => {
+        if (!Number.isInteger(action) || action < 0 || action >= 81) return null;
+        const hit = top.find((edge) => edge.action === action);
+        if (hit) return hit.q;
+
+        const child = RulesRuntime.fork(game);
+        const applied = RulesRuntime.applyMove(child, action);
+        if (!applied.legal) return null;
+        if (applied.winner) return applied.winner === mover ? 1 : -1;
+        const prediction = await evaluator.evaluate(child);
+        return Number.isFinite(prediction.value) ? -prediction.value : null;
+    };
+
+    const action = tacticalAction !== null ? tacticalAction : result.action;
+    const rawActual = Number(actualAction);
+    const actualIndex = Number.isInteger(rawActual) && rawActual >= 0 && rawActual < 81 ? rawActual : null;
+    const bestQ = await valueOf(action);
+    const actualQ = actualIndex === null ? null : await valueOf(actualIndex);
+    const secondQ = top
+        .filter((edge) => edge.action !== action && Number.isFinite(edge.q))
+        .reduce((best, edge) => (best === null || edge.q > best ? edge.q : best), null);
+
+    return {
+        'action': action,
+        'x': action % 9,
+        'y': Math.floor(action / 9),
+        'source': tacticalAction !== null ? (tactical.engine || 'endgame-tactics') : '4zero-mcts',
+        'reason': tacticalAction !== null ? (tactical.reason || null) : null,
+        'winRate': result.winRate,
+        'mover': mover === PLAYER_ENUM.WHITE ? 1 : 0,
+        'bestQ': bestQ,
+        'actualQ': actualQ,
+        'secondQ': secondQ,
+        'simulations': result.simulations,
+        'milliseconds': result.milliseconds || 0,
+        'top': top.map((edge) => ({ 'action': edge.action, 'q': edge.q, 'visits': edge.visits })),
+    };
+};
+
+
 Comlink.expose({
     async AI_INIT() {
         await ensureInitialized('zero');
@@ -303,6 +370,29 @@ Comlink.expose({
             lastEndgameSearch.overriddenMcts = true;
         }
         return lastEndgameSearch;
+    },
+
+    /**
+     * 回放复盘评估：套用残局 AI 链路（EndgameTactics + 4zero MCTS + ONNX），
+     * 但使用独立棋局，不触碰残局挑战状态，并保留自然刷草。
+     * @param {object} snapshot RulesRuntime 快照（实际落子之前的局面）
+     * @param {number} simulations MCTS 模拟次数
+     * @param {number|null} actualAction 实际落点（flat index），用于评估本手
+     * @return {Promise<object>} 正着、胜率、正着/本手的 q 值
+     */
+    async REPLAY_EVAL(snapshot, simulations = 888, actualAction = null) {
+        return replayEvaluate(snapshot, simulations, actualAction, true);
+    },
+
+    /**
+     * 回放整场扫盘：纯 ZeroAI（不含残局战术），用于胜率折线与着手质量。
+     * @param {object} snapshot RulesRuntime 快照（实际落子之前的局面）
+     * @param {number} simulations MCTS 模拟次数
+     * @param {number|null} actualAction 实际落点（flat index）
+     * @return {Promise<object>}
+     */
+    async REPLAY_SWEEP(snapshot, simulations = 120, actualAction = null) {
+        return replayEvaluate(snapshot, simulations, actualAction, false);
     },
 
     /** 调试：只跑战术遍历，不触发 ONNX / MCTS。 */
