@@ -53,16 +53,17 @@
         .story-board-wrap { box-shadow: 0 0 0 2px rgba(52, 152, 219, .08), 0 12px 28px rgba(0, 0, 0, .12); }
         .story-board-wrap.is-dialogue { pointer-events: none; }
         #game_p1_name, #game_p1_hp, #game_p2_name, #game_p2_hp { transition: color .5s ease; }
-        .dialogue-panel { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1100; padding: .75rem; transition: transform .3s ease, opacity .3s ease; }
+        /* 对话框高度固定为半屏；表情框固定 120×180，靠左并垂直居中 */
+        .dialogue-panel { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1100; height: 50vh; box-sizing: border-box; padding: .75rem; transition: transform .3s ease, opacity .3s ease; }
         .dialogue-panel.is-hidden { transform: translateY(120%); opacity: 0; pointer-events: none; }
-        .dialogue-inner { max-width: 900px; margin-inline: auto; background: rgba(23, 26, 33, .94); color: #f5f6f8; border-radius: .8rem; box-shadow: 0 -6px 26px rgba(0, 0, 0, .35); padding: 1rem 1.1rem 1.1rem; cursor: pointer; display: flex; align-items: center; gap: 1rem; }
+        .dialogue-inner { height: 100%; box-sizing: border-box; max-width: 900px; margin-inline: auto; background: rgba(23, 26, 33, .94); color: #f5f6f8; border-radius: .8rem; box-shadow: 0 -6px 26px rgba(0, 0, 0, .35); padding: 1rem 1.1rem 1.1rem; cursor: pointer; display: flex; align-items: center; gap: 1rem; }
         .met-cursor-pointer .dialogue-inner { cursor: pointer; }
-        .dialogue-face { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: .4rem; }
-        .dialogue-face-frame { position: relative; display: flex; align-items: center; justify-content: center; border: 2px solid #000; border-radius: .4rem; background: #0b0d11; overflow: hidden; }
+        .dialogue-face { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .4rem; }
+        .dialogue-face-frame { position: relative; flex: 0 0 auto; width: 120px; height: 180px; display: flex; align-items: center; justify-content: center; border: 2px solid #000; border-radius: .4rem; background: #0b0d11; overflow: hidden; }
         .dialogue-face-frame img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; }
         .dialogue-face-frame sl-icon { font-size: 1.6rem; color: #57616e; }
         .dialogue-speaker { font-weight: 700; font-size: .95rem; line-height: 1.25; color: #8fd0ff; text-align: center; max-width: 100%; word-break: break-all; }
-        .dialogue-body { flex: 1 1 auto; min-width: 0; }
+        .dialogue-body { flex: 1 1 auto; min-width: 0; max-height: 100%; overflow-y: auto; display: flex; flex-direction: column; justify-content: safe center; }
         .dialogue-text { font-size: clamp(1rem, 2.4vw, 1.18rem); line-height: 1.85; min-height: 4.2em; white-space: pre-wrap; }
         .dialogue-options { display: flex; flex-direction: column; gap: .5rem; margin-top: .85rem; }
         .dialogue-option { text-align: left; border: 1px solid rgba(143, 208, 255, .5); background: rgba(52, 152, 219, .16); color: #eaf6ff; border-radius: .5rem; padding: .55rem .8rem; font-size: 1rem; transition: background .15s ease, border-color .15s ease; }
@@ -238,7 +239,6 @@
             typingIndex = typingChars.length;
             $('dialogue_text').textContent = typingChars.join('');
             $('dialogue_next').classList.remove('d-none');
-            layoutFace();
             return true;
         };
         const typeText = (text) => {
@@ -250,21 +250,20 @@
             typingTimer = setInterval(() => {
                 typingIndex++;
                 $('dialogue_text').textContent = typingChars.slice(0, typingIndex).join('');
-                layoutFace();
                 if (typingIndex >= typingChars.length) { clearInterval(typingTimer); typingTimer = null; $('dialogue_next').classList.remove('d-none'); }
             }, 22);
         };
         const applyPlaceholders = (text) => String(text == null ? '' : text).split('<玩家名称>').join(playerName);
 
-        // ==================== 角色表情框（对话框最左侧固定） ====================
-        const FACE_RATIO = 1.5; // 宽 : 高 = 1 : 1.5（竖版）
+        // ==================== 角色表情框（对话框最左侧固定 120×180） ====================
         const characterIndex = new Map();
 
-        // 拉取角色与表情数据（管理员上传），建立 角色名 -> {代表图, 表情名->图} 索引
-        const loadCharacters = async () => {
+        // 只拉取本关剧本用到的角色与表情（管理员上传），建立 角色名 -> {代表图, 表情名->图} 索引
+        const loadCharacters = async (faces) => {
             characterIndex.clear();
+            if (!faces || !faces.length) return;
             try {
-                const data = window.http_story_character_query ? await window.http_story_character_query() : null;
+                const data = window.http_story_character_query ? await window.http_story_character_query(faces) : null;
                 const list = data && Array.isArray(data.characters) ? data.characters : [];
                 list.forEach((item) => {
                     if (!item || !item.name) return;
@@ -279,6 +278,26 @@
             }
         };
 
+        // 进入关卡前预加载本关会用到的角色图，避免播放时逐句换图出现空白
+        const preloadFaces = async (faces) => {
+            const sources = new Set();
+            (faces || []).forEach((face) => {
+                const character = characterIndex.get(String(face.name));
+                if (!character) return;
+                if (character.rep) sources.add(character.rep);
+                (face.expressions || []).forEach((expression) => {
+                    const image = character.expressions.get(String(expression));
+                    if (image) sources.add(image);
+                });
+            });
+            await Promise.all(Array.from(sources, (src) => new Promise((resolve) => {
+                const image = new Image();
+                image.onload = () => resolve();
+                image.onerror = () => resolve();
+                image.src = src;
+            })));
+        };
+
         // 取图：优先命中指定表情，其次回退角色代表图
         const faceImage = (speaker, expression) => {
             const character = characterIndex.get(String(speaker == null ? '' : speaker));
@@ -287,25 +306,7 @@
             return image || character.rep || '';
         };
 
-        // 表情框高 = 文本区高的 3/4；必须按 .dialogue-body 测量：
-        // 若按 .dialogue-inner 测量，已加载的角色图片会以固有尺寸（200×300）撑大黑框，
-        // 算出的高度其实来自图片本身，导致表情图越画越大、占满对话框。
-        const layoutFace = () => {
-            const inner = document.querySelector('#dialogue .dialogue-inner');
-            const body = document.querySelector('#dialogue .dialogue-body');
-            const frame = $('dialogue_face_frame');
-            if (!inner || !body || !frame) return;
-            const style = window.getComputedStyle(inner);
-            const padding = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
-            const innerHeight = body.getBoundingClientRect().height + padding;
-            if (!innerHeight) return;
-            const height = Math.max(48, Math.round(innerHeight * 0.75));
-            const width = Math.max(32, Math.round(height / FACE_RATIO));
-            frame.style.height = `${height}px`;
-            frame.style.width = `${width}px`;
-        };
-
-        // 刷新表情框：角色名放在表情框下方，无图时回退占位图标
+        // 刷新表情框：角色名放在表情框下方，无图时回退占位图标；尺寸由 CSS 固定
         const renderFace = (speaker, expression) => {
             $('dialogue_speaker').textContent = speaker || '旁白';
             const image = faceImage(speaker, expression);
@@ -320,7 +321,6 @@
                 img.classList.add('d-none');
                 holder.classList.remove('d-none');
             }
-            layoutFace();
         };
 
         // ==================== 剧情标注（红色动态箭头 / 旋转虚线圈） ====================
@@ -1037,11 +1037,15 @@
             gameOver = true;
             // winner 为 null 表示残局达到结束步数而中止，按平局处理
             const outcome = winner === null || winner === undefined ? 'draw' : winner === selfPlayer ? 'win' : 'lose';
+            // 结束后=继续：不显示胜负，显示「继续」并直接进入下一段剧情
+            const continuing = Boolean(currentConfig && currentConfig.post === 'continue');
+            const icon = continuing ? 'arrow-right-circle' : outcome === 'win' ? 'trophy' : outcome === 'lose' ? 'x-octagon' : 'hourglass-split';
+            const text = continuing ? '继续' : outcome === 'win' ? '胜利！' : outcome === 'lose' ? '失败…' : '平局';
             renderInfo();
             const overlay = $('result_overlay');
-            overlay.className = `result-overlay is-${outcome}`;
-            $('result_overlay_icon').name = outcome === 'win' ? 'trophy' : outcome === 'lose' ? 'x-octagon' : 'hourglass-split';
-            $('result_overlay_text').textContent = outcome === 'win' ? '胜利！' : outcome === 'lose' ? '失败…' : '平局';
+            overlay.className = `result-overlay is-${continuing ? 'continue' : outcome}`;
+            $('result_overlay_icon').name = icon;
+            $('result_overlay_text').textContent = text;
             overlay.classList.remove('d-none');
             await sleep(1500);
             overlay.classList.add('d-none');
@@ -1084,21 +1088,33 @@
             if (!gameOver && generation === gameGeneration) setStatus(state.turn_player === selfPlayer ? '轮到你落子。' : '对手 AI 回合。', 'primary');
         };
 
-        window.addEventListener('resize', () => { if (ui && game) redraw(); dimKey = ''; drawDim(); layoutFace(); refreshGuide(); });
+        window.addEventListener('resize', () => { if (ui && game) redraw(); dimKey = ''; drawDim(); refreshGuide(); });
 
         (async () => {
             if (!window.get_token || !window.get_token()) { playerName = '你'; }
             else { try { const info = await window.http_user_info(window.get_token()); if (info && info.name) playerName = info.name; } catch (_) { /* 使用默认称呼 */ } }
-            let catalog = window.StoryExports.DEFAULT_CATALOG;
+            // 只取本关剧本；旧服务端没有按关卡接口时回退到整份目录
+            let level = null;
             try {
-                const doc = await window.http_docs_query('story');
-                if (doc && doc.data) { const parsed = JSON.parse(doc.data); if (parsed && Array.isArray(parsed.levels) && parsed.levels.length) catalog = parsed; }
-            } catch (_) { /* 回退内置目录 */ }
-            const levels = Array.isArray(catalog.levels) ? catalog.levels.slice().sort((a, b) => Number(a.level) - Number(b.level)) : [];
-            const level = levels.find((item) => Number(item.level) === targetLevel) || levels[0];
+                const data = window.http_story_level_query ? await window.http_story_level_query(targetLevel) : null;
+                if (data && typeof data.script === 'string') level = { 'level': Number(data.level) || targetLevel, 'title': String(data.title || ''), 'script': data.script };
+            } catch (_) { /* 回退整份目录 */ }
+            if (!level) {
+                let catalog = window.StoryExports.DEFAULT_CATALOG;
+                try {
+                    const doc = await window.http_docs_query('story');
+                    if (doc && doc.data) { const parsed = JSON.parse(doc.data); if (parsed && Array.isArray(parsed.levels) && parsed.levels.length) catalog = parsed; }
+                } catch (_) { /* 回退内置目录 */ }
+                const levels = Array.isArray(catalog.levels) ? catalog.levels.slice().sort((a, b) => Number(a.level) - Number(b.level)) : [];
+                const found = levels.find((item) => Number(item.level) === targetLevel) || levels[0];
+                if (found) level = { 'level': Number(found.level) || targetLevel, 'title': String(found.title || ''), 'script': String(found.script == null ? '' : found.script) };
+            }
             if (!level) { setStatus('未找到剧情关卡。', 'danger'); return; }
-            await loadCharacters();
             const parsed = StoryScript.parse(level.script);
+            const faces = StoryScript.faces(parsed);
+            // 进入关卡前先取齐并预加载本关用到的角色图
+            await loadCharacters(faces);
+            await preloadFaces(faces);
             runtime = new StoryRuntime(parsed);
             $('story_subtitle').textContent = `第 ${level.level} 关 · ${level.title}`;
             document.title = `四子棋 剧情 - ${level.title}`;

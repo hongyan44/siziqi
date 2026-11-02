@@ -719,25 +719,39 @@ window.http_docs_update = async (token, key, data) => {
 
 
 /**
- * @description: 查询剧情角色与表情（公开接口，图片为 data URL）
- * @return {Promise<{characters: {id: number, name: string, rep: string, expressions: {id: number, name: string, image: string}[]}[]} | void>}
+ * @description: 查询剧情关卡目录（仅序号与标题），或按关卡序号只取该关剧本
+ * @param {number} [level] 关卡序号；省略时为目录模式
+ * @return {Promise<{levels: {level: number, title: string, stats?: object}[]} | {level: number, title: string, script: string} | void>}
  */
-window.http_story_character_query = async () => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/character_query`, {});
+window.http_story_level_query = async (level = 0) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/level_query`, level ? { level } : {});
     if (!rjson || !rjson.status) return;
     return rjson.result;
 };
 
 /**
- * @description: 新增剧情角色（仅管理员；image 为 200×300 缩略图，original 为原图 data URL）
+ * @description: 查询剧情角色与表情（公开接口，图片为 data URL）
+ * @param {{name: string, expressions: string[]}[]} [faces] 只取这些角色与表情（按关卡实际用到）；省略时返回全部
+ * @return {Promise<{characters: {id: number, name: string, rep: string, expressions: {id: number, name: string, image: string}[]}[]} | void>}
+ */
+window.http_story_character_query = async (faces = null) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/character_query`, faces && faces.length ? { faces } : {});
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+/**
+ * @description: 新增剧情角色（仅管理员；image 为 120×180 压缩图，original 为原图 data URL）
  * @param {string} token
  * @param {string} name 角色名
- * @param {string} image 代表图缩略图 data URL
+ * @param {string} image 代表图压缩图 data URL
  * @param {string} [original] 代表图原图 data URL（原图落盘，供管理员下载）
  * @return {Promise<{id: number} | void>}
  */
 window.http_story_character_add = async (token, name, image, original = '') => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/character_update`, { token, action: 'character', name, image, original }, 60000);
+    const payload = { token, action: 'character', name, image };
+    if (original) payload.original = original;
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/character_update`, payload, 60000);
     if (!rjson || !rjson.status) return;
     return rjson.result;
 };
@@ -747,10 +761,13 @@ window.http_story_character_add = async (token, name, image, original = '') => {
  * @param {string} token
  * @param {number} character_id
  * @param {string} image 新代表图 data URL
+ * @param {string} [original] 新原图 data URL；不传则服务端保留已有原图（仅换压缩图时使用）
  * @return {Promise<{id: number} | void>}
  */
 window.http_story_character_update_rep = async (token, character_id, image, original = '') => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/character_update`, { token, action: 'update_rep', character_id, image, original }, 60000);
+    const payload = { token, action: 'update_rep', character_id, image };
+    if (original) payload.original = original;
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/character_update`, payload, 60000);
     if (!rjson || !rjson.status) return;
     return rjson.result;
 };
@@ -776,7 +793,9 @@ window.http_story_character_delete = async (token, character_id) => {
  * @return {Promise<{id: number} | void>}
  */
 window.http_story_expression_add = async (token, character_id, name, image, original = '') => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/character_update`, { token, action: 'expression', character_id, name, image, original }, 60000);
+    const payload = { token, action: 'expression', character_id, name, image };
+    if (original) payload.original = original;
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/character_update`, payload, 60000);
     if (!rjson || !rjson.status) return;
     return rjson.result;
 };
@@ -796,16 +815,18 @@ window.http_story_expression_delete = async (token, character_id, expression_id)
 
 
 /**
- * @description: 覆盖已有表情图片（仅管理员；把旧大图压缩为缩略图并转存原图时使用）
+ * @description: 覆盖已有表情图片（仅管理员；把旧大图降采样为压缩图时使用）
  * @param {string} token
  * @param {number} character_id
  * @param {number} expression_id
- * @param {string} image 新缩略图 data URL
- * @param {string} [original] 原图 data URL
+ * @param {string} image 新压缩图 data URL
+ * @param {string} [original] 原图 data URL；不传则服务端保留已有原图（仅换压缩图时使用）
  * @return {Promise<{id: number} | void>}
  */
 window.http_story_expression_image_update = async (token, character_id, expression_id, image, original = '') => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/character_update`, { token, action: 'update_expression_image', character_id, expression_id, image, original }, 60000);
+    const payload = { token, action: 'update_expression_image', character_id, expression_id, image };
+    if (original) payload.original = original;
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/character_update`, payload, 60000);
     if (!rjson || !rjson.status) return;
     return rjson.result;
 };

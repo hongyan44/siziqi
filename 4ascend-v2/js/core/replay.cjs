@@ -98,6 +98,8 @@ const toast = new ShToast();
 
 let gl_sound, gl_ui, gl_archive;
 let gl_game, gl_rand_aic, gl_rand_unity, gl_rand_other, gl_board, gl_state, gl_timer;
+// 回放就绪后由 run() 注册：窗口尺寸变化时按当前帧重绘，避免棋盘与分析标注被清空
+let gl_resize_redraw = null;
 
 
 
@@ -356,10 +358,16 @@ const game_match = (board, state, my_stone, foe_stone) => {
 // 重绘
 (() => {
     let timer;
+    const resize_redraw = () => {
+        if (!gl_ui) return;
+        // 先按新尺寸重建画布，再按当前帧补回棋子、落点圈与正着分析标注
+        game_redraw();
+        if (gl_resize_redraw) gl_resize_redraw();
+    };
     window.addEventListener('resize', () => {
         if (timer) clearTimeout(timer);
-        timer = setTimeout(() => gl_ui && game_redraw(gl_ui, gl_board), 150);
-        gl_ui && game_redraw(gl_ui, gl_board);
+        timer = setTimeout(resize_redraw, 150);
+        resize_redraw();
     });
 })();
 
@@ -635,6 +643,14 @@ const run = async () => {
     let ptr = -1;
     let pid = null;
     let gl_snapshot_ptr = -1;
+    // 尺寸变化触发的重绘不重复播放落子音效
+    let gl_silent_redraw = false;
+
+    gl_resize_redraw = () => {
+        if (ptr < 0) return;
+        gl_silent_redraw = true;
+        gen.dispatch(ptr);
+    };
 
 
     // -------------------------------------------------------------------------
@@ -675,6 +691,9 @@ const run = async () => {
     }));
 
     let analysis_result = null;
+    // 局势分析一旦开启，棋盘上的着手标识与推荐落点就独立于面板显隐持续显示。
+    // 窄屏下面板会遮挡棋盘，用户必须先关闭面板才能看到棋盘。
+    let analysis_mode = false;
 
     const analysis_open = () => Boolean(analysis_panel) && !analysis_panel.classList.contains('d-none');
 
@@ -856,8 +875,9 @@ const run = async () => {
 
     const analysis_job_pump = () => {
         if (!analysis_open()) {
-            analysis_jobs = [];
-            return;
+            // 面板关闭后停止补扫全盘（省电），但保留用户主动发起的正着分析任务，
+            // 保证窄屏用户关闭面板查看棋盘时，正着结果仍会出现在棋盘上。
+            analysis_jobs = analysis_jobs.filter((item) => item.type === 'best');
         }
         if (analysis_job_running || !analysis_jobs.length) return;
 
@@ -890,9 +910,10 @@ const run = async () => {
                 else analysis_sweep_failures.add(job.index);
             } finally {
                 analysis_job_running = null;
-                if (analysis_open()) {
+                // 标注层跟随分析模式而不是面板显隐，面板关闭时也要把结果补到棋盘上
+                if (analysis_mode) {
                     if (ptr === job.index) refresh_analysis_overlay();
-                    render_analysis();
+                    if (analysis_open()) render_analysis();
                 }
                 // 单个失败不应阻塞其余任务，继续补齐下一手
                 analysis_job_pump();
@@ -989,7 +1010,7 @@ const run = async () => {
         if (!analysis_badge) return;
 
         const view = index >= 0 ? info_view[index] : null;
-        if (!analysis_open() || !view) {
+        if (!analysis_mode || !view) {
             analysis_badge.classList.add('d-none');
             return;
         }
@@ -1025,7 +1046,7 @@ const run = async () => {
         gl_ui.canvas_view_turn.getContext('2d').clearRect(0, 0, gl_ui.size, gl_ui.size);
         gl_ui.clear_view_move();
 
-        if (!analysis_open()) {
+        if (!analysis_mode) {
             if (analysis_badge) analysis_badge.classList.add('d-none');
             gl_ui.draw_stone_turn(view[0], view[1], '#00FFC5', 5);
             return;
@@ -1239,6 +1260,8 @@ const run = async () => {
         if (!analysis_panel) return;
         if (analysis_panel.classList.contains('d-none')) {
             analysis_panel.classList.remove('d-none');
+            // 首次开启后棋盘标注长期保留，关闭面板不会抹掉着手标识与推荐落点
+            analysis_mode = true;
             analysis_sweep_all();
         } else {
             analysis_panel.classList.add('d-none');
@@ -1454,7 +1477,7 @@ const run = async () => {
         // 回合（开启分析时用着手质量颜色标注最新落点）
         let view_color = '#00FFC5';
         let analysis_label = null;
-        if (analysis_open()) {
+        if (analysis_mode) {
             analysis_label = analysis_label_of(p);
             if (analysis_label) view_color = ANALYSIS_COLORS[analysis_label];
         }
@@ -1469,12 +1492,12 @@ const run = async () => {
         }
 
         // 残局 AI 推荐落点（浅蓝圆框）
-        if (analysis_open()) draw_analysis_ai_move(p);
+        if (analysis_mode) draw_analysis_ai_move(p);
 
         // 声音
-        const sound = info_sound[p];
-        if (sound === 'stone') gl_sound.play_stone();
-        else if (sound === 'plant') gl_sound.play_plant();
+        if (gl_silent_redraw) gl_silent_redraw = false;
+        else if (info_sound[p] === 'stone') gl_sound.play_stone();
+        else if (info_sound[p] === 'plant') gl_sound.play_plant();
 
         // 数据卡片
         const card = info_card[p];

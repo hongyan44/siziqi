@@ -40,6 +40,11 @@ int64_t json_i64(const jsoncons::json& value, std::string_view key, int64_t fall
     try { return value.at(key).as<int64_t>(); } catch (...) { return fallback; }
 }
 
+bool json_bool(const jsoncons::json& value, std::string_view key, bool fallback = false) noexcept {
+    if (!value.contains(key)) return fallback;
+    try { return value.at(key).as<bool>(); } catch (...) { return fallback; }
+}
+
 bool token_uuid(const jsoncons::json& value, std::string& uuid) noexcept {
     try {
         auto bin = value.at("token").as<jsoncons::byte_string_view>();
@@ -389,7 +394,12 @@ void bracket_register(cinatra::coro_http_request& request, cinatra::coro_http_re
                 }
                 // 未分出胜负：暂不能报名
                 if (!decided) continue;
-                if (!decided_winner.empty() && decided_winner == uuid) advanced = true;
+                if (!decided_winner.empty() && decided_winner == uuid) {
+                    advanced = true;
+                    continue;
+                }
+                // 双败赛制：前置方块允许败方进入下一组抽签时，落败身份同样放行
+                if (!decided_winner.empty() && json_bool(parent, "loserAdvance", false)) advanced = true;
             }
             if (has_parent && !advanced) return api_http_error("bracket_register", response);
         }

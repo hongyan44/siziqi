@@ -42,8 +42,31 @@
         .editor-rows { display: flex; flex-direction: column; gap: .45rem; }
         .editor-game-box { display: flex; flex-direction: column; gap: .45rem; padding: .5rem; border: 2px solid var(--sl-color-primary-600, #2563eb); border-radius: .75rem; background: rgba(59, 130, 246, .06); }
         .editor-game-box > .editor-row:first-child { border-color: var(--sl-color-primary-300, #93c5fd); }
+        .editor-box { display: flex; flex-direction: column; gap: .45rem; padding: .5rem; border: 2px solid var(--box-color, #6f42c1); border-radius: .75rem; background: rgba(111, 66, 193, .05); }
+        .editor-box > .editor-row:first-child { border-color: var(--box-color, #6f42c1); }
+        .editor-indent { display: flex; flex-direction: column; gap: 1px; flex: 0 0 auto; }
+        .editor-indent-btn { border: 1px solid var(--sl-color-neutral-300); border-radius: .25rem; background: #fff; color: var(--sl-color-neutral-600); font-size: .62rem; line-height: 1; padding: 1px 3px; cursor: pointer; }
+        .editor-indent-btn:hover { border-color: var(--sl-color-primary-500); color: var(--sl-color-primary-700); }
+        .editor-color { width: 38px; height: 26px; padding: 1px; border: 1px solid var(--sl-color-neutral-300); border-radius: .35rem; background: #fff; flex: 0 0 auto; cursor: pointer; }
+        .editor-swatches { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; flex: 0 0 auto; }
+        .editor-swatch { width: 1.3rem; height: 1.3rem; border-radius: 50%; border: 1px solid rgba(0, 0, 0, .12); cursor: pointer; display: inline-block; }
+        .editor-swatch.active { box-shadow: 0 0 0 2px var(--sl-color-primary-600, #2563eb); }
         .editor-row { display: flex; align-items: flex-start; gap: .45rem; padding: .45rem .5rem; border: 1px solid var(--sl-color-neutral-200); border-radius: .5rem; background: #fff; }
         .editor-row.dragging { opacity: .45; }
+        .editor-row.current-row { outline: 2px dashed #3b82f6; outline-offset: 2px; box-shadow: 0 0 0 3px rgba(59, 130, 246, .18), 0 0 14px rgba(59, 130, 246, .6); animation: editor-current-glow 1.7s ease-in-out infinite; }
+        @keyframes editor-current-glow { 0%, 100% { box-shadow: 0 0 0 3px rgba(59, 130, 246, .14), 0 0 9px rgba(59, 130, 246, .45); } 50% { box-shadow: 0 0 0 4px rgba(59, 130, 246, .26), 0 0 20px rgba(59, 130, 246, .8); } }
+        @media (prefers-reduced-motion: reduce) { .editor-row.current-row { animation: none; } }
+        .command-dock { position: fixed; right: .7rem; top: 3.6rem; bottom: .7rem; width: 168px; z-index: 1040; display: flex; flex-direction: column; gap: .35rem; padding: .5rem; overflow-y: auto; border: 1px solid rgba(13, 110, 253, .2); border-radius: .8rem; background: rgba(255, 255, 255, .94); box-shadow: 0 .6rem 1.6rem rgba(13, 110, 253, .14); }
+        .command-dock .command-dock-title { font-size: .74rem; color: var(--sl-color-neutral-600); border-left: 3px solid var(--sl-color-primary-500); padding-left: 6px; }
+        .command-dock sl-button { width: 100%; }
+        .command-dock sl-button::part(base) { justify-content: flex-start; }
+        .dock-open .story-main { padding-right: 188px; }
+        @media (max-width: 991.98px) {
+            .command-dock { width: 54px; padding: .35rem; align-items: center; }
+            .command-dock .command-dock-title { display: none; }
+            .command-dock sl-button .dock-label { display: none; }
+            .dock-open .story-main { padding-right: 66px; }
+        }
         .editor-row .form-control-sm, .editor-row .form-select-sm { font-size: .82rem; padding-top: .18rem; padding-bottom: .18rem; }
         .editor-handle { cursor: grab; color: var(--sl-color-neutral-400); user-select: none; font-size: 1rem; line-height: 1.6; padding: 0 .1rem; }
         .editor-handle:active { cursor: grabbing; }
@@ -87,7 +110,7 @@
             <section id='admin_editor' class='card admin-panel shadow-sm mb-4 d-none'>
                 <div class='card-body p-3 p-md-4'>
                     <div class='d-flex align-items-center gap-2 mb-1'><sl-icon name='shield-lock' class='text-primary'></sl-icon><span class='fw-bold'>管理员剧情编辑器</span><sl-badge variant='warning' pill>权限等级 4</sl-badge></div>
-                    <p class='text-secondary small mb-3'>每行一个命令，拖动左侧手柄可调整顺序；保存后所有玩家都会看到最新内容。</p>
+                    <p class='text-secondary small mb-3'>每行一个命令，拖动左侧手柄可调整顺序；点击某一行即成为当前行（蓝色荧光虚线边框），下方或右侧新增的命令会插入到该行之后。保存后所有玩家都会看到最新内容。</p>
                     <div class='row g-2 align-items-end'>
                         <div class='col-12 col-sm-3 col-md-2'><sl-input id='input_level' type='number' min='1' max='99' value='1' label='关卡序号' help-text='1 - 99'></sl-input></div>
                         <div class='col-12 col-sm-9 col-md-4'><sl-input id='input_title' maxlength='20' label='关卡标题' placeholder='最多20个字符'></sl-input></div>
@@ -98,7 +121,7 @@
                         </div>
                     </div>
                     <div id='editor_rows' class='editor-rows mt-3'></div>
-                    <div id='editor_empty' class='editor-empty text-secondary small mt-3'>还没有任何命令，点击下方按钮开始编排。</div>
+                    <div id='editor_empty' class='editor-empty text-secondary small mt-3'>还没有任何命令，点击下方或右侧的按钮开始编排。</div>
                     <div class='mt-3'>
                         <div class='category-title fw-bold mb-2'>添加命令</div>
                         <div id='command_bar' class='d-flex flex-wrap gap-2'></div>
@@ -113,14 +136,17 @@
                     <details class='mt-2'>
                         <summary class='text-secondary small' style='cursor: pointer;'>剧本语法说明</summary>
                         <div class='small text-secondary mt-2'>
-                            <div><code>[角色|表情] 台词</code> 对话框：角色名取自「角色管理」，表情名取自该角色的表情；省略表情则使用代表图，如 <code>[导员ZERO] 你好</code>。</div>
+                            <div><code>[角色|表情] 台词</code> 对话框：角色名取自「角色管理」，表情名取自该角色的表情；省略表情则使用代表图，如 <code>[导员ZERO] 你好</code>。新增台词会自动沿用上一次的角色/表情，首次使用取角色列表第一个并选中代表图。</div>
                             <div>台词支持 <code>&lt;玩家名称&gt;</code> 占位符。</div>
+                            <div><code>框 标题 色=#6f42c1</code> 分组框开始，<code>结束框</code> 关闭：把成段命令收进同一个彩色框，可嵌套、颜色可自定义；分组框只用于编辑器编排，播放时自动跳过。</div>
+                            <div>行首缩进 2 空格 = 1 级（Tab 按 2 空格计），可在每行左侧的 ⇤ / ⇥ 按钮调整；缩进只影响排版，不影响播放。</div>
                             <div><code>? [角色|表情] 提示</code> 选择节点，紧跟若干 <code>- 选项 -&gt; 标签</code>；角色与表情可选（写法则同台词），留空时对话框显示「请选择」。</div>
                             <div><code>:标签</code> 标签定义；<code>-&gt; 标签</code> 跳转；<code>结束</code> 或 <code>剧终</code> 收尾。</div>
                             <div><code>% IF 胜利 -&gt; 标签</code> / <code>% ELSE -&gt; 标签</code> 条件分支：条件取自最近一次对局结果（胜利 / 失败 / 平局），未命中则继续往下执行，因此 <code>IF</code> 可叠加多个，最后由 <code>ELSE</code> 兜底。</div>
                             <div><code>* 对局 标题</code> 对局块开始：其后的配置、代码与对话都归入该对局，直到 <code>结束此对局</code> 为止（编辑器会把整块包进同一个蓝色圆角对局框）。</div>
                             <div><code>残局码=...</code> 初始盘面：粘贴残局页导出的残局码，棋盘将以该局面开局（同时继承其血量/回合数；可选，空则空盘 6/6 血）。残局码内若含作者定义的「引导落子点」，进入该对局后按序以红圈提示玩家落点。</div>
                             <div><code>结束对局=胜负|步数:12</code> 结束对局条件：<code>胜负</code> 表示分出胜负即结束（默认）；<code>步数:12</code> 表示进入本对局后第 12 手落子即结束，结果按平局处理（跳“平局”标签，未配置则继续往下）。（旧剧本的 <code>结束残局=...</code> 仍兼容。）</div>
+                            <div><code>结束后=结果|继续</code> 对局结束表现：<code>结果</code>（默认）显示胜利/失败/平局；<code>继续</code> 不显示胜负，改为显示「继续」并直接进入下一段剧情（不跳胜利/失败/平局标签，胜负结果仍可用于 <code>% IF</code>）。常与 <code>结束对局=步数:12</code> 搭配，用打满步数来收束剧情战斗。</div>
                             <div><code>结束此对局</code> 对局块结束标记：与上一个 <code>* 对局</code> 之间的所有行同属一个对局框，本身不参与播放（运行时直接跳过）。</div>
                             <div><code>步数对话=3:标签A|6:标签B</code> 步数触发对话：第 N 手落子后暂停本局、跳转到该标签播放对话，多条用 <code>|</code> 分隔。手数按落子总手数计（玩家第一步=1，AI 应手=2，玩家第二次=3），可在任意步数触发。</div>
                             <div><code>刷草计划=3:4,4;5,4|9:2,2</code> 定时刷草：<code>回合:坐标;坐标</code> 表示“在第几回合、于哪些点刷几株草”，多条用 <code>|</code> 分隔；回合数即界面 Turns，坐标为 <code>x,y</code>（0-8）。被占用或已是二草的点会自动跳过。</div>
@@ -154,6 +180,10 @@
                 <div id='level_empty' class='text-secondary small py-4 text-center d-none'>尚未配置任何剧情关卡。</div>
             </section>
         </main>
+        <aside id='command_dock' class='command-dock d-none' aria-label='添加命令快捷栏'>
+            <div class='command-dock-title'>添加命令</div>
+            <div id='command_dock_list' class='d-flex flex-column gap-1'></div>
+        </aside>
         <footer class='text-center text-muted py-1' style='font-size: .74rem;'>剧情系统 · 对话框与 AI 对局</footer>
     </div>
 
@@ -162,10 +192,19 @@
         const $ = (id) => document.getElementById(id);
         const fallback = { 'win': '胜利', 'lose': '失败', 'draw': '平局' };
         const COND_TEXT = (window.StoryExports && window.StoryExports.COND_TEXT) || fallback;
-        const CONFIG_KEYS = ['残局码', '结束对局', '步数对话', '刷草计划', '我方', '先手', '胜利', '失败', '平局'];
+        const CONFIG_KEYS = ['残局码', '结束对局', '结束后', '步数对话', '刷草计划', '我方', '先手', '胜利', '失败', '平局'];
         const MARK_ANCHORS = (window.StoryExports && window.StoryExports.MARK_ANCHORS) || ['名字', '棋子颜色', '生命值', '信息', '刷草点', '棋盘', '我方', '对手'];
 
+        // 新增分组框的默认配色（按顺序循环，可在行内自定义）
+        const BOX_COLORS = ['#6f42c1', '#0d6efd', '#198754', '#fd7e14', '#dc3545', '#0dcaf0'];
+        // 分组框快捷配色：与「昵称单色颜色」取色器同款
+        const BOX_SWATCH_COLORS = ['#2563eb', '#dc2626', '#16a34a', '#7c3aed', '#ea580c', '#0f766e'];
+        let boxColorIndex = 0;
+        const nextBoxColor = () => { const color = BOX_COLORS[boxColorIndex % BOX_COLORS.length]; boxColorIndex += 1; return color; };
+
         const ROW_KINDS = [
+            { 'value': 'box', 'label': '框' },
+            { 'value': 'box_end', 'label': '结束框' },
             { 'value': 'say', 'label': '台词' },
             { 'value': 'choice', 'label': '选择' },
             { 'value': 'label', 'label': '标签' },
@@ -181,6 +220,8 @@
 
         // 下方固定命令栏：文字 -> 行模型
         const COMMANDS = [
+            { 'label': '添加框', 'icon': 'bounding-box', 'kind': 'box', 'focus': 'title' },
+            { 'label': '结束框', 'icon': 'box-arrow-in-down', 'kind': 'box_end' },
             { 'label': '选择角色和对应的表情', 'icon': 'person-badge', 'kind': 'say', 'focus': 'char' },
             { 'label': '添加台词', 'icon': 'chat-left-text', 'kind': 'say', 'focus': 'text' },
             { 'label': '添加选择', 'icon': 'list-ul', 'kind': 'choice' },
@@ -203,26 +244,64 @@
         let editingLevel = null;
         let rows = [];
         let dragIndex = null;
-        let pendingFocus = null;
+        // 当前行（引用行对象，拖动排序后仍能定位）；新增命令默认插入到它之后
+        let currentRow = null;
+        // 最近一次台词使用的角色 / 表情，新增台词时沿用（表情为空表示代表图）
+        let lastFace = { 'character': '', 'expression': '' };
 
         const isAdmin = () => Boolean(storyAdmin && Number(storyAdmin.level) === 4);
         const escapeHtml = (text) => String(text == null ? '' : text).replace(/[<>&"']/g, (char) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[char]));
         const attr = (text) => escapeHtml(text);
+        // 归一化 #rgb / #rrggbb / #rrggbbaa，非法值返回空串
+        const normalizeHex = (value) => {
+            const text = String(value == null ? '' : value).trim();
+            if (!/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(text)) return '';
+            if (text.length === 4) return `#${text.slice(1).split('').map((char) => char + char).join('').toLowerCase()}`;
+            return text.toLowerCase();
+        };
+        const applyBoxColor = (node, color) => {
+            const hex = normalizeHex(color) || '#6f42c1';
+            node.style.setProperty('--box-color', hex);
+            node.style.borderColor = hex;
+            node.style.background = `${hex}10`;
+        };
 
         // ==================== 行模型 <-> DSL ====================
         const emptyRow = (command) => {
             const kind = command ? command.kind : 'say';
             const row = { 'kind': kind };
-            if (kind === 'say') { row.character = ''; row.expression = ''; row.text = ''; }
+            if (kind === 'say') { const face = defaultFace(); row.character = face.character; row.expression = face.expression; row.text = ''; }
             if (kind === 'choice') { row.character = ''; row.expression = ''; row.prompt = ''; row.options = [{ 'text': '', 'target': '' }]; }
+            if (kind === 'box') { row.title = ''; row.color = nextBoxColor(); }
+            if (kind === 'box_end') { /* 无字段，仅作分组框结束标记 */ }
             if (kind === 'label') row.name = '';
             if (kind === 'jump') row.target = '';
             if (kind === 'game') row.title = '';
             if (kind === 'game_end') { /* 无字段，仅作对局块结束标记 */ }
-            if (kind === 'config') { row.key = command && command.key ? command.key : '残局码'; row.value = ''; }
+            if (kind === 'config') { row.key = command && command.key ? command.key : '残局码'; row.value = row.key === '结束后' ? '结果' : ''; }
             if (kind === 'mark') { row.type = command && command.type ? command.type : 'circle'; row.target = ''; row.color = ''; }
             if (kind === 'cond') { row.mode = command && command.mode ? command.mode : 'if'; row.condition = 'win'; row.target = ''; }
             return row;
+        };
+
+        // 计算每行的结构层级（所属分组框 / 对局框的嵌套深度），用于缩进还原与输出
+        const lastKindIndex = (stack, kind) => {
+            for (let index = stack.length - 1; index >= 0; index -= 1) if (stack[index] === kind) return index;
+            return -1;
+        };
+        const walkRowStructure = (list, visit) => {
+            const stack = [];
+            (list || []).forEach((row, index) => {
+                let depth = stack.length;
+                let closeIndex = -1;
+                if (row.kind === 'box_end' || row.kind === 'game_end') {
+                    closeIndex = lastKindIndex(stack, row.kind === 'box_end' ? 'box' : 'game');
+                    depth = closeIndex >= 0 ? closeIndex : Math.max(0, stack.length - 1);
+                }
+                visit(row, index, depth, stack.length);
+                if (row.kind === 'box' || row.kind === 'game') stack.push(row.kind === 'box' ? 'box' : 'game');
+                else if (row.kind === 'box_end' || row.kind === 'game_end') { if (closeIndex >= 0) stack.length = closeIndex; }
+            });
         };
 
         const rowsFromScript = (script) => {
@@ -230,25 +309,30 @@
             try { parsed = window.StoryExports.StoryScript.parse(script); } catch (_) { return []; }
             const list = [];
             parsed.nodes.forEach((node) => {
-                if (node.type === 'say') list.push({ 'kind': 'say', 'character': node.speaker || '', 'expression': node.expression || '', 'text': node.text || '' });
-                else if (node.type === 'choice') list.push({ 'kind': 'choice', 'character': node.speaker || '', 'expression': node.expression || '', 'prompt': node.prompt || '', 'options': (node.options || []).map((item) => ({ 'text': item.text, 'target': item.target })) });
-                else if (node.type === 'label') list.push({ 'kind': 'label', 'name': node.name || '' });
-                else if (node.type === 'jump') list.push({ 'kind': 'jump', 'target': node.target || '' });
-                else if (node.type === 'end') list.push({ 'kind': 'end' });
-                else if (node.type === 'resume') list.push({ 'kind': 'resume' });
-                else if (node.type === 'game_end') list.push({ 'kind': 'game_end' });
-                else if (node.type === 'cond') list.push({ 'kind': 'cond', 'mode': node.kind === 'else' ? 'else' : 'if', 'condition': node.condition || 'win', 'target': node.target || '' });
-                else if (node.type === 'mark') list.push({
+                let row = null;
+                if (node.type === 'say') row = { 'kind': 'say', 'character': node.speaker || '', 'expression': node.expression || '', 'text': node.text || '' };
+                else if (node.type === 'choice') row = { 'kind': 'choice', 'character': node.speaker || '', 'expression': node.expression || '', 'prompt': node.prompt || '', 'options': (node.options || []).map((item) => ({ 'text': item.text, 'target': item.target })) };
+                else if (node.type === 'label') row = { 'kind': 'label', 'name': node.name || '' };
+                else if (node.type === 'jump') row = { 'kind': 'jump', 'target': node.target || '' };
+                else if (node.type === 'end') row = { 'kind': 'end' };
+                else if (node.type === 'resume') row = { 'kind': 'resume' };
+                else if (node.type === 'game_end') row = { 'kind': 'game_end' };
+                else if (node.type === 'box') row = { 'kind': 'box', 'title': node.title || '', 'color': node.color || '' };
+                else if (node.type === 'box_end') row = { 'kind': 'box_end' };
+                else if (node.type === 'cond') row = { 'kind': 'cond', 'mode': node.kind === 'else' ? 'else' : 'if', 'condition': node.condition || 'win', 'target': node.target || '' };
+                else if (node.type === 'mark') row = {
                     'kind': 'mark',
                     'type': node.kind === 'clear' ? 'clear' : node.kind === 'arrow' ? 'arrow' : 'circle',
                     'target': node.kind === 'circle' ? (node.cell ? `${node.cell[0]},${node.cell[1]}` : '') : (node.target || ''),
                     'color': node.color || ''
-                });
+                };
                 else if (node.type === 'game') {
-                    list.push({ 'kind': 'game', 'title': node.title || '' });
+                    row = { 'kind': 'game', 'title': node.title || '', 'rawIndent': Math.max(0, Math.min(10, Math.trunc(Number(node.indent) || 0))) };
+                    list.push(row);
                     const config = node.config || {};
                     if (config.archive) list.push({ 'kind': 'config', 'key': '残局码', 'value': config.archive });
                     if (config.end_text) list.push({ 'kind': 'config', 'key': '结束对局', 'value': config.end_text });
+                    if (config.post_text) list.push({ 'kind': 'config', 'key': '结束后', 'value': config.post_text });
                     if (config.dialogues_text) list.push({ 'kind': 'config', 'key': '步数对话', 'value': config.dialogues_text });
                     if (config.points_text) list.push({ 'kind': 'config', 'key': '刷草点', 'value': config.points_text });
                     if (config.schedule_text) list.push({ 'kind': 'config', 'key': '刷草计划', 'value': config.schedule_text });
@@ -257,34 +341,49 @@
                     if (config.win) list.push({ 'kind': 'config', 'key': '胜利', 'value': config.win });
                     if (config.lose) list.push({ 'kind': 'config', 'key': '失败', 'value': config.lose });
                     if (config.draw) list.push({ 'kind': 'config', 'key': '平局', 'value': config.draw });
+                    return;
                 }
+                if (!row) return;
+                row.rawIndent = Math.max(0, Math.min(10, Math.trunc(Number(node.indent) || 0)));
+                list.push(row);
             });
+            // 行首缩进 = 结构层级 + 手动缩进，导入时减去结构层级得到手动缩进
+            walkRowStructure(list, (row, index, depth) => {
+                const raw = Math.max(0, Math.trunc(Number(row.rawIndent) || 0));
+                row.indent = Math.max(0, Math.min(6, raw - depth));
+                delete row.rawIndent;
+            });
+            const lastSay = list.slice().reverse().find((item) => item.kind === 'say' && item.character);
+            if (lastSay) lastFace = { 'character': lastSay.character, 'expression': lastSay.expression || '' };
             return list;
         };
 
         const rowsToScript = () => {
             const lines = [];
-            rows.forEach((row) => {
-                if (row.kind === 'say') lines.push(row.expression ? `[${row.character}|${row.expression}] ${row.text}` : `[${row.character}] ${row.text}`);
+            walkRowStructure(rows, (row, index, depth) => {
+                const lead = '  '.repeat(Math.max(0, Math.min(10, depth + (Number(row.indent) || 0))));
+                if (row.kind === 'say') lines.push(lead + (row.expression ? `[${row.character}|${row.expression}] ${row.text}` : `[${row.character}] ${row.text}`));
                 else if (row.kind === 'choice') {
                     const face = row.character ? (row.expression ? `[${row.character}|${row.expression}] ` : `[${row.character}] `) : '';
-                    lines.push(`? ${face}${row.prompt}`);
-                    (row.options || []).forEach((option) => lines.push(`- ${option.text} -> ${option.target}`));
-                } else if (row.kind === 'label') lines.push(`:${row.name}`);
-                else if (row.kind === 'jump') lines.push(`-> ${row.target}`);
-                else if (row.kind === 'game') lines.push(`* ${row.title}`);
-                else if (row.kind === 'game_end') lines.push('结束此对局');
-                else if (row.kind === 'config') lines.push(`  ${row.key}=${row.value}`);
-                else if (row.kind === 'end') lines.push('结束');
-                else if (row.kind === 'resume') lines.push('继续对局');
+                    lines.push(`${lead}? ${face}${row.prompt}`);
+                    (row.options || []).forEach((option) => lines.push(`${lead}- ${option.text} -> ${option.target}`));
+                } else if (row.kind === 'label') lines.push(`${lead}:${row.name}`);
+                else if (row.kind === 'jump') lines.push(`${lead}-> ${row.target}`);
+                else if (row.kind === 'game') lines.push(`${lead}* ${row.title}`);
+                else if (row.kind === 'game_end') lines.push(`${lead}结束此对局`);
+                else if (row.kind === 'box') lines.push(`${lead}框${row.title ? ` ${row.title}` : ''}${row.color ? ` 色=${row.color}` : ''}`);
+                else if (row.kind === 'box_end') lines.push(`${lead}结束框`);
+                else if (row.kind === 'config') lines.push(`${lead}${row.key}=${row.value}`);
+                else if (row.kind === 'end') lines.push(`${lead}结束`);
+                else if (row.kind === 'resume') lines.push(`${lead}继续对局`);
                 else if (row.kind === 'mark') {
                     const color = row.type !== 'clear' && row.color ? ` 色=${row.color}` : '';
-                    if (row.type === 'clear') lines.push('@ 清除');
-                    else if (row.type === 'arrow') lines.push(`@ 箭头 ${row.target}${color}`.trimEnd());
-                    else lines.push(`@ 圈 ${row.target}${color}`.trimEnd());
+                    if (row.type === 'clear') lines.push(`${lead}@ 清除`);
+                    else if (row.type === 'arrow') lines.push(`${lead}@ 箭头 ${row.target}${color}`.trimEnd());
+                    else lines.push(`${lead}@ 圈 ${row.target}${color}`.trimEnd());
                 } else if (row.kind === 'cond') {
-                    if (row.mode === 'else') lines.push(`% ELSE -> ${row.target}`);
-                    else lines.push(`% IF ${COND_TEXT[row.condition] || row.condition} -> ${row.target}`);
+                    if (row.mode === 'else') lines.push(`${lead}% ELSE -> ${row.target}`);
+                    else lines.push(`${lead}% IF ${COND_TEXT[row.condition] || row.condition} -> ${row.target}`);
                 }
             });
             return lines.join('\n');
@@ -293,6 +392,19 @@
         // ==================== 行渲染 ====================
         const charNames = () => storyCharacters.map((item) => String(item.name || '')).filter(Boolean);
         const findCharacter = (name) => storyCharacters.find((item) => String(item.name) === String(name)) || null;
+
+        // 台词默认角色：沿用最近一次台词的角色/表情；首次使用取角色列表第一个，表情留空表示代表图
+        const hasExpression = (characterName, expressionName) => {
+            const character = findCharacter(characterName);
+            const list = character && Array.isArray(character.expressions) ? character.expressions.map((item) => String(item.name || '')) : [];
+            return Boolean(expressionName) && list.includes(String(expressionName));
+        };
+        const defaultFace = () => {
+            const names = charNames();
+            const character = lastFace.character && names.includes(lastFace.character) ? lastFace.character : (names[0] || '');
+            const expression = character === lastFace.character && hasExpression(character, lastFace.expression) ? lastFace.expression : '';
+            return { 'character': character, 'expression': expression };
+        };
 
         const kindOptionsHtml = (selected) => ROW_KINDS.map((item) => `<option value='${attr(item.value)}'${item.value === selected ? ' selected' : ''}>${escapeHtml(item.label)}</option>`).join('');
         const charOptionsHtml = (selected) => [`<option value=''>（未指定角色）</option>`].concat(charNames().map((name) => `<option value='${attr(name)}'${name === selected ? ' selected' : ''}>${escapeHtml(name)}</option>`)).join('');
@@ -345,7 +457,17 @@
                     <option value='步数'${steps ? ' selected' : ''}>第几步落子后结束</option>
                 </select>
                 <input type='number' min='1' max='999' class='form-control form-control-sm' data-role='endsteps' style='width: 104px;' placeholder='步数' value='${steps ? steps : ''}'${steps ? '' : ' disabled'}>
-                <span class='editor-hint'>达到步数即结束本对局，结果按平局处理（跳“平局”标签）</span>`;
+                <span class='editor-hint'>达到步数即结束本对局，默认按平局处理（跳“平局”标签）；配置「结束后=继续」时改为显示「继续」并直接继续剧情</span>`;
+                }
+                if (row.key === '结束后') {
+                    const after = row.value === '继续' ? '继续' : '结果';
+                    return `
+                <select class='form-select form-select-sm' data-role='key' style='width: 132px;'>${configKeyOptionsHtml(row.key)}</select>
+                <select class='form-select form-select-sm' data-role='aftermode' style='width: 190px;'>
+                    <option value='结果'${after === '结果' ? ' selected' : ''}>显示胜利/失败/平局</option>
+                    <option value='继续'${after === '继续' ? ' selected' : ''}>显示「继续」并继续剧情</option>
+                </select>
+                <span class='editor-hint'>选「继续」时对局结束不显示胜负，直接进入下一段剧情；可与「结束对局=步数:N」搭配</span>`;
                 }
                 if (row.key === '步数对话') return `
                 <select class='form-select form-select-sm' data-role='key' style='width: 132px;'>${configKeyOptionsHtml(row.key)}</select>
@@ -377,6 +499,12 @@
                         <option value='draw'${row.condition === 'draw' ? ' selected' : ''}>平局</option>
                     </select>`}
                 <input class='form-control form-control-sm' data-role='target' style='flex: 1 1 200px;' placeholder='标签名或“结束”' value='${attr(row.target)}'>`;
+            if (row.kind === 'box') return `
+                <input class='form-control form-control-sm' data-role='title' style='flex: 1 1 220px; min-width: 120px;' placeholder='分组框标题（可留空）' value='${attr(row.title)}'>
+                <div class='editor-swatches'>${BOX_SWATCH_COLORS.map((item) => `<span class='editor-swatch${normalizeHex(row.color) === item ? ' active' : ''}' data-role='swatch' data-color='${item}' style='background: ${item};' title='${item}'></span>`).join('')}</div>
+                <input type='color' class='editor-color' data-role='color' value='${attr((normalizeHex(row.color) || '#6f42c1').slice(0, 7))}' title='分组框颜色'>
+                <span class='editor-hint'>框内的行会包进这个彩色分组框；分组框只用于编排，播放时自动跳过</span>`;
+            if (row.kind === 'box_end') return `<span class='editor-hint'>分组框结束标记：与最近一个「框」配对，本身不参与播放</span>`;
             if (row.kind === 'resume') return `<span class='editor-hint'>步数对话播完后回到当前对局继续下棋</span>`;
             return `<span class='editor-hint'>剧情到此结束</span>`;
         };
@@ -385,8 +513,17 @@
             const node = document.createElement('div');
             node.className = 'editor-row';
             node.dataset.index = String(index);
+            // 分组框/对局框本身是容器，不参与手动缩进
+            const canIndent = !['box', 'game', 'box_end', 'game_end'].includes(row.kind);
+            const indent = Math.max(0, Math.min(6, Number(row.indent) || 0));
+            if (canIndent && indent) node.style.marginLeft = `${indent * 16}px`;
+            if (row.kind === 'box') node.style.borderColor = normalizeHex(row.color) || '#6f42c1';
             node.innerHTML = `
                 <span class='editor-handle' title='拖动排序'>⋮⋮</span>
+                ${canIndent ? `<div class='editor-indent'>
+                    <button type='button' class='editor-indent-btn' data-role='indent-out' title='减少缩进'>⇤</button>
+                    <button type='button' class='editor-indent-btn' data-role='indent-in' title='增加缩进'>⇥</button>
+                </div>` : ''}
                 <select class='form-select form-select-sm editor-kind' data-role='kind'>${kindOptionsHtml(row.kind)}</select>
                 <div class='editor-fields'>${fieldsHtml(row)}</div>
                 <button type='button' class='btn btn-sm btn-outline-danger' data-role='remove' title='删除该行'>删除</button>`;
@@ -398,18 +535,31 @@
         const renderRows = () => {
             const container = $('editor_rows');
             container.innerHTML = '';
-            let box = null;
+            // 按嵌套结构渲染：框 / 对局框 会开启一个容器，直到对应的结束标记为止
+            const stack = [];
             rows.forEach((row, index) => {
-                // 「* 对局」开启一个蓝色对局框，直到「结束此对局」（或下一个对局开始）为止
-                if (row.kind === 'game') {
-                    box = document.createElement('div');
-                    box.className = 'editor-game-box';
-                    container.append(box);
+                const parent = stack.length ? stack[stack.length - 1].node : container;
+                if (row.kind === 'box' || row.kind === 'game') {
+                    const box = document.createElement('div');
+                    if (row.kind === 'game') box.className = 'editor-game-box';
+                    else { box.className = 'editor-box'; applyBoxColor(box, row.color); }
+                    parent.append(box);
+                    box.append(buildRowEl(row, index));
+                    stack.push({ 'node': box, 'kind': row.kind === 'game' ? 'game' : 'box' });
+                    return;
                 }
-                (box || container).append(buildRowEl(row, index));
-                if (row.kind === 'game_end' && box) box = null;
+                if (row.kind === 'box_end' || row.kind === 'game_end') {
+                    const kind = row.kind === 'box_end' ? 'box' : 'game';
+                    const closeIndex = lastKindIndex(stack.map((item) => item.kind), kind);
+                    if (closeIndex < 0) { parent.append(buildRowEl(row, index)); return; }
+                    stack[closeIndex].node.append(buildRowEl(row, index));
+                    stack.length = closeIndex;
+                    return;
+                }
+                parent.append(buildRowEl(row, index));
             });
             updateEmpty();
+            applyCurrentHighlight();
         };
 
         const rebuildRow = (index) => {
@@ -418,19 +568,25 @@
             const fresh = buildRowEl(rows[index], index);
             if (old) old.replaceWith(fresh);
             else container.append(fresh);
+            applyCurrentHighlight();
         };
 
-        const setRows = (list) => { rows = list || []; renderRows(); };
+        const setRows = (list) => { rows = list || []; currentRow = null; renderRows(); };
 
-        const focusPending = () => {
-            if (!pendingFocus) return;
-            const index = rows.length - 1;
-            const row = $('editor_rows').querySelector(`.editor-row[data-index='${index}']`);
-            const target = row ? row.querySelector(`[data-role='${pendingFocus}']`) : null;
-            const kind = pendingFocus;
-            pendingFocus = null;
+        // 当前行判定：点击或聚焦某一行即选中，行边框以蓝色荧光虚线高亮
+        const currentRowIndex = () => (currentRow ? rows.indexOf(currentRow) : -1);
+        const applyCurrentHighlight = () => {
+            const index = currentRowIndex();
+            $('editor_rows').querySelectorAll('.editor-row').forEach((node) => {
+                node.classList.toggle('current-row', Number(node.dataset.index) === index);
+            });
+        };
+        const setCurrentRow = (row) => { currentRow = row || null; applyCurrentHighlight(); };
+
+        const focusRowControl = (index, role) => {
+            const node = $('editor_rows').querySelector(`.editor-row[data-index='${index}']`);
+            const target = node ? node.querySelector(`[data-role='${role}']`) : null;
             if (target && target.focus) target.focus();
-            return kind;
         };
 
         // ==================== 行交互（事件委托） ====================
@@ -450,6 +606,15 @@
             const context = rowContext(event);
             if (!context) return;
             const role = control.dataset.role;
+            if (role === 'color' && context.row.kind === 'box') {
+                context.row.color = control.value;
+                const box = context.node.closest('.editor-box');
+                if (box) applyBoxColor(box, control.value);
+                context.node.style.borderColor = normalizeHex(control.value) || '#6f42c1';
+                const hex = normalizeHex(control.value);
+                context.node.querySelectorAll('.editor-swatch').forEach((node) => node.classList.toggle('active', node.dataset.color === hex));
+                return;
+            }
             if (ROLES.includes(role)) context.row[role] = control.value;
             else if (role === 'endsteps') { context.row.value = endValue('步数', control.value); return; }
             else if (role === 'opt-text' || role === 'opt-target') {
@@ -464,16 +629,34 @@
             const context = rowContext(event);
             if (!context) return;
             const role = control.dataset.role;
-            if (role === 'kind') { context.row = emptyRow({ 'kind': control.value }); rows[context.index] = context.row; renderRows(); return; }
+            if (role === 'kind') {
+                const fresh = emptyRow({ 'kind': control.value });
+                if (currentRow === context.row) currentRow = fresh;
+                rows[context.index] = fresh;
+                renderRows();
+                return;
+            }
             if (role === 'char') {
                 context.row.character = control.value;
                 context.row.expression = '';
                 const expr = context.node.querySelector('[data-role=expr]');
                 if (expr) expr.innerHTML = exprOptionsHtml(context.row.character, '');
+                if (context.row.kind === 'say') lastFace = { 'character': context.row.character, 'expression': '' };
                 return;
             }
-            if (role === 'expr') { context.row.expression = control.value; return; }
-            if (role === 'key') { context.row.key = control.value; return; }
+            if (role === 'expr') {
+                context.row.expression = control.value;
+                if (context.row.kind === 'say') lastFace = { 'character': context.row.character, 'expression': control.value };
+                return;
+            }
+            if (role === 'key') {
+                context.row.key = control.value;
+                if (context.row.key === '结束后') { if (context.row.value !== '继续' && context.row.value !== '结果') context.row.value = '结果'; }
+                else if (context.row.value === '继续' || context.row.value === '结果') context.row.value = '';
+                rebuildRow(context.index);
+                return;
+            }
+            if (role === 'aftermode') { context.row.value = control.value; return; }
             if (role === 'endmode') {
                 const input = context.node.querySelector('[data-role=endsteps]');
                 context.row.value = endValue(control.value, input ? input.value : 0);
@@ -496,7 +679,32 @@
             const role = control.dataset.role;
             const context = rowContext(event);
             if (!context) return;
-            if (role === 'remove') { rows.splice(context.index, 1); renderRows(); return; }
+            if (role === 'remove') {
+                const removed = context.row;
+                rows.splice(context.index, 1);
+                if (currentRow === removed) currentRow = rows[context.index - 1] || rows[context.index] || null;
+                renderRows();
+                return;
+            }
+            if (role === 'indent-in' || role === 'indent-out') {
+                const current = Math.max(0, Math.min(6, Number(context.row.indent) || 0));
+                const next = Math.max(0, Math.min(6, current + (role === 'indent-in' ? 1 : -1)));
+                if (next === current) return;
+                context.row.indent = next;
+                context.node.style.marginLeft = next ? `${next * 16}px` : '';
+                return;
+            }
+            if (role === 'swatch' && context.row.kind === 'box') {
+                const color = control.dataset.color || '';
+                context.row.color = color;
+                const box = context.node.closest('.editor-box');
+                if (box) applyBoxColor(box, color);
+                context.node.style.borderColor = normalizeHex(color) || '#6f42c1';
+                const input = context.node.querySelector("[data-role='color']");
+                if (input) input.value = (normalizeHex(color) || '#6f42c1').slice(0, 7);
+                context.node.querySelectorAll('.editor-swatch').forEach((node) => node.classList.toggle('active', node.dataset.color === color));
+                return;
+            }
             if (role === 'add-option') { (context.row.options = context.row.options || []).push({ 'text': '', 'target': '' }); rebuildRow(context.index); return; }
             if (role === 'del-option') {
                 const index = Number(control.dataset.optionIndex);
@@ -504,6 +712,16 @@
                 if (!context.row.options.length) context.row.options.push({ 'text': '', 'target': '' });
                 rebuildRow(context.index);
             }
+        });
+
+        // 当前行判定：点击行内任意位置或聚焦控件都切换当前行
+        $('editor_rows').addEventListener('pointerdown', (event) => {
+            const context = rowContext(event);
+            if (context) setCurrentRow(context.row);
+        });
+        $('editor_rows').addEventListener('focusin', (event) => {
+            const context = rowContext(event);
+            if (context) setCurrentRow(context.row);
         });
 
         // 拖动排序：仅当从手柄按下时才允许整行拖动
@@ -540,47 +758,75 @@
             renderRows();
         });
 
-        const insertRow = (command) => {
+        // 新增命令的插入位置：当前行之后；没有当前行（或该行已被移除）时追加到末尾
+        const insertIndexFor = (list, anchor) => {
+            const at = anchor ? list.indexOf(anchor) : -1;
+            return at < 0 ? list.length : at + 1;
+        };
+
+        const insertRow = async (command) => {
+            // 台词需要角色下拉：第一次添加台词时才加载角色与表情
+            if (command && command.kind === 'say') await ensureCharacters();
+            // 默认插入到当前行之后；未选中任何行时追加到末尾
+            const insertAt = insertIndexFor(rows, currentRow);
             // 「对局设置」：一键插入整个对局框（对局标题 + 残局码 + 结束此对局）
             if (command && command.block) {
-                const start = rows.length;
-                rows.push({ 'kind': 'game', 'title': '' });
-                rows.push({ 'kind': 'config', 'key': '残局码', 'value': '' });
-                rows.push({ 'kind': 'game_end' });
+                const gameRow = { 'kind': 'game', 'title': '' };
+                const archiveRow = { 'kind': 'config', 'key': '残局码', 'value': '' };
+                const endRow = { 'kind': 'game_end' };
+                rows.splice(insertAt, 0, gameRow, archiveRow, endRow);
+                // 当前行落在结束标记上，下一次新增命令会位于对局框之外
+                currentRow = endRow;
                 renderRows();
-                const node = $('editor_rows').querySelector(`.editor-row[data-index='${start}']`);
-                const input = node ? node.querySelector('[data-role=title]') : null;
-                if (input && input.focus) input.focus();
+                focusRowControl(insertAt, 'title');
                 return;
             }
             const row = emptyRow(command);
             if (command && command.title && row.kind === 'game') row.title = command.title;
-            rows.push(row);
+            rows.splice(insertAt, 0, row);
+            currentRow = row;
             renderRows();
-            if (command && command.focus) { pendingFocus = command.focus; focusPending(); }
+            if (command && command.focus) focusRowControl(insertAt, command.focus);
         };
 
+        const makeCommandButton = (command, labelClass) => {
+            const button = document.createElement('sl-button');
+            button.size = 'small';
+            button.variant = 'default';
+            button.outline = true;
+            button.title = command.label;
+            const label = labelClass ? `<span class='${labelClass}'>${escapeHtml(command.label)}</span>` : escapeHtml(command.label);
+            button.innerHTML = `<sl-icon slot='prefix' name='${command.icon}'></sl-icon>${label}`;
+            button.addEventListener('click', () => insertRow(command));
+            return button;
+        };
+
+        // 下方固定命令栏与右侧常驻快捷栏共用同一份命令定义
         const renderCommandBar = () => {
             const bar = $('command_bar');
+            const dock = $('command_dock_list');
             bar.innerHTML = '';
+            dock.innerHTML = '';
             COMMANDS.forEach((command) => {
-                const button = document.createElement('sl-button');
-                button.size = 'small';
-                button.variant = 'default';
-                button.outline = true;
-                button.innerHTML = `<sl-icon slot='prefix' name='${command.icon}'></sl-icon>${escapeHtml(command.label)}`;
-                button.addEventListener('click', () => insertRow(command));
-                bar.append(button);
+                bar.append(makeCommandButton(command));
+                dock.append(makeCommandButton(command, 'dock-label'));
             });
         };
 
         // ==================== 目录与关卡 ====================
+        // 目录接口只返回序号/标题/统计；剧本在进入关卡或编辑该关时才按关卡拉取
+        const normalizeStats = (value) => (value && typeof value === 'object' ? {
+            'nodes': Math.max(0, Math.trunc(Number(value.nodes) || 0)),
+            'say': Math.max(0, Math.trunc(Number(value.say) || 0)),
+            'game': Math.max(0, Math.trunc(Number(value.game) || 0)),
+        } : null);
         const normalizeCatalog = (raw) => {
             const source = raw && typeof raw === 'object' ? raw : {};
             const levels = (Array.isArray(source.levels) ? source.levels : []).filter(Boolean).map((item, index) => ({
                 'level': Math.max(1, Math.trunc(Number(item.level) || index + 1)),
                 'title': String(item.title == null ? '' : item.title).slice(0, 20) || `第 ${index + 1} 关`,
                 'script': String(item.script == null ? '' : item.script),
+                'stats': normalizeStats(item.stats),
             })).sort((a, b) => a.level - b.level);
             return { 'version': 1, levels };
         };
@@ -609,7 +855,8 @@
             $('level_count').textContent = String(catalog.levels.length);
             $('level_empty').classList.toggle('d-none', catalog.levels.length > 0);
             catalog.levels.forEach((level) => {
-                const stats = nodeStats(level.script);
+                // 目录接口已带统计；旧数据没有统计且本地缓存了剧本时现场计算，否则只显示提示
+                const stats = level.stats || (level.script ? nodeStats(level.script) : null);
                 const card = document.createElement('sl-card');
                 card.className = 'level-card shadow-sm';
                 const head = document.createElement('div');
@@ -624,7 +871,7 @@
                 title.textContent = level.title;
                 const meta = document.createElement('span');
                 meta.className = 'd-block level-meta text-secondary';
-                meta.textContent = `${stats.nodes} 节点 · ${stats.say} 段对白 · ${stats.game} 场对局`;
+                meta.textContent = stats ? `${stats.nodes} 节点 · ${stats.say} 段对白 · ${stats.game} 场对局` : '点击开始体验';
                 body.append(title, meta);
                 head.append(number, body);
                 card.append(head);
@@ -650,9 +897,13 @@
         };
 
         const renderAdminEditor = () => {
-            $('admin_editor').classList.toggle('d-none', !isAdmin());
-            $('button_delete').disabled = !(isAdmin() && editingLevel !== null);
-            if (isAdmin() && editingLevel === null) resetEditor();
+            const admin = isAdmin();
+            $('admin_editor').classList.toggle('d-none', !admin);
+            // 右侧命令快捷栏同样只对管理员展示，并给正文留出避让空间
+            $('command_dock').classList.toggle('d-none', !admin);
+            document.body.classList.toggle('dock-open', admin);
+            $('button_delete').disabled = !(admin && editingLevel !== null);
+            if (admin && editingLevel === null) resetEditor();
         };
 
         const resetEditor = () => {
@@ -666,22 +917,60 @@
             showFeedback('已清空编辑器，可新建关卡。');
         };
 
-        const editLevel = (levelNo) => {
+        // 按需拉取单关剧本：优先新接口（只返回这一关），旧服务端回退到整份目录
+        const fetchLevelScript = async (levelNo) => {
+            try {
+                const data = await window.http_story_level_query(levelNo);
+                if (data && typeof data.script === 'string') return data.script;
+            } catch (_) { /* 回退整份目录 */ }
+            try {
+                const doc = await window.http_docs_query(STORY_KEY);
+                if (doc && doc.data) {
+                    const parsed = JSON.parse(doc.data);
+                    const level = parsed && Array.isArray(parsed.levels) ? parsed.levels.find((item) => Number(item.level) === Number(levelNo)) : null;
+                    if (level) return String(level.script == null ? '' : level.script);
+                }
+            } catch (_) { /* 剧本不可用 */ }
+            return null;
+        };
+
+        const editLevel = async (levelNo) => {
             if (!isAdmin()) return;
             const level = catalog.levels.find((item) => item.level === Number(levelNo));
             if (!level) return;
+            let script = level.script;
+            if (!script) {
+                showFeedback(`正在加载第 ${level.level} 关剧本...`, 'primary');
+                const loaded = await fetchLevelScript(level.level);
+                if (loaded === null) { showFeedback(`第 ${level.level} 关剧本加载失败。`, 'danger'); return; }
+                script = loaded;
+                level.script = script;
+            }
+            await ensureCharacters();
             editingLevel = level.level;
             $('input_level').value = String(level.level);
             $('input_title').value = level.title;
-            setRows(rowsFromScript(level.script));
+            setRows(rowsFromScript(script));
             $('button_delete').disabled = false;
             showErrors([]);
             showFeedback(`正在编辑第 ${level.level} 关“${level.title}”。`, 'primary');
             window.scrollTo({ 'top': 0, 'behavior': 'smooth' });
         };
 
-        const persist = async () => {
-            const data = JSON.stringify({ 'version': 1, 'levels': catalog.levels });
+        // 读取服务端完整目录（含剧本）：保存时用于合并，避免目录接口缺剧本覆盖掉其他关卡
+        const loadServerCatalog = async () => {
+            try {
+                const doc = await window.http_docs_query(STORY_KEY);
+                if (doc && doc.data) {
+                    const parsed = JSON.parse(doc.data);
+                    if (parsed && Array.isArray(parsed.levels) && parsed.levels.length) return normalizeCatalog(parsed);
+                }
+            } catch (_) { /* 回退内置目录 */ }
+            return cloneCatalog(window.StoryExports.DEFAULT_CATALOG);
+        };
+
+        const persistCatalog = async (full) => {
+            const data = JSON.stringify({ 'version': 1, 'levels': full.levels });
             if (data.length > 65536) { showFeedback('剧情目录过大，超过服务端单文档上限（64KB），请精简剧本。', 'danger'); return false; }
             try {
                 const ok = await window.http_docs_update(window.get_token(), STORY_KEY, data);
@@ -696,7 +985,7 @@
 
         const safeLevelNo = (value) => Math.min(99, Math.max(1, Number.parseInt(value, 10) || 1));
 
-        // 行级预检：对局配置行必须紧跟在“对局”行之后
+        // 行级预检：对局配置行必须紧跟在“对局”行之后；分组框必须成对且颜色合法
         const rowErrors = () => {
             const errors = [];
             rows.forEach((row, index) => {
@@ -708,6 +997,17 @@
                 if ((row.kind === 'jump' || row.kind === 'cond') && !String(row.target || '').trim()) errors.push(`第 ${index + 1} 行跳转标签为空。`);
                 if (row.kind === 'game' && !String(row.title || '').trim()) errors.push(`第 ${index + 1} 行对局标题为空。`);
             });
+            const boxStack = [];
+            rows.forEach((row, index) => {
+                if (row.kind === 'box') {
+                    if (row.color && !normalizeHex(row.color)) errors.push(`第 ${index + 1} 行「框」颜色无效：${row.color}（应形如 #6f42c1）。`);
+                    boxStack.push(index);
+                } else if (row.kind === 'box_end') {
+                    if (!boxStack.length) errors.push(`第 ${index + 1} 行「结束框」没有对应的「框」。`);
+                    else boxStack.pop();
+                }
+            });
+            if (boxStack.length) errors.push(`第 ${boxStack[boxStack.length - 1] + 1} 行「框」缺少「结束框」。`);
             return errors;
         };
 
@@ -728,25 +1028,37 @@
             const errors = validateRows();
             showErrors(errors);
             if (errors.length) { showFeedback('剧本校验未通过，请修正后再保存。', 'danger'); return; }
-            const clash = catalog.levels.find((item) => item.level === levelNo && item.level !== editingLevel);
-            if (clash && editingLevel === null) { showFeedback(`关卡序号 ${levelNo} 已被占用（${clash.title}），请更换。`, 'danger'); return; }
             const button = $('button_save');
             button.disabled = true;
             try {
-                const existing = catalog.levels.find((item) => item.level === editingLevel);
-                if (existing) { existing.level = levelNo; existing.title = title; existing.script = script; }
-                else catalog.levels.push({ 'level': levelNo, 'title': title, 'script': script });
-                catalog.levels.sort((a, b) => a.level - b.level);
-                if (await persist()) { editingLevel = levelNo; $('button_delete').disabled = false; renderLevels(); }
+                // 目录里没有剧本，保存前先取服务端完整目录，只替换当前关卡
+                const full = await loadServerCatalog();
+                const clash = full.levels.find((item) => item.level === levelNo && item.level !== editingLevel);
+                if (clash) { showFeedback(`关卡序号 ${levelNo} 已被占用（${clash.title}），请更换。`, 'danger'); return; }
+                const stats = nodeStats(script);
+                const existing = editingLevel === null ? null : full.levels.find((item) => item.level === editingLevel);
+                if (existing) { existing.level = levelNo; existing.title = title; existing.script = script; existing.stats = stats; }
+                else full.levels.push({ 'level': levelNo, 'title': title, 'script': script, 'stats': stats });
+                full.levels.sort((a, b) => a.level - b.level);
+                if (await persistCatalog(full)) {
+                    catalog = full;
+                    editingLevel = levelNo;
+                    $('button_delete').disabled = false;
+                    renderLevels();
+                }
             } finally { button.disabled = false; }
         };
 
         const removeLevel = async (levelNo, title) => {
             if (!isAdmin()) return;
             if (!window.confirm(`确定删除第 ${levelNo} 关“${title}”吗？`)) return;
-            catalog.levels = catalog.levels.filter((item) => item.level !== levelNo);
-            if (editingLevel === levelNo) resetEditor();
-            if (await persist()) { renderLevels(); showFeedback(`第 ${levelNo} 关已删除。`, 'success'); }
+            const full = await loadServerCatalog();
+            full.levels = full.levels.filter((item) => item.level !== Number(levelNo));
+            if (!(await persistCatalog(full))) return;
+            catalog = full;
+            if (editingLevel === Number(levelNo)) resetEditor();
+            renderLevels();
+            showFeedback(`第 ${levelNo} 关已删除。`, 'success');
         };
 
         const checkScript = () => {
@@ -757,8 +1069,8 @@
 
         $('button_save').addEventListener('click', saveLevel);
         $('button_check').addEventListener('click', checkScript);
-        $('button_new').addEventListener('click', resetEditor);
-        $('button_reset_editor').addEventListener('click', resetEditor);
+        $('button_new').addEventListener('click', () => { ensureCharacters(); resetEditor(); });
+        $('button_reset_editor').addEventListener('click', () => { ensureCharacters(); resetEditor(); });
         $('button_delete').addEventListener('click', () => { if (editingLevel !== null) { const level = catalog.levels.find((item) => item.level === editingLevel); removeLevel(editingLevel, level ? level.title : ''); } });
 
         const loadAccount = async () => {
@@ -766,28 +1078,51 @@
             try { storyAdmin = await window.http_user_info(window.get_token()); } catch (_) { storyAdmin = null; }
         };
 
+        // 角色与表情只在管理员编辑时加载，普通玩家进入剧情模式不拉取任何角色图
+        let charactersReady = false;
+        let charactersLoading = null;
         const loadCharacters = async () => {
             try {
                 const result = await window.http_story_character_query();
                 storyCharacters = result && Array.isArray(result.characters) ? result.characters : [];
             } catch (_) { storyCharacters = []; }
         };
+        const ensureCharacters = async () => {
+            if (charactersReady) return;
+            if (charactersLoading) return charactersLoading;
+            charactersLoading = (async () => {
+                await loadCharacters();
+                charactersReady = true;
+                charactersLoading = null;
+                if (rows.length) renderRows();
+            })();
+            return charactersLoading;
+        };
 
-        (async () => {
-            renderCommandBar();
-            await Promise.allSettled([loadAccount(), loadCharacters()]);
-            let source = 'default';
+        // 剧情目录只含关卡序号与标题；进入关卡时由 story-play 页按关卡拉剧本与角色图
+        const loadCatalogIndex = async () => {
+            try {
+                const index = await window.http_story_level_query();
+                if (index && Array.isArray(index.levels) && index.levels.length) return { 'catalog': normalizeCatalog({ 'levels': index.levels }), 'source': 'server' };
+            } catch (_) { /* 旧服务端回退整份目录 */ }
             try {
                 const doc = await window.http_docs_query(STORY_KEY);
                 if (doc && doc.data) {
                     const parsed = JSON.parse(doc.data);
-                    if (parsed && Array.isArray(parsed.levels) && parsed.levels.length) { catalog = normalizeCatalog(parsed); source = 'server'; }
+                    if (parsed && Array.isArray(parsed.levels) && parsed.levels.length) return { 'catalog': normalizeCatalog(parsed), 'source': 'server' };
                 }
             } catch (_) { /* 回退内置目录 */ }
-            if (source === 'default') catalog = cloneCatalog(window.StoryExports.DEFAULT_CATALOG);
+            return { 'catalog': cloneCatalog(window.StoryExports.DEFAULT_CATALOG), 'source': 'default' };
+        };
+
+        (async () => {
+            renderCommandBar();
+            await loadAccount();
+            const loaded = await loadCatalogIndex();
+            catalog = loaded.catalog;
             const badge = $('source_badge');
-            badge.variant = source === 'server' ? 'success' : 'neutral';
-            badge.textContent = source === 'server' ? '服务端目录' : '内置目录';
+            badge.variant = loaded.source === 'server' ? 'success' : 'neutral';
+            badge.textContent = loaded.source === 'server' ? '服务端目录' : '内置目录';
             renderAdminEditor();
             renderLevels();
             if (isAdmin()) resetEditor();

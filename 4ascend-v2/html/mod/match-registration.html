@@ -119,6 +119,13 @@
             border: 1px solid var(--bracket-canvas-border);
             border-radius: 0.85rem;
             background: var(--bracket-canvas-bg);
+            cursor: grab;
+        }
+
+        /* 拖拽空白处平移画布 */
+        .bracket-canvas.panning {
+            cursor: grabbing;
+            user-select: none;
         }
 
         .bracket-spacer {
@@ -595,7 +602,7 @@
                     <div class='d-flex align-items-center justify-content-between gap-2'>
                         <div>
                             <div id='text_bracket_section_title' class='category-title fw-bold mb-0'>分组流程图</div>
-                            <div id='text_bracket_desc' class='text-secondary small mt-1'>点击方块查看分组并报名；管理员可拖动方块、Ctrl+滚轮缩放</div>
+                            <div id='text_bracket_desc' class='text-secondary small mt-1'>点击方块查看分组并报名；拖动空白处平移画布；管理员可拖动方块、Ctrl+滚轮缩放</div>
                         </div>
                         <div class='d-flex align-items-center gap-2'>
                             <sl-button id='button_edit_texts' class='d-none' variant='warning' outline size='small'>
@@ -668,6 +675,10 @@
                                 <sl-option value='off'>不轮换（随机）</sl-option>
                             </sl-select>
                         </div>
+                    </div>
+                    <div class='d-flex flex-column gap-1'>
+                        <sl-switch id='switch_node_loser_advance'>双败赛制（允许败方进入下一组抽签）</sl-switch>
+                        <div class='text-secondary small'>开启后，本方块中落败的选手也可报名下一方块；关闭时仅胜方晋级。</div>
                     </div>
                     <sl-button id='button_save_node' class='w-100' variant='warning' outline>保存设置</sl-button>
                     <sl-button id='button_delete_node' class='d-none w-100' variant='danger' outline>
@@ -792,10 +803,11 @@
         };
 
         // 节点数据模型
-        // node = { id, name, maxPlayers, groupCount, players, groups, x, y, main, bo, rotate, results, player_uuids }
+        // node = { id, name, maxPlayers, groupCount, players, groups, x, y, main, bo, rotate, loserAdvance, results, player_uuids }
         // groups: 二维数组，每项是该组的玩家名列表
         // bo: 系列赛局数（默认 3）
         // rotate: 先手轮换（'first' 强制轮换：第1局随机，之后逐局交换；'off' 不轮换，每局随机）
+        // loserAdvance: 双败赛制开关；true 时本方块落败的选手也可报名其下一方块（进入败者组抽签）
         // results: { [组序号]: { bo, wins: {uuid: n}, games: [...], completed, winner_uuid, updated_at } }
         // player_uuids: { 昵称: uuid }，报名时由服务端写入
         const defaultState = () => ({
@@ -817,6 +829,8 @@
                 node.bo = normalize_bo(node.bo);
                 // 缺失时默认强制轮换；显式设为 'off'（不轮换）的保留原值
                 node.rotate = node.rotate === 'off' ? 'off' : 'first';
+                // 双败赛制开关，旧签表缺失时默认关闭（败方不得进入下一组抽签）
+                node.loserAdvance = node.loserAdvance === true;
                 node.results = node.results && typeof node.results === 'object' ? node.results : {};
                 node.player_uuids = node.player_uuids && typeof node.player_uuids === 'object' ? node.player_uuids : {};
                 // 被管理员移除过的身份标识码，防止保存时合并服务端数据把该账号“复活”
@@ -933,6 +947,7 @@
         const nodeGroupInput = document.getElementById('input_node_group_count');
         const nodeBoInput = document.getElementById('input_node_bo');
         const nodeRotateSelect = document.getElementById('select_node_rotate');
+        const nodeLoserSwitch = document.getElementById('switch_node_loser_advance');
         const saveNodeButton = document.getElementById('button_save_node');
         const deleteNodeButton = document.getElementById('button_delete_node');
         const summaryPlayers = document.getElementById('summary_players');
@@ -957,7 +972,7 @@
             },
             bracket: {
                 section_title: '分组流程图',
-                desc: '点击方块查看分组并报名；管理员可拖动方块、Ctrl+滚轮缩放',
+                desc: '点击方块查看分组并报名；拖动空白处平移画布；管理员可拖动方块、Ctrl+滚轮缩放',
                 empty_hint: '虚位以待'
             },
             dialog: {
@@ -1210,11 +1225,34 @@
             setZoom(zoom * (event.deltaY < 0 ? 1.1 : 0.9));
         }, { passive: false });
 
-        // 连接模式：点击空白处或按 Esc 取消
+        // 空白处拖拽平移画布（方块自身的拖动由 bindDrag 处理）
         canvas.addEventListener('pointerdown', (event) => {
-            if (!linkingSourceId) return;
+            if (event.button !== 0) return;
+            // 触屏交给浏览器原生滚动，避免与惯性滑动冲突
+            if (event.pointerType === 'touch') return;
             if (event.target.closest('.bracket-node')) return;
-            clearLinking();
+            // 连接模式下点击空白处先取消连接
+            if (linkingSourceId) {
+                clearLinking();
+                return;
+            }
+            const pan = { startX: event.clientX, startY: event.clientY, left: canvas.scrollLeft, top: canvas.scrollTop };
+            event.preventDefault();
+            canvas.classList.add('panning');
+            canvas.setPointerCapture(event.pointerId);
+            const onMove = (e) => {
+                canvas.scrollLeft = pan.left - (e.clientX - pan.startX);
+                canvas.scrollTop = pan.top - (e.clientY - pan.startY);
+            };
+            const onUp = () => {
+                canvas.classList.remove('panning');
+                canvas.removeEventListener('pointermove', onMove);
+                canvas.removeEventListener('pointerup', onUp);
+                canvas.removeEventListener('pointercancel', onUp);
+            };
+            canvas.addEventListener('pointermove', onMove);
+            canvas.addEventListener('pointerup', onUp);
+            canvas.addEventListener('pointercancel', onUp);
         });
         document.addEventListener('keydown', (event) => {
             if (event.key === 'Escape' && linkingSourceId) clearLinking();
@@ -1361,6 +1399,7 @@
                         <span class='bracket-node-name'>${node.name}</span>
                         <div class='bracket-node-meta'>
                             <sl-badge variant='neutral' pill>BO${normalize_bo(node.bo)}</sl-badge>
+                            ${node.loserAdvance === true ? `<sl-badge variant='primary' pill>双败</sl-badge>` : ''}
                             <sl-badge variant='${status.variant}' pill>${status.text}</sl-badge>
                             ${final_badge}
                             <span class='node-actions d-none'>
@@ -1660,9 +1699,13 @@
             const winner = group_winner_uuid(parent, index);
             if (!winner) return 'wait';
             const map = parent.player_uuids && typeof parent.player_uuids === 'object' ? parent.player_uuids : {};
-            if (uuid) return winner === uuid ? 'ok' : 'lose';
-            const winner_name = Object.keys(map).find((key) => map[key] === winner) || '';
-            return winner_name === name ? 'ok' : 'lose';
+            const is_winner = uuid
+                ? winner === uuid
+                : (Object.keys(map).find((key) => map[key] === winner) || '') === name;
+            if (is_winner) return 'ok';
+            // 双败赛制：本方块允许败方进入下一组抽签
+            if (parent.loserAdvance === true) return 'ok';
+            return 'lose';
         };
 
         // 报名前置条件：必须在前置方块中获胜晋级（多条前置路径任一晋级即可）
@@ -1860,6 +1903,7 @@
                 nodeGroupInput.value = node.groupCount;
                 nodeBoInput.value = normalize_bo(node.bo);
                 nodeRotateSelect.value = node.rotate === 'first' ? 'first' : 'off';
+                nodeLoserSwitch.checked = node.loserAdvance === true;
                 deleteNodeButton.classList.toggle('d-none', Boolean(node.main));
             }
         };
@@ -1920,6 +1964,7 @@
             const boChanged = newBo !== normalize_bo(node.bo);
             node.bo = newBo;
             node.rotate = nodeRotateSelect.value === 'first' ? 'first' : 'off';
+            node.loserAdvance = nodeLoserSwitch.checked === true;
             if (boChanged) recompute_results(node);
 
             // 如果组数变了，重建 groups

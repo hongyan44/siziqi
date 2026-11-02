@@ -7,13 +7,15 @@
 const BOARD_SIZE = 9;
 
 // 对局节点允许的配置键（结束对局=... 为新写法，结束残局=... 兼容旧剧本）
-const GAME_KEYS = ['残局码', '结束对局', '结束残局', '步数对话', '刷草点', '刷草计划', '我方', '先手', '胜利', '失败', '平局'];
+const GAME_KEYS = ['残局码', '结束对局', '结束残局', '结束后', '步数对话', '刷草点', '刷草计划', '我方', '先手', '胜利', '失败', '平局'];
 // 保留目标：直接结束剧情
 const END_TARGETS = ['结束', '剧终'];
 // 返回对局：中途触发的对话播完后回到当前对局继续下棋
 const RESUME_KEYWORDS = ['继续对局', '返回对局'];
 // 对局块结束标记：编辑器据此把「* 对局」到本行之间的内容包进同一个对局框
 const GAME_END_KEYWORDS = ['结束此对局'];
+// 分组框：仅用于编辑器分区（可自定义颜色），播放时按普通节点跳过
+const BOX_COLOR_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
 
 // 条件分支：% IF 条件 -> 标签 / % ELSE -> 标签
 // 条件取自"最近一次对局的结果"
@@ -114,12 +116,16 @@ const normalizeGameConfig = (raw) => {
     const endSource = source['结束对局'] == null ? source['结束残局'] : source['结束对局'];
     const endText = String(endSource == null ? '' : endSource).trim();
     const dialogueText = String(source['步数对话'] == null ? '' : source['步数对话']);
+    // 结束后：对局结束时显示什么、之后去哪。继续 = 显示「继续」并直接进入下一段剧情
+    const afterText = String(source['结束后'] == null ? '' : source['结束后']).trim();
     const endSteps = /^步数\s*[:：]\s*(\d+)$/.exec(endText);
     return {
         'archive': String(source['残局码'] == null ? '' : source['残局码']).trim(),
         'end_text': endText,
         'end_kind': endSteps ? 'steps' : endText === '胜负' ? 'outcome' : '',
         'end_steps': endSteps ? Math.max(1, Number(endSteps[1])) : 0,
+        'post': afterText === '继续' ? 'continue' : afterText === '结果' ? 'result' : '',
+        'post_text': afterText,
         'dialogues': parseDialogues(dialogueText),
         'dialogues_text': dialogueText,
         'points': parsePoints(pointsText),
@@ -190,8 +196,14 @@ class StoryScript {
         let pending = null;
 
         lines.forEach((line, lineIndex) => {
-            const text_ = line.trim();
+            // 行首缩进（2 空格 = 1 级，Tab 按 2 空格计）仅用于编辑器排版，解析时照常 trim
+            const expanded = line.replace(/\t/g, '  ');
+            const indent = Math.min(8, Math.floor((expanded.length - expanded.trimStart().length) / 2));
+            const text_ = expanded.trim();
             if (!text_ || text_.startsWith('#')) return;
+
+            // 统一写入行首缩进，供编辑器回填时还原手动缩进
+            const push = (node) => { node.indent = indent; nodes.push(node); return node; };
 
             // 选项行：- 文本 -> 标签
             const option = text_.match(/^-\s*(.+?)\s*->\s*(.+)$/);
@@ -214,7 +226,7 @@ class StoryScript {
                 const split = raw.indexOf('|');
                 const speaker = split < 0 ? raw : raw.slice(0, split).trim();
                 const expression = split < 0 ? '' : raw.slice(split + 1).trim();
-                nodes.push({ 'type': 'say', 'speaker': speaker, 'expression': expression, 'text': say[2].trim() });
+                push({ 'type': 'say', 'speaker': speaker, 'expression': expression, 'text': say[2].trim() });
                 pending = null;
                 return;
             }
@@ -227,14 +239,14 @@ class StoryScript {
                 const head = body.slice(0, arrow).trim();
                 const target = body.slice(arrow + 2).trim();
                 if (/^else$/i.test(head)) {
-                    nodes.push({ 'type': 'cond', 'kind': 'else', 'condition': null, 'target': target });
+                    push({ 'type': 'cond', 'kind': 'else', 'condition': null, 'target': target });
                     pending = null;
                     return;
                 }
                 const stripped = head.replace(/^if\s*/i, '').trim();
                 const condition = COND_MAP[stripped] || COND_MAP[stripped.toLowerCase()] || null;
                 if (!condition) { errors.push(`第 ${lineIndex + 1} 行条件无效：${text_}（可用 胜利 / 失败 / 平局）`); return; }
-                nodes.push({ 'type': 'cond', 'kind': 'if', 'condition': condition, 'target': target });
+                push({ 'type': 'cond', 'kind': 'if', 'condition': condition, 'target': target });
                 pending = null;
                 return;
             }
@@ -252,20 +264,38 @@ class StoryScript {
                     expression = split < 0 ? '' : raw.slice(split + 1).trim();
                     body = face[2].trim();
                 }
-                pending = { 'type': 'choice', 'speaker': speaker, 'expression': expression, 'prompt': body, 'options': [] };
-                nodes.push(pending);
+                pending = push({ 'type': 'choice', 'speaker': speaker, 'expression': expression, 'prompt': body, 'options': [] });
                 return;
             }
 
             if (text_.startsWith('*')) {
-                pending = { 'type': 'game', 'title': text_.slice(1).trim(), 'config_raw': {} };
-                nodes.push(pending);
+                pending = push({ 'type': 'game', 'title': text_.slice(1).trim(), 'config_raw': {} });
                 return;
             }
 
             // 对局块结束标记：结束此对局（仅作分块边界，运行时按普通节点跳过）
             if (GAME_END_KEYWORDS.includes(text_)) {
-                nodes.push({ 'type': 'game_end' });
+                push({ 'type': 'game_end' });
+                pending = null;
+                return;
+            }
+
+            // 分组框：框 标题 色=#6f42c1 / 结束框（仅编辑器分区，播放时跳过）
+            if (text_ === '结束框' || text_ === '框结束') {
+                push({ 'type': 'box_end' });
+                pending = null;
+                return;
+            }
+            if (/^框(?:\s|$)/.test(text_)) {
+                const tokens = text_.slice(1).trim().split(/\s+/).filter(Boolean);
+                let color = null;
+                const titleParts = [];
+                tokens.forEach((token) => {
+                    const matched = token.match(/^色=(.+)$/);
+                    if (matched) { color = matched[1].trim(); return; }
+                    titleParts.push(token);
+                });
+                push({ 'type': 'box', 'title': titleParts.join(' '), 'color': color });
                 pending = null;
                 return;
             }
@@ -285,7 +315,7 @@ class StoryScript {
                     if (matched) { color = matched[1].trim(); return; }
                     positional.push(token);
                 });
-                nodes.push({ 'type': 'mark', 'kind': kind, 'target': positional[0] || '', 'color': color });
+                push({ 'type': 'mark', 'kind': kind, 'target': positional[0] || '', 'color': color });
                 pending = null;
                 return;
             }
@@ -293,26 +323,26 @@ class StoryScript {
             if (text_.startsWith(':')) {
                 const name = text_.slice(1).trim();
                 labels[name] = nodes.length;
-                nodes.push({ 'type': 'label', 'name': name });
+                push({ 'type': 'label', 'name': name });
                 pending = null;
                 return;
             }
 
             if (text_.startsWith('->')) {
-                nodes.push({ 'type': 'jump', 'target': text_.slice(2).trim() });
+                push({ 'type': 'jump', 'target': text_.slice(2).trim() });
                 pending = null;
                 return;
             }
 
             if (END_TARGETS.includes(text_)) {
-                nodes.push({ 'type': 'end' });
+                push({ 'type': 'end' });
                 pending = null;
                 return;
             }
 
             // 继续对局：步数对话播完后回到当前对局
             if (RESUME_KEYWORDS.includes(text_)) {
-                nodes.push({ 'type': 'resume' });
+                push({ 'type': 'resume' });
                 pending = null;
                 return;
             }
@@ -365,6 +395,7 @@ class StoryScript {
                 if (config.points_text && config.points.length === 0) result.push(`对局“${node.title}”的刷草点格式无效：${config.points_text}`);
                 if (config.schedule_text && config.schedule.length === 0) result.push(`对局“${node.title}”的刷草计划格式无效：${config.schedule_text}（应形如 3:4,4;5,4|9:2,2）`);
                 if (config.end_text && !config.end_kind) result.push(`对局“${node.title}”的“结束对局”格式无效：${config.end_text}（应为 胜负 或 步数:12）`);
+                if (config.post_text && !config.post) result.push(`对局“${node.title}”的“结束后”格式无效：${config.post_text}（应为 结果 或 继续）`);
                 if (config.dialogues_text && !config.dialogues.length) result.push(`对局“${node.title}”的“步数对话”格式无效：${config.dialogues_text}（应形如 3:标签|6:标签）`);
                 (config.dialogues || []).forEach((item) => {
                     if (!hasTarget(item.target)) result.push(`对局“${node.title}”的步数对话指向了不存在的标签：${item.target}`);
@@ -380,7 +411,39 @@ class StoryScript {
             }
         });
 
+        // 分组框：颜色合法且必须成对出现
+        const boxStack = [];
+        nodes.forEach((node, index) => {
+            if (node.type === 'box') {
+                if (node.color && !BOX_COLOR_RE.test(node.color)) result.push(`第 ${index + 1} 个框的颜色无效：${node.color}（应形如 #6f42c1）`);
+                boxStack.push(index);
+            } else if (node.type === 'box_end') {
+                if (!boxStack.length) result.push(`第 ${index + 1} 个「结束框」没有对应的「框」。`);
+                else boxStack.pop();
+            }
+        });
+        if (boxStack.length) result.push(`第 ${boxStack[boxStack.length - 1] + 1} 个「框」缺少「结束框」。`);
+
         return result;
+    }
+
+    /**
+     * @description: 收集剧本用到的角色与表情（供按关卡只加载这些角色图）
+     * 台词与选择节点里的 [角色|表情] 都算；表情为空表示只用到角色代表图。
+     * @param {{nodes: object[]}} parsed
+     * @return {{name: string, expressions: string[]}[]}
+     */
+    static faces(parsed) {
+        const map = new Map();
+        ((parsed && parsed.nodes) || []).forEach((node) => {
+            if (!node || (node.type !== 'say' && node.type !== 'choice')) return;
+            const name = String(node.speaker == null ? '' : node.speaker).trim();
+            if (!name) return;
+            if (!map.has(name)) map.set(name, new Set());
+            const expression = String(node.expression == null ? '' : node.expression).trim();
+            if (expression) map.get(name).add(expression);
+        });
+        return Array.from(map, ([name, expressions]) => ({ 'name': name, 'expressions': Array.from(expressions) }));
     }
 
     /**
@@ -391,38 +454,44 @@ class StoryScript {
     static stringify(parsed) {
         const nodes = (parsed && parsed.nodes) || [];
         const lines = [];
+        const pad = (node) => '  '.repeat(Math.max(0, Math.min(10, Math.trunc(Number(node.indent) || 0))));
         nodes.forEach((node) => {
-            if (node.type === 'say') lines.push(node.expression ? `[${node.speaker}|${node.expression}] ${node.text}` : `[${node.speaker}] ${node.text}`);
+            const lead = pad(node);
+            if (node.type === 'say') lines.push(lead + (node.expression ? `[${node.speaker}|${node.expression}] ${node.text}` : `[${node.speaker}] ${node.text}`));
             else if (node.type === 'choice') {
                 const face = node.speaker ? (node.expression ? `[${node.speaker}|${node.expression}] ` : `[${node.speaker}] `) : '';
-                lines.push(`? ${face}${node.prompt}`);
-                (node.options || []).forEach((item) => lines.push(`- ${item.text} -> ${item.target}`));
+                lines.push(lead + `? ${face}${node.prompt}`);
+                (node.options || []).forEach((item) => lines.push(lead + `- ${item.text} -> ${item.target}`));
             } else if (node.type === 'game') {
                 const config = node.config || normalizeGameConfig(node.config_raw || {});
-                lines.push(`* ${node.title}`);
-                if (config.archive) lines.push(`  残局码=${config.archive}`);
-                if (config.end_text) lines.push(`  结束对局=${config.end_text}`);
-                if (config.dialogues.length) lines.push(`  步数对话=${dialoguesToText(config.dialogues)}`);
-                if (config.points.length) lines.push(`  刷草点=${pointsToText(config.points)}`);
-                if (config.schedule.length) lines.push(`  刷草计划=${scheduleToText(config.schedule)}`);
-                if (config.self) lines.push(`  我方=${config.self === SIDE_BLACK ? '黑' : '白'}`);
-                if (config.first) lines.push(`  先手=${config.first === SIDE_BLACK ? '黑' : '白'}`);
-                if (config.win) lines.push(`  胜利=${config.win}`);
-                if (config.lose) lines.push(`  失败=${config.lose}`);
-                if (config.draw) lines.push(`  平局=${config.draw}`);
-            } else if (node.type === 'label') lines.push(`:${node.name}`);
-            else if (node.type === 'jump') lines.push(`-> ${node.target}`);
+                lines.push(lead + `* ${node.title}`);
+                const configLead = lead + '  ';
+                if (config.archive) lines.push(`${configLead}残局码=${config.archive}`);
+                if (config.end_text) lines.push(`${configLead}结束对局=${config.end_text}`);
+                if (config.post) lines.push(`${configLead}结束后=${config.post === 'continue' ? '继续' : '结果'}`);
+                if (config.dialogues.length) lines.push(`${configLead}步数对话=${dialoguesToText(config.dialogues)}`);
+                if (config.points.length) lines.push(`${configLead}刷草点=${pointsToText(config.points)}`);
+                if (config.schedule.length) lines.push(`${configLead}刷草计划=${scheduleToText(config.schedule)}`);
+                if (config.self) lines.push(`${configLead}我方=${config.self === SIDE_BLACK ? '黑' : '白'}`);
+                if (config.first) lines.push(`${configLead}先手=${config.first === SIDE_BLACK ? '黑' : '白'}`);
+                if (config.win) lines.push(`${configLead}胜利=${config.win}`);
+                if (config.lose) lines.push(`${configLead}失败=${config.lose}`);
+                if (config.draw) lines.push(`${configLead}平局=${config.draw}`);
+            } else if (node.type === 'label') lines.push(lead + `:${node.name}`);
+            else if (node.type === 'jump') lines.push(lead + `-> ${node.target}`);
             else if (node.type === 'cond') {
-                if (node.kind === 'else') lines.push(`% ELSE -> ${node.target}`);
-                else lines.push(`% IF ${COND_TEXT[node.condition] || node.condition} -> ${node.target}`);
-            } else if (node.type === 'end') lines.push('结束');
-            else if (node.type === 'resume') lines.push('继续对局');
-            else if (node.type === 'game_end') lines.push('结束此对局');
+                if (node.kind === 'else') lines.push(lead + `% ELSE -> ${node.target}`);
+                else lines.push(lead + `% IF ${COND_TEXT[node.condition] || node.condition} -> ${node.target}`);
+            } else if (node.type === 'end') lines.push(lead + '结束');
+            else if (node.type === 'resume') lines.push(lead + '继续对局');
+            else if (node.type === 'game_end') lines.push(lead + '结束此对局');
+            else if (node.type === 'box') lines.push(lead + `框${node.title ? ` ${node.title}` : ''}${node.color ? ` 色=${node.color}` : ''}`);
+            else if (node.type === 'box_end') lines.push(lead + '结束框');
             else if (node.type === 'mark') {
                 const tail = node.color ? ` 色=${node.color}` : '';
-                if (node.kind === 'clear') lines.push('@ 清除');
-                else if (node.kind === 'arrow') lines.push(`@ 箭头 ${node.target || ''}${tail}`.trimEnd());
-                else if (node.kind === 'circle') { const cell = node.cell || [0, 0]; lines.push(`@ 圈 ${cell[0]},${cell[1]}${tail}`); }
+                if (node.kind === 'clear') lines.push(lead + '@ 清除');
+                else if (node.kind === 'arrow') lines.push(lead + `@ 箭头 ${node.target || ''}${tail}`.trimEnd());
+                else if (node.kind === 'circle') { const cell = node.cell || [0, 0]; lines.push(lead + `@ 圈 ${cell[0]},${cell[1]}${tail}`); }
             }
         });
         return lines.join('\n');
@@ -526,6 +595,10 @@ class StoryRuntime {
      */
     finish_game(outcome) {
         this.last_outcome = outcome;
+        const node = this.current();
+        const config = node && node.type === 'game' ? (node.config || {}) : {};
+        // 结束后=继续：不按胜负跳标签，直接进入下一段剧情（胜负结果仍保留给 % IF 使用）
+        if (config.post === 'continue') return this.advance();
         const target = this.resolve_game(outcome);
         return target ? this.goto(target) : this.advance();
     }

@@ -341,9 +341,9 @@ const TYPES = ['say', 'choice', 'label', 'say', 'game', 'label', 'say', 'end', '
     assert.deepEqual(parsed.errors, [], '条件分支不应产生解析错误');
     const conds = parsed.nodes.filter((n) => n.type === 'cond');
     assert.equal(conds.length, 3);
-    assert.deepEqual(conds[0], { type: 'cond', kind: 'if', condition: 'win', target: '赢' });
-    assert.deepEqual(conds[1], { type: 'cond', kind: 'if', condition: 'lose', target: '输' });
-    assert.deepEqual(conds[2], { type: 'cond', kind: 'else', condition: null, target: '平' }, 'ELSE 无判定条件');
+    assert.deepEqual(conds[0], { type: 'cond', kind: 'if', condition: 'win', target: '赢', indent: 0 });
+    assert.deepEqual(conds[1], { type: 'cond', kind: 'if', condition: 'lose', target: '输', indent: 0 });
+    assert.deepEqual(conds[2], { type: 'cond', kind: 'else', condition: null, target: '平', indent: 0 }, 'ELSE 无判定条件');
     assert.deepEqual(StoryScript.validate(src), []);
     console.log('PASS: 条件分支解析');
 }
@@ -571,6 +571,119 @@ const TYPES = ['say', 'choice', 'label', 'say', 'game', 'label', 'say', 'end', '
     assert.equal(rt.advance().type, 'choice');
     assert.equal(rt.choose(0).text, '开始', '选项仍能跳转到目标标签');
     console.log('PASS: 选择节点角色表情');
+}
+
+// 34) 分组框：解析 / 颜色 / 缩进 / 运行时跳过
+{
+    const src = [
+        '框 开场 色=#6f42c1',
+        '  [A] 开场白',
+        '  框 分支 色=#dc3545',
+        '    [A] 分支白',
+        '  结束框',
+        '  结束框',
+        '[A] 收尾',
+        '结束',
+    ].join('\n');
+    const parsed = StoryScript.parse(src);
+    assert.deepEqual(parsed.errors, [], '分组框不应产生解析错误');
+    assert.deepEqual(
+        parsed.nodes.map((n) => n.type),
+        ['box', 'say', 'box', 'say', 'box_end', 'box_end', 'say', 'end'],
+        '分组框与结束框应是独立节点'
+    );
+    assert.equal(parsed.nodes[0].title, '开场');
+    assert.equal(parsed.nodes[0].color, '#6f42c1');
+    assert.equal(parsed.nodes[2].title, '分支');
+    assert.equal(parsed.nodes[2].color, '#dc3545');
+    assert.equal(parsed.nodes[1].indent, 1, '第二行应记录 1 级缩进');
+    assert.equal(parsed.nodes[3].indent, 2, '嵌套框内的台词应记录 2 级缩进');
+    assert.equal(parsed.nodes[4].indent, 1, '结束框也应记录缩进');
+    assert.deepEqual(StoryScript.validate(src), [], '分组框剧本应校验通过');
+
+    // 运行时把分组框当普通节点跳过
+    const rt = new StoryRuntime(parsed);
+    assert.equal(rt.current().type, 'box');
+    assert.equal(rt.advance().text, '开场白', 'box 之后应到达台词');
+    assert.equal(rt.advance().type, 'box');
+    assert.equal(rt.advance().text, '分支白');
+    assert.equal(rt.advance().type, 'box_end');
+    assert.equal(rt.advance().type, 'box_end');
+    assert.equal(rt.advance().text, '收尾', '结束框之后应能继续推进');
+
+    // stringify 保留标题、颜色与缩进
+    const out = StoryScript.stringify(parsed);
+    assert.ok(out.includes('框 开场 色=#6f42c1'), `框应还原：${out}`);
+    assert.ok(out.includes('  框 分支 色=#dc3545'), `嵌套框应带缩进还原：${out}`);
+    assert.ok(out.includes('  结束框'), `结束框应带缩进还原：${out}`);
+    assert.deepEqual(StoryScript.validate(out), [], '还原后应校验通过');
+    console.log('PASS: 分组框解析/缩进/还原');
+}
+
+// 35) 分组框：颜色非法 / 结束框缺失或多余
+{
+    assert.ok(
+        StoryScript.validate('框 标题 色=red\n结束框\n结束').some((e) => e.includes('颜色无效')),
+        '非法颜色应报错'
+    );
+    assert.ok(
+        StoryScript.validate('框 标题\n[A] hi\n结束').some((e) => e.includes('缺少')),
+        '框缺少结束框应报错'
+    );
+    assert.ok(
+        StoryScript.validate('结束框\n结束').some((e) => e.includes('没有对应')),
+        '多余结束框应报错'
+    );
+    console.log('PASS: 分组框校验');
+}
+
+// 36) 结束后=继续：解析 / 校验 / 还原 / 运行时直接继续剧情
+{
+    const src = [
+        '[A] hi',
+        '* 对局 x',
+        '  结束后=继续',
+        '  胜利=胜利',
+        '[A] 继续剧情',
+        '% IF 胜利 -> 胜利',
+        '[A] 后续',
+        '结束',
+        ':胜利',
+        '[A] 胜',
+        '结束',
+    ].join('\n');
+    const parsed = StoryScript.parse(src);
+    assert.deepEqual(parsed.errors, [], '结束后=继续 不应产生解析错误');
+    const game = parsed.nodes.find((n) => n.type === 'game');
+    assert.equal(game.config.post, 'continue');
+    assert.equal(game.config.post_text, '继续');
+    assert.deepEqual(StoryScript.validate(src), [], '结束后=继续 应校验通过');
+
+    // 结束后=结果 与留空等价
+    const asResult = StoryScript.parse('[A] hi\n* 对局 x\n  结束后=结果\n结束').nodes.find((n) => n.type === 'game');
+    assert.equal(asResult.config.post, 'result');
+
+    // 还原保留该配置
+    const out = StoryScript.stringify(parsed);
+    assert.ok(out.includes('结束后=继续'), `结束后 应还原：${out}`);
+    assert.deepEqual(StoryScript.validate(out), [], '还原后应校验通过');
+
+    // 运行时：不跳胜利标签，直接进入下一段剧情；胜负结果仍保留给 % IF
+    const rt = new StoryRuntime(parsed);
+    rt.advance();
+    assert.equal(rt.current().type, 'game');
+    assert.equal(rt.last_outcome, null);
+    assert.equal(rt.finish_game('win').text, '继续剧情', '结束后=继续 应直接前进而不是跳胜利标签');
+    assert.equal(rt.last_outcome, 'win', '胜负结果仍应记录');
+    assert.equal(rt.advance().type, 'cond');
+    assert.equal(rt.step_cond(rt.current()).text, '胜', '% IF 仍可按获胜结果跳转');
+
+    // 非法取值应报错
+    assert.ok(
+        StoryScript.validate('[A] hi\n* 对局 x\n  结束后=下一步\n结束').some((e) => e.includes('结束后')),
+        '非法的结束后取值应报错'
+    );
+    console.log('PASS: 结束后=继续 解析/校验/还原/运行时');
 }
 
 console.log('story-script: ALL PASS');

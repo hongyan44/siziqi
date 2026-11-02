@@ -167,7 +167,6 @@
         <div slot='footer' class='d-flex gap-2'>
             <sl-button id='button_dialog_close' variant='neutral'>关闭</sl-button>
             <sl-button id='button_dialog_copy' variant='default' disabled><sl-icon slot='prefix' name='clipboard'></sl-icon>复制残局码</sl-button>
-            <sl-button id='button_dialog_import' variant='default'>导入残局</sl-button>
             <sl-button id='button_dialog_start' variant='primary' disabled>开始挑战</sl-button>
         </div>
     </sl-dialog>
@@ -300,7 +299,6 @@
             for (let page = 1; page <= TOTAL_LEVELS / PAGE_SIZE; page++) { const button = document.createElement('sl-button'); button.size = 'small'; button.outline = page !== currentPage; button.variant = page === currentPage ? 'primary' : 'default'; button.textContent = String(page); button.className = 'page-button'; button.addEventListener('click', () => { currentPage = page; renderLevels(); }); $('page_buttons').append(button); }
             renderProgress();
         };
-        const focusImport = (level = selectedLevel) => { if (!isAdmin()) { showFeedback('只有权限等级4管理员可以导入残局。', 'danger'); return; } $('input_level').value = String(level); $('input_title').focus(); };
         const saveServerLevel = async () => {
             if (!isAdmin()) { showFeedback('只有权限等级4管理员可以导入残局。', 'danger'); return; }
             const level = safeLevel($('input_level').value); const title = ($('input_title').value || '').trim(); const code = ($('input_code').value || '').trim(); $('input_level').value = String(level);
@@ -331,7 +329,6 @@
             toast(copied ? '残局码已复制到剪贴板。' : '复制失败，请手动选择残局码。', copied ? 'success' : 'error');
         });
         window.addEventListener('resize', () => { if (!$('dialog_level').classList.contains('d-none')) redrawDialogBoard(); });
-        $('button_dialog_import').addEventListener('click', () => focusImport(selectedLevel));
         $('button_dialog_start').addEventListener('click', startSelected);
         $('button_clear_all').addEventListener('click', () => { if (!Object.keys(levelRecords).length) { showFeedback('当前没有可清除的本机进度。'); return; } if (!window.confirm('确定清除本机保存的闯关进度吗？')) return; levelRecords = {}; writeRecords(); renderLevels(); showFeedback('本机闯关进度已清除。', 'success'); });
         const loadAccount = async () => { if (!window.get_token || !window.get_token()) { renderAdminEditor(); return; } try { endgameUserInfo = await window.http_user_info(window.get_token()); } catch (_) { endgameUserInfo = null; } renderAdminEditor(); };

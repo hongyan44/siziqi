@@ -92,6 +92,7 @@ const block_user_color = document.getElementById('block_user_color');
 const block_user_color_gradient = document.getElementById('block_user_color_gradient');
 const block_user_color_rainbow = document.getElementById('block_user_color_rainbow');
 const span_user_color_preview = document.getElementById('span_user_color_preview');
+const input_user_color_custom = document.getElementById('input_user_color_custom');
 const button_user_color_clear = document.getElementById('button_user_color_clear');
 const button_user_color_save = document.getElementById('button_user_color_save');
 const dialog_permission_guide = document.getElementById('dialog_permission_guide');
@@ -427,6 +428,8 @@ const render_user_color = () => {
     span_user_color_preview.innerText = user_color_name || '昵称';
     apply_name_color(span_user_color_preview, user_color_selection);
     render_user_color_swatches();
+    // 单色时同步取色器位置，便于在常用色基础上微调
+    if (input_user_color_custom && /^#[0-9a-fA-F]{6}$/.test(user_color_selection)) input_user_color_custom.value = user_color_selection.toLowerCase();
 };
 
 // 密码以摘要存储，前端只能展示“是否已设置”的状态
@@ -761,6 +764,12 @@ block_user_color.addEventListener('click', (event) => {
     const swatch = event.target.closest ? event.target.closest('.color-swatch') : null;
     if (!swatch) return;
     user_color_selection = swatch.dataset.color || '';
+    render_user_color();
+});
+
+// 昵称颜色：取色器自定义单色（任意 #rrggbb）
+if (input_user_color_custom) input_user_color_custom.addEventListener('input', () => {
+    user_color_selection = input_user_color_custom.value || '';
     render_user_color();
 });
 

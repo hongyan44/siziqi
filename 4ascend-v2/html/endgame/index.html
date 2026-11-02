@@ -502,7 +502,9 @@
         const drawDailyPreview = (code) => {
             try {
                 const archive = window.EndgameExports.EndgameArchive.decode(code);
-                previewCells = archive.cells.map((item) => ({ stone: item.stone || 'none', plant: Number(item.plant) || 0 }));
+                // 残局码盘面以左下角为原点，预览需与挑战页保持一致，上下翻转后再绘制。
+                const decoded = archive.cells.map((item) => ({ stone: item.stone || 'none', plant: Number(item.plant) || 0 }));
+                previewCells = Array.from({ length: 81 }, (_, index) => decoded[(8 - Math.floor(index / 9)) * 9 + (index % 9)]);
                 redrawChallengeBoard();
             } catch (_) { /* 发布前已校验，预览失败不影响发布结果 */ }
         };
