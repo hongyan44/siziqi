@@ -68,6 +68,10 @@
             .dock-open .story-main { padding-right: 66px; }
         }
         .editor-row .form-control-sm, .editor-row .form-select-sm { font-size: .82rem; padding-top: .18rem; padding-bottom: .18rem; }
+        .editor-copy-check { display: none; align-items: center; flex: 0 0 auto; cursor: pointer; }
+        .editor-rows.copy-mode .editor-copy-check { display: inline-flex; }
+        .editor-copy-check input { width: 15px; height: 15px; margin: 0; cursor: pointer; accent-color: var(--sl-color-primary-600, #2563eb); }
+        .editor-copy-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; padding: .5rem .65rem; border: 1px dashed rgba(13, 110, 253, .35); border-radius: .6rem; background: rgba(13, 110, 253, .05); }
         .editor-handle { cursor: grab; color: var(--sl-color-neutral-400); user-select: none; font-size: 1rem; line-height: 1.6; padding: 0 .1rem; }
         .editor-handle:active { cursor: grabbing; }
         .editor-fields { display: flex; flex-wrap: wrap; gap: .4rem; flex: 1 1 auto; min-width: 0; align-items: center; }
@@ -122,6 +126,12 @@
                     </div>
                     <div id='editor_rows' class='editor-rows mt-3'></div>
                     <div id='editor_empty' class='editor-empty text-secondary small mt-3'>还没有任何命令，点击下方或右侧的按钮开始编排。</div>
+                    <div id='editor_copy_bar' class='editor-copy-bar mt-3 d-none'>
+                        <span id='editor_copy_hint' class='small text-secondary flex-grow-1'>复制模式：勾选各行左侧的选框，可单选或多选复制。</span>
+                        <sl-button id='button_copy_selected' size='small' variant='primary' outline disabled><sl-icon slot='prefix' name='clipboard-check'></sl-icon>复制选中</sl-button>
+                        <sl-button id='button_paste' size='small' variant='default' outline disabled><sl-icon slot='prefix' name='clipboard-plus'></sl-icon>粘贴</sl-button>
+                        <sl-button id='button_copy_exit' size='small' variant='default' outline>退出复制</sl-button>
+                    </div>
                     <div class='mt-3'>
                         <div class='category-title fw-bold mb-2'>添加命令</div>
                         <div id='command_bar' class='d-flex flex-wrap gap-2'></div>
@@ -130,6 +140,7 @@
                         <sl-button id='button_save' variant='primary'><sl-icon slot='prefix' name='cloud-arrow-up'></sl-icon>保存到服务端</sl-button>
                         <sl-button id='button_delete' variant='danger' outline disabled>删除当前关卡</sl-button>
                         <sl-button id='button_reset_editor' variant='default' outline>清空编辑器</sl-button>
+                        <sl-button id='button_copy_mode' variant='default' outline title='开启复制模式'><sl-icon slot='prefix' name='clipboard-check'></sl-icon>复制模式</sl-button>
                     </div>
                     <div id='editor_errors' class='mt-2'></div>
                     <div id='editor_feedback' class='text-secondary small mt-2'>仅权限等级4管理员可编辑剧情。剧本格式说明见下方。</div>
@@ -183,6 +194,10 @@
         <aside id='command_dock' class='command-dock d-none' aria-label='添加命令快捷栏'>
             <div class='command-dock-title'>添加命令</div>
             <div id='command_dock_list' class='d-flex flex-column gap-1'></div>
+            <div class='command-dock-title mt-2'>复制 / 粘贴</div>
+            <sl-button id='button_copy_mode_dock' size='small' variant='default' outline title='开启复制模式'><sl-icon slot='prefix' name='clipboard-check'></sl-icon><span class='dock-label'>复制模式</span></sl-button>
+            <sl-button id='button_copy_selected_dock' size='small' variant='primary' outline disabled class='d-none' title='复制选中行'><sl-icon slot='prefix' name='clipboard-check'></sl-icon><span class='dock-label'>复制选中</span></sl-button>
+            <sl-button id='button_paste_dock' size='small' variant='default' outline disabled class='d-none' title='粘贴本地缓存'><sl-icon slot='prefix' name='clipboard-plus'></sl-icon><span class='dock-label'>粘贴</span></sl-button>
         </aside>
         <footer class='text-center text-muted py-1' style='font-size: .74rem;'>剧情系统 · 对话框与 AI 对局</footer>
     </div>
@@ -248,6 +263,10 @@
         let currentRow = null;
         // 最近一次台词使用的角色 / 表情，新增台词时沿用（表情为空表示代表图）
         let lastFace = { 'character': '', 'expression': '' };
+        // 复制模式：勾选左侧选框后可单选/多选复制；内容只存本地缓存，粘贴后释放
+        const COPY_CACHE_KEY = 'story_editor_copy';
+        let copyMode = false;
+        const copySelected = new Set();
 
         const isAdmin = () => Boolean(storyAdmin && Number(storyAdmin.level) === 4);
         const escapeHtml = (text) => String(text == null ? '' : text).replace(/[<>&"']/g, (char) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -358,35 +377,54 @@
             return list;
         };
 
-        const rowsToScript = () => {
+        // 单行（含选择项的附属行）转成 DSL 文本行；depth 为结构层级，行内 indent 为手动缩进
+        const rowLines = (row, depth) => {
+            const lead = '  '.repeat(Math.max(0, Math.min(10, depth + (Number(row.indent) || 0))));
+            if (row.kind === 'say') return [lead + (row.expression ? `[${row.character}|${row.expression}] ${row.text}` : `[${row.character}] ${row.text}`)];
+            if (row.kind === 'choice') {
+                const face = row.character ? (row.expression ? `[${row.character}|${row.expression}] ` : `[${row.character}] `) : '';
+                const lines = [`${lead}? ${face}${row.prompt}`];
+                (row.options || []).forEach((option) => lines.push(`${lead}- ${option.text} -> ${option.target}`));
+                return lines;
+            }
+            if (row.kind === 'label') return [`${lead}:${row.name}`];
+            if (row.kind === 'jump') return [`${lead}-> ${row.target}`];
+            if (row.kind === 'game') return [`${lead}* ${row.title}`];
+            if (row.kind === 'game_end') return [`${lead}结束此对局`];
+            if (row.kind === 'box') return [`${lead}框${row.title ? ` ${row.title}` : ''}${row.color ? ` 色=${row.color}` : ''}`];
+            if (row.kind === 'box_end') return [`${lead}结束框`];
+            if (row.kind === 'config') return [`${lead}${row.key}=${row.value}`];
+            if (row.kind === 'end') return [`${lead}结束`];
+            if (row.kind === 'resume') return [`${lead}继续对局`];
+            if (row.kind === 'mark') {
+                const color = row.type !== 'clear' && row.color ? ` 色=${row.color}` : '';
+                if (row.type === 'clear') return [`${lead}@ 清除`];
+                if (row.type === 'arrow') return [`${lead}@ 箭头 ${row.target}${color}`.trimEnd()];
+                return [`${lead}@ 圈 ${row.target}${color}`.trimEnd()];
+            }
+            if (row.kind === 'cond') {
+                if (row.mode === 'else') return [`${lead}% ELSE -> ${row.target}`];
+                return [`${lead}% IF ${COND_TEXT[row.condition] || row.condition} -> ${row.target}`];
+            }
+            return [];
+        };
+
+        const rowsToScript = (list = rows) => {
             const lines = [];
-            walkRowStructure(rows, (row, index, depth) => {
-                const lead = '  '.repeat(Math.max(0, Math.min(10, depth + (Number(row.indent) || 0))));
-                if (row.kind === 'say') lines.push(lead + (row.expression ? `[${row.character}|${row.expression}] ${row.text}` : `[${row.character}] ${row.text}`));
-                else if (row.kind === 'choice') {
-                    const face = row.character ? (row.expression ? `[${row.character}|${row.expression}] ` : `[${row.character}] `) : '';
-                    lines.push(`${lead}? ${face}${row.prompt}`);
-                    (row.options || []).forEach((option) => lines.push(`${lead}- ${option.text} -> ${option.target}`));
-                } else if (row.kind === 'label') lines.push(`${lead}:${row.name}`);
-                else if (row.kind === 'jump') lines.push(`${lead}-> ${row.target}`);
-                else if (row.kind === 'game') lines.push(`${lead}* ${row.title}`);
-                else if (row.kind === 'game_end') lines.push(`${lead}结束此对局`);
-                else if (row.kind === 'box') lines.push(`${lead}框${row.title ? ` ${row.title}` : ''}${row.color ? ` 色=${row.color}` : ''}`);
-                else if (row.kind === 'box_end') lines.push(`${lead}结束框`);
-                else if (row.kind === 'config') lines.push(`${lead}${row.key}=${row.value}`);
-                else if (row.kind === 'end') lines.push(`${lead}结束`);
-                else if (row.kind === 'resume') lines.push(`${lead}继续对局`);
-                else if (row.kind === 'mark') {
-                    const color = row.type !== 'clear' && row.color ? ` 色=${row.color}` : '';
-                    if (row.type === 'clear') lines.push(`${lead}@ 清除`);
-                    else if (row.type === 'arrow') lines.push(`${lead}@ 箭头 ${row.target}${color}`.trimEnd());
-                    else lines.push(`${lead}@ 圈 ${row.target}${color}`.trimEnd());
-                } else if (row.kind === 'cond') {
-                    if (row.mode === 'else') lines.push(`${lead}% ELSE -> ${row.target}`);
-                    else lines.push(`${lead}% IF ${COND_TEXT[row.condition] || row.condition} -> ${row.target}`);
-                }
-            });
+            walkRowStructure(list, (row, index, depth) => { lines.push(...rowLines(row, depth)); });
             return lines.join('\n');
+        };
+
+        // 复制片段：按顺序克隆所选行（保留手动缩进与全部字段），粘贴时原样插入
+        const selectionRows = (list, selected) => (list || []).filter((row) => selected.has(row)).map((row) => JSON.parse(JSON.stringify(row)));
+
+        // 校验并克隆本地缓存里的粘贴内容（兼容旧的纯数组格式）
+        const normalizeCopiedRows = (payload) => {
+            const source = Array.isArray(payload) ? payload : (payload && Array.isArray(payload.rows) ? payload.rows : []);
+            const kinds = ROW_KINDS.map((item) => item.value);
+            return source
+                .filter((row) => row && typeof row === 'object' && kinds.includes(row.kind))
+                .map((row) => JSON.parse(JSON.stringify(row)));
         };
 
         // ==================== 行渲染 ====================
@@ -519,6 +557,7 @@
             if (canIndent && indent) node.style.marginLeft = `${indent * 16}px`;
             if (row.kind === 'box') node.style.borderColor = normalizeHex(row.color) || '#6f42c1';
             node.innerHTML = `
+                <label class='editor-copy-check' title='勾选该行用于复制'><input type='checkbox' data-role='copy-check'${copySelected.has(row) ? ' checked' : ''}></label>
                 <span class='editor-handle' title='拖动排序'>⋮⋮</span>
                 ${canIndent ? `<div class='editor-indent'>
                     <button type='button' class='editor-indent-btn' data-role='indent-out' title='减少缩进'>⇤</button>
@@ -560,6 +599,7 @@
             });
             updateEmpty();
             applyCurrentHighlight();
+            updateCopyUi();
         };
 
         const rebuildRow = (index) => {
@@ -569,9 +609,10 @@
             if (old) old.replaceWith(fresh);
             else container.append(fresh);
             applyCurrentHighlight();
+            updateCopyUi();
         };
 
-        const setRows = (list) => { rows = list || []; currentRow = null; renderRows(); };
+        const setRows = (list) => { rows = list || []; currentRow = null; copySelected.clear(); renderRows(); };
 
         // 当前行判定：点击或聚焦某一行即选中，行边框以蓝色荧光虚线高亮
         const currentRowIndex = () => (currentRow ? rows.indexOf(currentRow) : -1);
@@ -587,6 +628,69 @@
             const node = $('editor_rows').querySelector(`.editor-row[data-index='${index}']`);
             const target = node ? node.querySelector(`[data-role='${role}']`) : null;
             if (target && target.focus) target.focus();
+        };
+
+        // ==================== 复制 / 粘贴 ====================
+        const readCopyCache = () => { try { return window.localStorage.getItem(COPY_CACHE_KEY) || ''; } catch (_) { return ''; } };
+        const clearCopyCache = () => { try { window.localStorage.removeItem(COPY_CACHE_KEY); } catch (_) { /* 忽略 */ } };
+
+        const updateCopyUi = () => {
+            $('editor_rows').classList.toggle('copy-mode', copyMode);
+            $('editor_copy_bar').classList.toggle('d-none', !copyMode);
+            const toggleLabel = copyMode ? '退出复制' : '复制模式';
+            const bottom = $('button_copy_mode');
+            bottom.variant = copyMode ? 'primary' : 'default';
+            bottom.title = copyMode ? '退出复制模式' : '开启复制模式';
+            bottom.innerHTML = `<sl-icon slot='prefix' name='clipboard-check'></sl-icon>${toggleLabel}`;
+            const dock = $('button_copy_mode_dock');
+            dock.variant = copyMode ? 'primary' : 'default';
+            dock.title = bottom.title;
+            dock.innerHTML = `<sl-icon slot='prefix' name='clipboard-check'></sl-icon><span class='dock-label'>${toggleLabel}</span>`;
+            $('button_copy_selected').disabled = copySelected.size === 0;
+            $('button_paste').disabled = !readCopyCache().trim();
+            $('button_copy_selected_dock').classList.toggle('d-none', !copyMode);
+            $('button_paste_dock').classList.toggle('d-none', !copyMode);
+            $('button_copy_selected_dock').disabled = copySelected.size === 0;
+            $('button_paste_dock').disabled = !readCopyCache().trim();
+            $('editor_copy_hint').textContent = copySelected.size
+                ? `已勾选 ${copySelected.size} 行，可复制到本地缓存。`
+                : '复制模式：勾选各行左侧的选框，可单选或多选复制。';
+        };
+
+        const setCopyMode = (active) => {
+            copyMode = Boolean(active);
+            if (!copyMode) {
+                copySelected.clear();
+                $('editor_rows').querySelectorAll("[data-role='copy-check']").forEach((input) => { input.checked = false; });
+            }
+            updateCopyUi();
+        };
+
+        const copySelectedRows = () => {
+            if (!copyMode) return;
+            const copied = selectionRows(rows, copySelected);
+            if (!copied.length) { showFeedback('请先勾选要复制的行。', 'danger'); return; }
+            const text = JSON.stringify({ 'v': 1, 'rows': copied });
+            try { window.localStorage.setItem(COPY_CACHE_KEY, text); } catch (_) { showFeedback('本地缓存不可用，无法保存复制内容。', 'danger'); updateCopyUi(); return; }
+            updateCopyUi();
+            showFeedback(`已复制 ${copied.length} 行到本地缓存，点击「粘贴」即可插入；粘贴后缓存自动释放。`, 'success');
+        };
+
+        const pasteCopiedRows = () => {
+            if (!copyMode) return;
+            let payload = null;
+            try { payload = JSON.parse(readCopyCache()); } catch (_) { payload = null; }
+            const list = normalizeCopiedRows(payload);
+            if (!list.length) { showFeedback('本地缓存中没有可粘贴的代码行，请先勾选并复制。', 'danger'); updateCopyUi(); return; }
+            const insertAt = insertIndexFor(rows, currentRow);
+            rows.splice(insertAt, 0, ...list);
+            currentRow = list[list.length - 1];
+            const lastSay = list.slice().reverse().find((row) => row.kind === 'say' && row.character);
+            if (lastSay) lastFace = { 'character': lastSay.character, 'expression': lastSay.expression || '' };
+            copySelected.clear();
+            clearCopyCache();
+            renderRows();
+            showFeedback(`已粘贴 ${list.length} 行，本地缓存已释放。`, 'success');
         };
 
         // ==================== 行交互（事件委托） ====================
@@ -625,6 +729,14 @@
 
         $('editor_rows').addEventListener('change', (event) => {
             const control = event.target;
+            if (control.matches && control.matches("[data-role='copy-check']")) {
+                const context = rowContext(event);
+                if (!context) return;
+                if (control.checked) copySelected.add(context.row);
+                else copySelected.delete(context.row);
+                updateCopyUi();
+                return;
+            }
             if (!control.matches || !control.matches('select')) return;
             const context = rowContext(event);
             if (!context) return;
@@ -632,6 +744,7 @@
             if (role === 'kind') {
                 const fresh = emptyRow({ 'kind': control.value });
                 if (currentRow === context.row) currentRow = fresh;
+                copySelected.delete(context.row);
                 rows[context.index] = fresh;
                 renderRows();
                 return;
@@ -682,6 +795,7 @@
             if (role === 'remove') {
                 const removed = context.row;
                 rows.splice(context.index, 1);
+                copySelected.delete(removed);
                 if (currentRow === removed) currentRow = rows[context.index - 1] || rows[context.index] || null;
                 renderRows();
                 return;
@@ -1072,6 +1186,13 @@
         $('button_new').addEventListener('click', () => { ensureCharacters(); resetEditor(); });
         $('button_reset_editor').addEventListener('click', () => { ensureCharacters(); resetEditor(); });
         $('button_delete').addEventListener('click', () => { if (editingLevel !== null) { const level = catalog.levels.find((item) => item.level === editingLevel); removeLevel(editingLevel, level ? level.title : ''); } });
+        $('button_copy_mode').addEventListener('click', () => setCopyMode(!copyMode));
+        $('button_copy_mode_dock').addEventListener('click', () => setCopyMode(!copyMode));
+        $('button_copy_exit').addEventListener('click', () => setCopyMode(false));
+        $('button_copy_selected').addEventListener('click', copySelectedRows);
+        $('button_paste').addEventListener('click', pasteCopiedRows);
+        $('button_copy_selected_dock').addEventListener('click', copySelectedRows);
+        $('button_paste_dock').addEventListener('click', pasteCopiedRows);
 
         const loadAccount = async () => {
             if (!window.get_token || !window.get_token()) { storyAdmin = null; return; }
@@ -1117,6 +1238,7 @@
 
         (async () => {
             renderCommandBar();
+            updateCopyUi();
             await loadAccount();
             const loaded = await loadCatalogIndex();
             catalog = loaded.catalog;

@@ -978,12 +978,43 @@ const run = async () => {
     };
 
     /**
-     * @description: 在棋盘上用浅蓝圆框标出残局 AI 推荐的落点
+     * @description: SIM=120 整场扫盘给出的推荐落点
+     * @param {number} index
+     * @return {object | null}
+     */
+    const analysis_sweep_best_of = (index) => {
+        const item = index >= 0 ? analysis_sweep_cache.get(index) : null;
+        if (!item || !Number.isInteger(item.action) || item.action < 0) return null;
+        return item;
+    };
+
+    /**
+     * @description: 当前生效的推荐正着：手动正着分析（888）优先，否则用整场扫盘（120）
+     * @param {number} index
+     * @return {object | null}
+     */
+    const analysis_recommend_of = (index) => analysis_ai_best_of(index) || analysis_sweep_best_of(index);
+
+    /**
+     * @description: 本手是否命中当前生效的推荐正着
+     * @param {number} index
+     * @return {boolean}
+     */
+    const analysis_move_is_best = (index) => {
+        const view = index >= 0 ? info_view[index] : null;
+        const ai = analysis_recommend_of(index);
+        if (!view || !ai) return false;
+        return view[0] === ai.x && view[1] === ai.y;
+    };
+
+    /**
+     * @description: 在棋盘上标出推荐正着：888 正着分析为浅蓝圈，120 整场扫盘为浅绿圈
      * @param {number} index
      * @return {void}
      */
     const draw_analysis_ai_move = (index) => {
-        const ai = analysis_ai_best_of(index);
+        const ai = analysis_recommend_of(index);
+        const best = analysis_ai_best_of(index);
         if (!ai || !gl_ui || !gl_ui.canvas_view_move) return;
 
         const ctx = gl_ui.canvas_view_move.getContext('2d');
@@ -995,7 +1026,7 @@ const run = async () => {
         ctx.save();
         ctx.beginPath();
         ctx.arc(x, y, radius, 0, Math.PI * 2);
-        ctx.strokeStyle = '#7DD3FC';
+        ctx.strokeStyle = best ? '#7DD3FC' : '#86EFAC';
         ctx.lineWidth = 3;
         ctx.stroke();
         ctx.restore();
@@ -1015,8 +1046,9 @@ const run = async () => {
             return;
         }
 
+        const matched = analysis_move_is_best(index);
         const label = analysis_label_of(index);
-        if (!label) {
+        if (!matched && !label) {
             analysis_badge.classList.add('d-none');
             return;
         }
@@ -1029,8 +1061,14 @@ const run = async () => {
 
         analysis_badge.style.left = `${left}%`;
         analysis_badge.style.top = `${top}%`;
-        analysis_badge.style.background = ANALYSIS_COLORS[label];
-        analysis_badge.innerText = ANALYSIS_SYMBOLS[label];
+        // 命中推荐正着时标识改为黄色五角星，推荐圈仍保留在棋盘上
+        analysis_badge.style.background = matched ? 'transparent' : ANALYSIS_COLORS[label];
+        analysis_badge.style.border = matched ? 'none' : '1.5px solid rgba(255, 255, 255, 0.95)';
+        analysis_badge.style.boxShadow = matched ? 'none' : '0 1px 4px rgba(15, 23, 42, 0.35)';
+        analysis_badge.style.color = matched ? '#FBBF24' : '#fff';
+        analysis_badge.style.fontSize = matched ? '17px' : '12px';
+        analysis_badge.style.textShadow = matched ? '0 1px 3px rgba(15, 23, 42, 0.55)' : 'none';
+        analysis_badge.innerText = matched ? '★' : ANALYSIS_SYMBOLS[label];
         analysis_badge.classList.remove('d-none');
     };
 
@@ -1053,10 +1091,9 @@ const run = async () => {
         }
 
         const label = analysis_label_of(ptr);
-        if (label) {
-            gl_ui.draw_stone_turn(view[0], view[1], ANALYSIS_COLORS[label], 5);
-            update_move_badge(ptr);
-        }
+        gl_ui.draw_stone_turn(view[0], view[1], label ? ANALYSIS_COLORS[label] : '#00FFC5', 5);
+        if (label || analysis_move_is_best(ptr)) update_move_badge(ptr);
+        else if (analysis_badge) analysis_badge.classList.add('d-none');
         draw_analysis_ai_move(ptr);
     };
 
@@ -1485,13 +1522,13 @@ const run = async () => {
         if (view) gl_ui.draw_stone_turn(view[0], view[1], view_color, 5);
 
         // 当前落子点右上角显示着手标识（纯 UI 叠加）
-        if (analysis_label) {
+        if (analysis_mode && (analysis_label || analysis_move_is_best(p))) {
             update_move_badge(p);
         } else if (analysis_badge) {
             analysis_badge.classList.add('d-none');
         }
 
-        // 残局 AI 推荐落点（浅蓝圆框）
+        // 推荐正着圈：888 正着分析为浅蓝，回退到 120 整场扫盘时显示浅绿
         if (analysis_mode) draw_analysis_ai_move(p);
 
         // 声音

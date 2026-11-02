@@ -1272,6 +1272,8 @@ const backpack_render_achievements = async () => {
     if (!backpack_pane) return;
     let items = [];
     try {
+        // 装扮类成就以账号实际拥有的外观为准，查看成就前先按服务端列表同步一次
+        if (typeof window.achievement_owned_skins_check === 'function') await window.achievement_owned_skins_check();
         items = typeof window.achievement_list === 'function' ? await window.achievement_list() : [];
     } catch (_) {
         items = [];
