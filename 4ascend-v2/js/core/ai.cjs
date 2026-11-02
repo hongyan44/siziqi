@@ -1189,6 +1189,13 @@ const run = async () => {
         // ASCEND开始
         const points = game.ed_as_1();
 
+        // 成就：记录本方打出的核弹规模（本次升变涉及的棋子数）
+        if (points && typeof window.achievement_event === 'function') {
+            const my_ascend_stone = my_color === PLAYER_ENUM.BLACK ? STONE_ENUM.BLACK_ASCEND : STONE_ENUM.WHITE_ASCEND;
+            const nuke_size = points.filter((pos) => pos.stone === my_ascend_stone).length;
+            if (nuke_size >= 7) window.achievement_event('nuke_launch', { 'size': nuke_size });
+        }
+
         if (!points) {
             gl_ui.clear_stone_fill(state.turn_pos[0], state.turn_pos[1]);
             gl_ui.clear_stone_ascend(state.turn_pos[0], state.turn_pos[1]);
@@ -1342,7 +1349,9 @@ const run = async () => {
                     'easy_or_above': gl_cf_level_option !== '0',
                     'turn_count': state.turn_count,
                     'attack_turns': state.attack_turns ? state.attack_turns[my_index] : [],
-                    'board_empty': Boolean(gl_board && gl_board.stone_count === 0),
+                    'own_board_empty': Boolean(gl_board && (my_color === PLAYER_ENUM.BLACK ? gl_board.stone_count_black === 0 : gl_board.stone_count_white === 0)),
+                    'board_full': Boolean(gl_board && gl_board.stone_count >= gl_board.w * gl_board.h),
+                    'foe_hp': state.hp[foe_index],
                 });
                 else window.achievement_event('ai_game');
             }

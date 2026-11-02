@@ -374,13 +374,16 @@ window.http_shop_buy = async (token, item) => {
 
 /**
  * @description: 刷新凭证
+ * 请求成功与“服务端判定凭证失效”必须区分开：网络失败/超时/解密失败不代表凭证过期，
+ * 调用方据此决定是否登出，避免页面繁忙时被误判为登录过期。
  * @param {string} token
- * @return {Promise<string | void>}
+ * @return {Promise<{token: Uint8Array} | {expired: true} | null>} 成功返回 token；服务端明确拒绝返回 { expired: true }；请求失败返回 null
  */
 window.http_user_rtoken = async (token) => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/rtoken`, { token });
-    if (!rjson || !rjson.status) return;
-    return rjson.result;
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/rtoken`, { token }, 15000);
+    if (!rjson) return null;
+    if (!rjson.status) return { 'expired': true };
+    return { 'token': rjson.result };
 };
 
 
@@ -741,7 +744,7 @@ window.http_story_character_query = async (faces = null) => {
 };
 
 /**
- * @description: 新增剧情角色（仅管理员；image 为 120×180 压缩图，original 为原图 data URL）
+ * @description: 新增剧情角色（仅管理员；image 为 200×300 压缩图，original 为原图 data URL）
  * @param {string} token
  * @param {string} name 角色名
  * @param {string} image 代表图压缩图 data URL
@@ -842,6 +845,19 @@ window.http_story_expression_image_update = async (token, character_id, expressi
  */
 window.http_story_image_download = async (token, kind, character_id, expression_id = 0) => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/image_download`, { token, kind, character_id, expression_id }, 60000);
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+/**
+ * @description: 剧情播放页按需取原图（公开只读；用于按角色框实际像素重新压缩并填满）
+ * @param {string} kind rep（角色代表图）/ expression（表情）
+ * @param {number} character_id
+ * @param {number} [expression_id] kind=expression 时必填
+ * @return {Promise<{name: string, image: string} | void>}
+ */
+window.http_story_image_source = async (kind, character_id, expression_id = 0) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/image_source`, { kind, character_id, expression_id }, 60000);
     if (!rjson || !rjson.status) return;
     return rjson.result;
 };
@@ -1023,22 +1039,25 @@ window.http_friend_message_list = async (token, uuid) => {
         if (!window.loaded) return;
         clearInterval(pid);
 
-        let result = true;
+        let result = null;
         try {
             const token = window.get_token();
             if (!token) return;
 
-            result = await window.http_user_rtoken(token); // 无返回即过期
-            result ? window.set_token(token) : localStorage.removeItem('token');
+            result = await window.http_user_rtoken(token);
+            // null 表示请求失败/超时/解密失败，此时无法判断凭证是否有效，保持登录状态
+            if (result && result.token) window.set_token(token);
         } catch (_) {
             if (!skip_auth_prompt) toast.error('检查登录状态失败！');
+            return;
         }
 
-        if (!result) {
-            if (skip_auth_prompt) return;
-            toast.error('您的登录已过期！');
-            await window.sleep(2000);
-            window.location.replace('/');
-        }
+        // 仅当服务端明确返回凭证失效时才登出并跳转
+        if (!result || !result.expired) return;
+        localStorage.removeItem('token');
+        if (skip_auth_prompt) return;
+        toast.error('您的登录已过期！');
+        await window.sleep(2000);
+        window.location.replace('/');
     }, 100);
 })();

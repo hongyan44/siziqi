@@ -272,6 +272,20 @@
         let guideFrame = 0;
         let guidePhase = 0;
         const ENDGAME_SIMULATIONS = 888;
+        // 残局防误触等级（0 单次确认 / 1 仅「打」双击 / 2 全部双击），由残局系统设置页写入。
+        const ENDGAME_SETTINGS_KEY = 'four-ascend-endgame-settings-v1';
+        const clickLevel = (() => {
+            try {
+                const saved = JSON.parse(localStorage.getItem(ENDGAME_SETTINGS_KEY) || '{}') || {};
+                const level = Number(saved.click_level);
+                return level === 0 || level === 1 || level === 2 ? level : 2;
+            } catch (_) { return 2; }
+        })();
+        let pendingConfirm = null;
+        const clearPendingConfirm = () => {
+            pendingConfirm = null;
+            if (ui && typeof ui.clear_stone_validate === 'function') ui.clear_stone_validate();
+        };
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const cloneCells = (items) => items.map((item) => ({ stone: item.stone || 'none', plant: Number(item.plant) || 0 }));
         const showAlert = (message, variant = 'success') => { const alert = document.getElementById('challenge_alert'); alert.variant = variant; document.getElementById('challenge_alert_text').textContent = message; alert.show(); };
@@ -823,6 +837,7 @@
             if (running || challengeOver || !state || state.turn_player !== PLAYER_ENUM.BLACK) return;
             if (!aiReady) { setStatus('4zero MCTS 仍在准备，请稍候。', 'warning'); return; }
             if (!legal(x, y)) { setStatus('此处不能落子，请选择空位或合法的对方升变点。', 'danger'); return; }
+            clearPendingConfirm();
             running = true;
             const generation = challengeGeneration;
             try {
@@ -863,7 +878,21 @@
             const y = Math.round((drawY - ui.offset) / ui.spacing);
             return [x, y];
         };
-        boardCanvas.addEventListener('pointerdown', (event) => { event.preventDefault(); const [x, y] = pointFromEvent(event); if (x >= 0 && x < 9 && y >= 0 && y < 9) playBlack(x, y); });
+        const handleBoardPress = (x, y) => {
+            if (running || challengeOver || !state || state.turn_player !== PLAYER_ENUM.BLACK) return;
+            if (!aiReady || !legal(x, y)) { clearPendingConfirm(); playBlack(x, y); return; }
+            // 等级 1 仅保护「打」（会触发 ASCEND 的落子），等级 2 所有落子都需要二次确认。
+            const isAttack = clickLevel === 1 && game && game.board && typeof game.board.get_ascend === 'function'
+                ? Boolean(game.board.get_ascend(x, y, fromPlayer()))
+                : false;
+            const needConfirm = clickLevel === 2 || isAttack;
+            if (!needConfirm) { clearPendingConfirm(); playBlack(x, y); return; }
+            if (pendingConfirm && pendingConfirm[0] === x && pendingConfirm[1] === y) { clearPendingConfirm(); playBlack(x, y); return; }
+            pendingConfirm = [x, y];
+            if (ui) { ui.clear_stone_validate(); ui.draw_stone_validate(x, y, '#BF00FF'); }
+            setStatus(isAttack ? '此落子会发动「打」，再次点击同一位置确认。' : '再次点击同一位置确认落子。', 'info');
+        };
+        boardCanvas.addEventListener('pointerdown', (event) => { event.preventDefault(); const [x, y] = pointFromEvent(event); if (x >= 0 && x < 9 && y >= 0 && y < 9) handleBoardPress(x, y); });
 
         const archiveFlatToBoard = (values) => {
             if (!importedArchive) return Array.from(values || []);
@@ -984,6 +1013,7 @@
             aiWorker = null;
             aiReady = false;
             createGame();
+            clearPendingConfirm();
             resetGuide();
             const boardBlackBook = (challengeData.black_book || []).map(archiveMoveToBoard);
             const boardWhiteTurns = (challengeData.white_turns || []).map(archiveMoveToBoard);

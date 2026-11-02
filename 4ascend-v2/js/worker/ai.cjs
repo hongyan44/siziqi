@@ -373,6 +373,28 @@ Comlink.expose({
     },
 
     /**
+     * 剧情思考：纯 4zero MCTS（默认 150 次模拟），不叠加残局斩杀 / 防自杀矫正。
+     * @param {number} simulations 模拟次数
+     * @return {Promise<object>}
+     */
+    async STORY_THINK(simulations = 150) {
+        const game = requireEndgameGame();
+        const requestedSimulations = clampInteger(simulations, 150, 1, 5000);
+        const evaluator = await ensureInitialized('zero');
+        const search = new MctsSearch(evaluator, RulesRuntime, {
+            'cPuct': 2.0,
+            'maximumMilliseconds': 45000,
+        });
+        lastEndgameSearch = await search.search(game, requestedSimulations);
+        lastEndgameSearch.engine = '4zero-mcts';
+        lastEndgameSearch.requestedSimulations = requestedSimulations;
+        lastEndgameSearch.randomMode = 'known';
+        lastEndgameSearch.searchSeeds = null;
+        lastEndgameSearch.corrected = false;
+        return lastEndgameSearch;
+    },
+
+    /**
      * 回放复盘评估：套用残局 AI 链路（EndgameTactics + 4zero MCTS + ONNX），
      * 但使用独立棋局，不触碰残局挑战状态，并保留自然刷草。
      * @param {object} snapshot RulesRuntime 快照（实际落子之前的局面）

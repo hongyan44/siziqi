@@ -9,6 +9,8 @@
     <meta charset='UTF-8'>
     <meta http-equiv='X-UA-Compatible' content='IE=edge'>
     <meta name='viewport' content='width=device-width, initial-scale=1.0, user-scalable=no'>
+    <!-- 申请退出浏览器自动深色（Force Dark）：否则 vivo 等浏览器夜间模式会把页面反色，白底表情图会被渲染成负片 -->
+    <meta name='color-scheme' content='only light'>
     <link rel='shortcut icon' href='/favicon.png' type='image/png'>
     <title>四子棋 剧情系统</title>
     <link href='https://quantil.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css' rel='stylesheet'>
@@ -39,6 +41,12 @@
         .level-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; }
         .admin-panel { border: 1px solid rgba(111, 66, 193, .18); background: linear-gradient(135deg, rgba(111, 66, 193, .035), rgba(255, 255, 255, .9)); }
         .level-title { font-size: .92rem; }
+        .story-click-options { display: grid; gap: .4rem; }
+        .story-click-option { width: 100%; text-align: left; border: 1px solid rgba(13, 110, 253, .16); border-radius: .6rem; background: #fff; padding: .55rem .7rem; transition: border-color .2s ease, box-shadow .2s ease, background .2s ease; }
+        .story-click-option:hover { border-color: rgba(13, 110, 253, .42); }
+        .story-click-option.is-active { border-color: rgba(13, 110, 253, .7); background: rgba(13, 110, 253, .06); box-shadow: 0 0 0 .12rem rgba(13, 110, 253, .12); }
+        .story-click-option-head { display: block; font-size: .88rem; font-weight: 700; color: #1e293b; }
+        .story-click-option-desc { display: block; margin-top: .15rem; font-size: .75rem; color: #64748b; }
         .editor-rows { display: flex; flex-direction: column; gap: .45rem; }
         .editor-game-box { display: flex; flex-direction: column; gap: .45rem; padding: .5rem; border: 2px solid var(--sl-color-primary-600, #2563eb); border-radius: .75rem; background: rgba(59, 130, 246, .06); }
         .editor-game-box > .editor-row:first-child { border-color: var(--sl-color-primary-300, #93c5fd); }
@@ -183,13 +191,39 @@
                 </div>
             </section>
 
-            <section>
-                <div class='d-flex align-items-center justify-content-between gap-2 mb-2'>
-                    <div class='category-title fw-bold mb-0'>关卡列表</div>
-                </div>
-                <div id='level_grid' class='level-grid'></div>
-                <div id='level_empty' class='text-secondary small py-4 text-center d-none'>尚未配置任何剧情关卡。</div>
-            </section>
+            <div class='row g-3 align-items-start'>
+                <section class='col-12 col-lg-8'>
+                    <div class='d-flex align-items-center justify-content-between gap-2 mb-2'>
+                        <div class='category-title fw-bold mb-0'>关卡列表</div>
+                    </div>
+                    <div id='level_grid' class='level-grid'></div>
+                    <div id='level_empty' class='text-secondary small py-4 text-center d-none'>尚未配置任何剧情关卡。</div>
+                </section>
+                <section class='col-12 col-lg-4'>
+                    <div class='category-title fw-bold mb-2'>剧情设置</div>
+                    <div class='border rounded p-3 bg-white'>
+                        <div class='d-flex justify-content-between align-items-center mb-2'>
+                            <span class='fw-bold small'>防误触等级</span>
+                            <sl-badge id='story_click_level_badge' variant='primary' pill>等级 2</sl-badge>
+                        </div>
+                        <div class='story-click-options' role='radiogroup' aria-label='防误触等级'>
+                            <button type='button' class='story-click-option' data-level='0' role='radio'>
+                                <span class='story-click-option-head'>等级 0 · 关闭确认</span>
+                                <span class='story-click-option-desc'>所有落子都是单次点击确认</span>
+                            </button>
+                            <button type='button' class='story-click-option' data-level='1' role='radio'>
+                                <span class='story-click-option-head'>等级 1 · 保护「打」</span>
+                                <span class='story-click-option-desc'>发动「打」的落子需要双击确认</span>
+                            </button>
+                            <button type='button' class='story-click-option' data-level='2' role='radio'>
+                                <span class='story-click-option-head'>等级 2 · 全部确认</span>
+                                <span class='story-click-option-desc'>所有落子都需要双击确认</span>
+                            </button>
+                        </div>
+                        <div class='text-secondary small mt-2'>设置仅作用于剧情对局，选择后立即生效。</div>
+                    </div>
+                </section>
+            </div>
         </main>
         <aside id='command_dock' class='command-dock d-none' aria-label='添加命令快捷栏'>
             <div class='command-dock-title'>添加命令</div>
@@ -209,6 +243,33 @@
         const COND_TEXT = (window.StoryExports && window.StoryExports.COND_TEXT) || fallback;
         const CONFIG_KEYS = ['残局码', '结束对局', '结束后', '步数对话', '刷草计划', '我方', '先手', '胜利', '失败', '平局'];
         const MARK_ANCHORS = (window.StoryExports && window.StoryExports.MARK_ANCHORS) || ['名字', '棋子颜色', '生命值', '信息', '刷草点', '棋盘', '我方', '对手'];
+
+        // 剧情防误触等级：0 单次确认；1 仅「打」需双击；2 全部双击。默认 2。
+        const STORY_SETTINGS_KEY = 'four-ascend-story-settings-v1';
+        const STORY_CLICK_DEFAULT = 2;
+        const readClickLevel = () => {
+            try {
+                const saved = JSON.parse(localStorage.getItem(STORY_SETTINGS_KEY) || '{}') || {};
+                const level = Number(saved.click_level);
+                return level === 0 || level === 1 || level === 2 ? level : STORY_CLICK_DEFAULT;
+            } catch (_) { return STORY_CLICK_DEFAULT; }
+        };
+        const applyClickLevel = (level) => {
+            document.querySelectorAll('.story-click-option').forEach((node) => {
+                const active = Number(node.dataset.level) === level;
+                node.classList.toggle('is-active', active);
+                node.setAttribute('aria-checked', active ? 'true' : 'false');
+            });
+            const badge = $('story_click_level_badge');
+            if (badge) badge.textContent = `等级 ${level}`;
+        };
+        document.querySelectorAll('.story-click-option').forEach((node) => {
+            node.addEventListener('click', () => {
+                applyClickLevel(Number(node.dataset.level));
+                try { localStorage.setItem(STORY_SETTINGS_KEY, JSON.stringify({ click_level: Number(node.dataset.level) })); } catch (_) { /* 本机设置保存失败不影响使用 */ }
+            });
+        });
+        applyClickLevel(readClickLevel());
 
         // 新增分组框的默认配色（按顺序循环，可在行内自定义）
         const BOX_COLORS = ['#6f42c1', '#0d6efd', '#198754', '#fd7e14', '#dc3545', '#0dcaf0'];

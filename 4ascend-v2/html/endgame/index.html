@@ -112,6 +112,31 @@
         .puzzle-list { max-height: 360px; overflow-y: auto; }
         .puzzle-item { border: 1px solid rgba(13, 110, 253, 0.12); }
         .endgame-corner-actions { gap: .35rem; }
+
+        .endgame-click-options { display: grid; gap: .4rem; }
+        .endgame-click-option {
+            width: 100%;
+            text-align: left;
+            border: 1px solid rgba(13, 110, 253, 0.16);
+            border-radius: .6rem;
+            background: #fff;
+            padding: .55rem .7rem;
+            transition: border-color .2s ease, box-shadow .2s ease, background .2s ease;
+        }
+        .endgame-click-option:hover { border-color: rgba(13, 110, 253, 0.42); }
+        .endgame-click-option.is-active {
+            border-color: rgba(13, 110, 253, 0.7);
+            background: rgba(13, 110, 253, 0.06);
+            box-shadow: 0 0 0 .12rem rgba(13, 110, 253, 0.12);
+        }
+        .endgame-click-option-head { display: block; font-size: .88rem; font-weight: 700; color: #1e293b; }
+        .endgame-click-option-desc { display: block; margin-top: .15rem; font-size: .75rem; color: #64748b; }
+
+        .endgame-task { border-top: 1px dashed rgba(0, 0, 0, .08); padding-top: .6rem; }
+        .endgame-task:first-child { border-top: 0; padding-top: 0; }
+        .endgame-task-reward { display: flex; flex-direction: column; align-items: flex-end; gap: .25rem; flex: 0 0 auto; }
+        .endgame-task-reward-chip { display: inline-flex; align-items: center; gap: .3rem; font-size: .75rem; font-weight: 700; color: #b45309; white-space: nowrap; }
+        .endgame-task-reward-exp { color: #15803d; }
     </style>
 
     <div id='loading' class='loading-a'>
@@ -205,45 +230,74 @@
                     </div>
                 </section>
 
-                <!-- 中排：残局说明与当前状态 -->
+                <!-- 中排：残局设置 -->
                 <section>
-                    <div class='category-title fw-bold'>残局状态</div>
+                    <div class='category-title fw-bold'>残局设置</div>
                     <div class='border rounded p-3 bg-white'>
-                        <div class='d-flex flex-column gap-2 text-secondary small'>
-                            <div class='d-flex justify-content-between'><span>闯关进度</span><strong class='text-body'>准备开始</strong></div>
-                            <div class='d-flex justify-content-between'><span>挑战记录</span><strong class='text-body'>暂无数据</strong></div>
-                            <div class='d-flex justify-content-between'><span>投稿编辑器</span><strong class='text-success'>可用</strong></div>
+                        <div class='d-flex justify-content-between align-items-center mb-2'>
+                            <span class='fw-bold small'>防误触等级</span>
+                            <sl-badge id='endgame_click_level_badge' variant='primary' pill>等级 2</sl-badge>
+                        </div>
+                        <div class='endgame-click-options' role='radiogroup' aria-label='防误触等级'>
+                            <button type='button' class='endgame-click-option' data-level='0' role='radio'>
+                                <span class='endgame-click-option-head'>等级 0 · 关闭确认</span>
+                                <span class='endgame-click-option-desc'>所有落子都是单次点击确认</span>
+                            </button>
+                            <button type='button' class='endgame-click-option' data-level='1' role='radio'>
+                                <span class='endgame-click-option-head'>等级 1 · 保护「打」</span>
+                                <span class='endgame-click-option-desc'>发动「打」的落子需要双击确认</span>
+                            </button>
+                            <button type='button' class='endgame-click-option' data-level='2' role='radio'>
+                                <span class='endgame-click-option-head'>等级 2 · 全部确认</span>
+                                <span class='endgame-click-option-desc'>所有落子都需要双击确认</span>
+                            </button>
+                        </div>
+                        <div class='text-secondary small mt-2'>设置仅作用于残局挑战，选择后立即生效。</div>
+                    </div>
+                </section>
+
+                <!-- 下排：残局任务 -->
+                <section>
+                    <div class='category-title fw-bold'>残局任务</div>
+                    <div class='border rounded p-3 bg-white d-flex flex-column gap-2'>
+                        <div class='endgame-task'>
+                            <div class='d-flex justify-content-between align-items-start gap-2'>
+                                <div>
+                                    <div class='fw-bold small'>每日首次尝试投稿残局</div>
+                                    <div class='text-secondary small'>每日首次投稿验证即可完成，验证失败也计入。</div>
+                                </div>
+                                <div id='endgame_task_reward_daily' class='endgame-task-reward'></div>
+                            </div>
+                        </div>
+                        <div class='endgame-task'>
+                            <div class='d-flex justify-content-between align-items-start gap-2'>
+                                <div>
+                                    <div class='fw-bold small'>投稿成功 <span class='badge text-bg-success'>可重复完成</span></div>
+                                    <div class='text-secondary small'>每次投稿成功均可获得奖励。</div>
+                                </div>
+                                <div id='endgame_task_reward_submit' class='endgame-task-reward'></div>
+                            </div>
                         </div>
                     </div>
                 </section>
 
-                <!-- 下排：账号信息入口 -->
-                <section>
-                    <div class='category-title fw-bold'>账号信息</div>
+                <!-- 管理员：残局关卡管理 -->
+                <section id='endgame_admin_entry' class='d-none'>
+                    <div class='category-title fw-bold'>残局管理</div>
                     <div class='border rounded p-3 bg-white'>
-                        <div class='d-flex align-items-center gap-2'>
-                            <sl-icon name='person-gear' class='text-primary' style='font-size: 1.5rem;'></sl-icon>
-                            <div class='flex-grow-1'>
-                                <div class='fw-bold'>账号与投稿身份</div>
-                                <div id='endgame_user_summary' class='text-secondary small'>登录后管理昵称、权限等级与残局投稿身份</div>
+                        <div class='d-flex align-items-center justify-content-between gap-2 mb-2'>
+                            <div>
+                                <div class='fw-bold'>残局关卡管理</div>
+                                <div class='text-secondary small'>仅权限等级4管理员可新增或删除已发布残局</div>
                             </div>
-                            <sl-button id='button_endgame_user' variant='primary' outline pill>账号信息</sl-button>
+                            <sl-badge variant='warning' pill>管理员</sl-badge>
                         </div>
-                        <div id='endgame_admin_entry' class='d-none border-top mt-3 pt-3'>
-                            <div class='d-flex align-items-center justify-content-between gap-2 mb-2'>
-                                <div>
-                                    <div class='fw-bold'>残局关卡管理</div>
-                                    <div class='text-secondary small'>仅权限等级4管理员可新增或删除已发布残局</div>
-                                </div>
-                                <sl-badge variant='warning' pill>管理员</sl-badge>
-                            </div>
-                            <div id='puzzle_list' class='puzzle-list d-flex flex-column gap-2 mb-2'></div>
-                            <div id='puzzle_empty' class='text-secondary small border rounded p-2 mb-2'>暂无已发布残局。</div>
-                            <div class='d-flex flex-column gap-2'>
-                                <sl-input id='input_puzzle_title' size='small' label='残局名称' placeholder='例如：中央突破'></sl-input>
-                                <sl-textarea id='input_puzzle_code' size='small' label='残局码' placeholder='粘贴编辑器生成的残局码' rows='2' resize='auto'></sl-textarea>
-                                <sl-button id='button_puzzle_add' size='small' variant='primary'><sl-icon slot='prefix' name='plus-lg'></sl-icon>添加残局</sl-button>
-                            </div>
+                        <div id='puzzle_list' class='puzzle-list d-flex flex-column gap-2 mb-2'></div>
+                        <div id='puzzle_empty' class='text-secondary small border rounded p-2 mb-2'>暂无已发布残局。</div>
+                        <div class='d-flex flex-column gap-2'>
+                            <sl-input id='input_puzzle_title' size='small' label='残局名称' placeholder='例如：中央突破'></sl-input>
+                            <sl-textarea id='input_puzzle_code' size='small' label='残局码' placeholder='粘贴编辑器生成的残局码' rows='2' resize='auto'></sl-textarea>
+                            <sl-button id='button_puzzle_add' size='small' variant='primary'><sl-icon slot='prefix' name='plus-lg'></sl-icon>添加残局</sl-button>
                         </div>
                     </div>
                 </section>
@@ -286,30 +340,7 @@
         </div>
     </sl-dialog>
 
-    <sl-dialog id='dialog_endgame_user' class='d-none' label='账号信息'>
-        <div class='d-flex flex-column gap-3'>
-            <div class='p-3 rounded border bg-light'>
-                <small class='text-secondary d-block mb-1'>当前权限等级</small>
-                <span id='endgame_user_level' class='fw-bold text-primary'>登录后查看账号等级</span>
-            </div>
-            <div class='p-3 rounded border bg-light'>
-                <small class='text-secondary d-block mb-1'>残局投稿身份</small>
-                <span id='endgame_user_role' class='text-body'>登录后可管理昵称并提交残局</span>
-            </div>
-            <div class='text-secondary small'>账号信息与主页保持一致，登录入口不重复维护。</div>
-        </div>
-        <div slot='footer' class='gap-2'>
-            <sl-button onclick='this.closest("sl-dialog").hide();' variant='neutral'>关闭</sl-button>
-            <sl-button href='/' variant='primary'>前往主页登录</sl-button>
-        </div>
-    </sl-dialog>
-
     <script>
-        const endgameUserButton = document.getElementById('button_endgame_user');
-        const endgameUserDialog = document.getElementById('dialog_endgame_user');
-        const endgameUserSummary = document.getElementById('endgame_user_summary');
-        const endgameUserLevel = document.getElementById('endgame_user_level');
-        const endgameUserRole = document.getElementById('endgame_user_role');
         const adminEntry = document.getElementById('endgame_admin_entry');
         const puzzleList = document.getElementById('puzzle_list');
         const puzzleEmpty = document.getElementById('puzzle_empty');
@@ -328,14 +359,53 @@
         const startChallengeButton = document.getElementById('button_challenge_start');
         let challengeMode = 'daily';
         let dailyChallenge = null;
-        const USER_LEVEL_NAMES = { 1: '普通用户', 2: '进阶用户', 3: '高级用户', 4: '管理员' };
-        // 残局投稿身份：随权限等级变化，等级 2 可投稿，等级 3 可投稿并审核，等级 4 额外可管理残局。
-        const SUBMIT_ROLES = { 1: '登录后可浏览残局', 2: '可投稿残局', 3: '可投稿并审核残局', 4: '管理员（可管理残局）' };
         let endgameUserInfo = null;
         let puzzleRecords = [];
         const hasToken = () => Boolean(window.get_token && window.get_token());
         const safeLevel = (level) => Math.min(4, Math.max(1, Number(level) || 1));
         const challengeHref = (code) => `/pages/endgame/challenge.html?mode=code&code=${encodeURIComponent(code)}`;
+
+        // 残局防误触等级：0 单次确认；1 仅「打」需双击；2 全部双击。默认 2。
+        const ENDGAME_SETTINGS_KEY = 'four-ascend-endgame-settings-v1';
+        const ENDGAME_CLICK_DEFAULT = 2;
+        const readClickLevel = () => {
+            try {
+                const saved = JSON.parse(localStorage.getItem(ENDGAME_SETTINGS_KEY) || '{}') || {};
+                const level = Number(saved.click_level);
+                return level === 0 || level === 1 || level === 2 ? level : ENDGAME_CLICK_DEFAULT;
+            } catch (_) { return ENDGAME_CLICK_DEFAULT; }
+        };
+        const applyClickLevel = (level) => {
+            document.querySelectorAll('.endgame-click-option').forEach((node) => {
+                const active = Number(node.dataset.level) === level;
+                node.classList.toggle('is-active', active);
+                node.setAttribute('aria-checked', active ? 'true' : 'false');
+            });
+            const badge = document.getElementById('endgame_click_level_badge');
+            if (badge) badge.textContent = `等级 ${level}`;
+        };
+        document.querySelectorAll('.endgame-click-option').forEach((node) => {
+            node.addEventListener('click', () => {
+                applyClickLevel(Number(node.dataset.level));
+                try { localStorage.setItem(ENDGAME_SETTINGS_KEY, JSON.stringify({ click_level: Number(node.dataset.level) })); } catch (_) { /* 本机设置保存失败不影响使用 */ }
+            });
+        });
+        applyClickLevel(readClickLevel());
+
+        // 残局任务奖励：复用棋币 / 经验图标，直观展示奖励额度。
+        const renderTaskRewards = () => {
+            const wallet = window.WalletUI;
+            if (!wallet) return;
+            const cell = (coin, exp) => `
+                <span class='endgame-task-reward-chip'>${wallet.coin_svg(18)} +${coin} 棋币</span>
+                <span class='endgame-task-reward-chip endgame-task-reward-exp'>${wallet.exp_svg(exp, 18)} +${exp} 经验</span>`;
+            const daily = document.getElementById('endgame_task_reward_daily');
+            const submit = document.getElementById('endgame_task_reward_submit');
+            if (daily) daily.innerHTML = cell(300, 300);
+            if (submit) submit.innerHTML = cell(500, 500);
+        };
+        renderTaskRewards();
+
         const renderPuzzles = () => {
             puzzleList.innerHTML = '';
             puzzleEmpty.classList.toggle('d-none', puzzleRecords.length > 0);
@@ -358,19 +428,8 @@
         };
         const renderAccount = (info) => {
             endgameUserInfo = info;
-            dailyEditButton.classList.toggle('d-none', !info || safeLevel(info.level) !== 4);
-            if (!info) {
-                endgameUserSummary.textContent = '登录后管理昵称、权限等级与残局投稿身份';
-                endgameUserLevel.textContent = '登录后查看账号等级';
-                endgameUserRole.textContent = SUBMIT_ROLES[1];
-                adminEntry.classList.add('d-none');
-                renderPuzzles();
-                return;
-            }
-            const level = safeLevel(info.level);
-            endgameUserSummary.textContent = `${info.name || '无名氏'} · 等级 ${level} · ${SUBMIT_ROLES[level]}`;
-            endgameUserLevel.textContent = `等级 ${level} · ${USER_LEVEL_NAMES[level]}`;
-            endgameUserRole.textContent = SUBMIT_ROLES[level];
+            const level = info ? safeLevel(info.level) : 1;
+            dailyEditButton.classList.toggle('d-none', level !== 4);
             adminEntry.classList.toggle('d-none', level !== 4);
             renderPuzzles();
         };
@@ -403,11 +462,6 @@
                 new window.UiExports.ShToast().success('残局已删除！');
             } catch (error) { new window.UiExports.ShToast().error(error.message || '删除残局失败！'); }
         };
-        endgameUserButton.addEventListener('click', () => {
-            endgameUserDialog.classList.remove('d-none');
-            endgameUserDialog.show();
-            loadAccount();
-        });
         puzzleAdd.addEventListener('click', addPuzzle);
         loadAccount();
         loadPuzzles();

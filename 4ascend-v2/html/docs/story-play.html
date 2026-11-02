@@ -8,6 +8,8 @@
 <head>
     <meta charset='UTF-8'>
     <meta name='viewport' content='width=device-width, initial-scale=1.0, user-scalable=no'>
+    <!-- 申请退出浏览器自动深色（Force Dark）：否则 vivo 等浏览器夜间模式会把页面反色，白底表情图会被渲染成负片 -->
+    <meta name='color-scheme' content='only light'>
     <link rel='shortcut icon' href='/favicon.png' type='image/png'>
     <title>四子棋 剧情对局</title>
     <link href='https://quantil.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css' rel='stylesheet'>
@@ -53,14 +55,17 @@
         .story-board-wrap { box-shadow: 0 0 0 2px rgba(52, 152, 219, .08), 0 12px 28px rgba(0, 0, 0, .12); }
         .story-board-wrap.is-dialogue { pointer-events: none; }
         #game_p1_name, #game_p1_hp, #game_p2_name, #game_p2_hp { transition: color .5s ease; }
-        /* 对话框高度固定为半屏；表情框固定 120×180，靠左并垂直居中 */
+        /* 对话框高度固定为半屏；表情框尺寸由脚本按对话框高度的 2/5 计算（1:1.5），靠左并上下居中，此处为兜底值 */
         .dialogue-panel { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1100; height: 50vh; box-sizing: border-box; padding: .75rem; transition: transform .3s ease, opacity .3s ease; }
         .dialogue-panel.is-hidden { transform: translateY(120%); opacity: 0; pointer-events: none; }
         .dialogue-inner { height: 100%; box-sizing: border-box; max-width: 900px; margin-inline: auto; background: rgba(23, 26, 33, .94); color: #f5f6f8; border-radius: .8rem; box-shadow: 0 -6px 26px rgba(0, 0, 0, .35); padding: 1rem 1.1rem 1.1rem; cursor: pointer; display: flex; align-items: center; gap: 1rem; }
         .met-cursor-pointer .dialogue-inner { cursor: pointer; }
         .dialogue-face { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .4rem; }
         .dialogue-face-frame { position: relative; flex: 0 0 auto; width: 120px; height: 180px; display: flex; align-items: center; justify-content: center; border: 2px solid #000; border-radius: .4rem; background: #0b0d11; overflow: hidden; }
-        .dialogue-face-frame img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; }
+        .dialogue-face-frame img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; }
+        /* 兜底：表情框声明只支持浅色并禁止强制配色，避免浏览器自动深色把表情图渲染成负片 */
+        .dialogue-face-frame { color-scheme: only light; }
+        .dialogue-face-frame img { forced-color-adjust: none; }
         .dialogue-face-frame sl-icon { font-size: 1.6rem; color: #57616e; }
         .dialogue-speaker { font-weight: 700; font-size: .95rem; line-height: 1.25; color: #8fd0ff; text-align: center; max-width: 100%; word-break: break-all; }
         .dialogue-body { flex: 1 1 auto; min-width: 0; max-height: 100%; overflow-y: auto; display: flex; flex-direction: column; justify-content: safe center; }
@@ -195,7 +200,17 @@
         const { GameStory, Board, State, RulesRuntime, PLAYER_ENUM, STONE_ENUM, PLANT_ENUM, ASCEND_ENUM, OVER_ENUM, RandAIC, RandUnity } = window.FAscendExports;
         const { StoryScript, StoryRuntime } = window.StoryExports;
         const GameCanvas = window.GameExports.Canvas;
-        const ENDGAME_SIMULATIONS = 888;
+        // 剧情对局使用纯 4zero MCTS（150 次模拟），不套用残局战术矫正。
+        const STORY_SIMULATIONS = 150;
+        // 剧情防误触等级（0 单次确认 / 1 仅「打」双击 / 2 全部双击），由剧情列表页写入。
+        const STORY_SETTINGS_KEY = 'four-ascend-story-settings-v1';
+        const clickLevel = (() => {
+            try {
+                const saved = JSON.parse(localStorage.getItem(STORY_SETTINGS_KEY) || '{}') || {};
+                const level = Number(saved.click_level);
+                return level === 0 || level === 1 || level === 2 ? level : 2;
+            } catch (_) { return 2; }
+        })();
 
         const $ = (id) => document.getElementById(id);
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -214,6 +229,7 @@
         let triggeredSteps = new Set();
         let gameNodeIndex = 0;
         let pendingResume = null;
+        let pendingConfirm = null;
         let running = false;
         let gameOver = false;
         let gameGeneration = 0;
@@ -255,10 +271,36 @@
         };
         const applyPlaceholders = (text) => String(text == null ? '' : text).split('<玩家名称>').join(playerName);
 
-        // ==================== 角色表情框（对话框最左侧固定 120×180） ====================
+        // ==================== 角色表情框（对话框最左侧，高度为对话框的 2/5，1:1.5 上下居中） ====================
         const characterIndex = new Map();
+        const faceFrame = $('dialogue_face_frame');
+        const FACE_RATIO = 1.5;              // 宽:高 = 1:1.5
+        const FACE_HEIGHT_RATIO = 0.4;       // 表情框高度 / 对话框高度
+        const FACE_MAX_WIDTH = 512;          // 服务端原图上限，再大也无法更清晰
+        const FACE_MAX_HEIGHT = 768;
+        let faceTarget = { 'w': 0, 'h': 0 }; // 角色框需要的设备像素
+        let lastFace = { 'speaker': '', 'expression': '' };
+        const faceResolved = new Map();      // 图源缓存：kind:id:表情id:目标尺寸 -> 实际显示图
+        const faceOriginals = new Map();     // 原图缓存：kind:id:表情id -> data URL
 
-        // 只拉取本关剧本用到的角色与表情（管理员上传），建立 角色名 -> {代表图, 表情名->图} 索引
+        // 角色框尺寸随页面变化：高度 = 对话框实际高度的 2/5，宽度按 1:1.5 推导
+        const layoutFaceFrame = () => {
+            const inner = faceFrame.closest('.dialogue-inner');
+            const boxHeight = inner ? inner.clientHeight : Math.round(window.innerHeight * 0.5);
+            if (!boxHeight) return false;
+            const height = Math.max(60, Math.round(boxHeight * FACE_HEIGHT_RATIO));
+            const width = Math.max(40, Math.round(height / FACE_RATIO));
+            faceFrame.style.height = `${height}px`;
+            faceFrame.style.width = `${width}px`;
+            const dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
+            faceTarget = {
+                'w': Math.min(FACE_MAX_WIDTH, Math.max(1, Math.round((faceFrame.clientWidth || width) * dpr))),
+                'h': Math.min(FACE_MAX_HEIGHT, Math.max(1, Math.round((faceFrame.clientHeight || height) * dpr)))
+            };
+            return true;
+        };
+
+        // 只拉取本关剧本用到的角色与表情（管理员上传），建立 角色名 -> {id, 代表图, 表情名->图} 索引
         const loadCharacters = async (faces) => {
             characterIndex.clear();
             if (!faces || !faces.length) return;
@@ -269,45 +311,128 @@
                     if (!item || !item.name) return;
                     const expressions = new Map();
                     (Array.isArray(item.expressions) ? item.expressions : []).forEach((expression) => {
-                        if (expression && expression.name) expressions.set(String(expression.name), String(expression.image || ''));
+                        if (expression && expression.name) expressions.set(String(expression.name), { 'id': Number(expression.id) || 0, 'image': String(expression.image || '') });
                     });
-                    characterIndex.set(String(item.name), { 'rep': String(item.rep || ''), 'expressions': expressions });
+                    characterIndex.set(String(item.name), { 'id': Number(item.id) || 0, 'rep': String(item.rep || ''), 'expressions': expressions });
                 });
             } catch (error) {
                 console.warn('剧情角色数据加载失败，表情框将显示占位图。', error);
             }
         };
 
-        // 进入关卡前预加载本关会用到的角色图，避免播放时逐句换图出现空白
-        const preloadFaces = async (faces) => {
-            const sources = new Set();
+        const loadImageSize = (src) => new Promise((resolve) => {
+            const image = new Image();
+            image.onload = () => resolve({ 'w': image.naturalWidth, 'h': image.naturalHeight });
+            image.onerror = () => resolve(null);
+            image.src = src;
+        });
+
+        // 按角色框实际像素居中裁切并缩放，保证刚好填满且不变形
+        const resizeToFrame = (dataUrl, width, height) => new Promise((resolve) => {
+            const image = new Image();
+            image.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) { resolve(''); return; }
+                const srcRatio = image.naturalWidth / image.naturalHeight;
+                const dstRatio = width / height;
+                let sx = 0, sy = 0, sw = image.naturalWidth, sh = image.naturalHeight;
+                if (srcRatio > dstRatio) { sw = Math.round(sh * dstRatio); sx = Math.round((image.naturalWidth - sw) / 2); }
+                else if (srcRatio < dstRatio) { sh = Math.round(sw / dstRatio); sy = Math.round((image.naturalHeight - sh) / 2); }
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                ctx.drawImage(image, sx, sy, sw, sh, 0, 0, width, height);
+                const webp = canvas.toDataURL('image/webp', 0.9);
+                resolve(webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/png'));
+            };
+            image.onerror = () => resolve('');
+            image.src = dataUrl;
+        });
+
+        // 取服务端原图并缓存，窗口反复拖动时不重复下载；旧服务端没有该接口时返回空串，回退压缩图
+        const fetchFaceOriginal = async (job) => {
+            const key = `${job.kind}:${job.charId}:${job.exprId}`;
+            if (faceOriginals.has(key)) return faceOriginals.get(key);
+            try {
+                const result = window.http_story_image_source ? await window.http_story_image_source(job.kind, job.charId, job.exprId) : null;
+                const image = result && typeof result.image === 'string' && result.image.startsWith('data:image/') ? result.image : '';
+                if (image) faceOriginals.set(key, image);
+                return image;
+            } catch (_) { return ''; }
+        };
+
+        const faceJob = (speaker, expression) => {
+            const character = characterIndex.get(String(speaker == null ? '' : speaker));
+            if (!character) return null;
+            const picked = expression ? character.expressions.get(String(expression)) : null;
+            if (picked && picked.image) return { 'thumb': picked.image, 'kind': 'expression', 'charId': character.id, 'exprId': picked.id };
+            if (character.rep) return { 'thumb': character.rep, 'kind': 'rep', 'charId': character.id, 'exprId': 0 };
+            return null;
+        };
+
+        const faceCacheKey = (job) => `${job.kind}:${job.charId}:${job.exprId}:${faceTarget.w}x${faceTarget.h}`;
+
+        const collectFaceJobs = (faces) => {
+            const jobs = [];
             (faces || []).forEach((face) => {
                 const character = characterIndex.get(String(face.name));
                 if (!character) return;
-                if (character.rep) sources.add(character.rep);
-                (face.expressions || []).forEach((expression) => {
-                    const image = character.expressions.get(String(expression));
-                    if (image) sources.add(image);
+                if (character.rep) jobs.push({ 'thumb': character.rep, 'kind': 'rep', 'charId': character.id, 'exprId': 0 });
+                (face.expressions || []).forEach((name) => {
+                    const picked = character.expressions.get(String(name));
+                    if (picked && picked.image) jobs.push({ 'thumb': picked.image, 'kind': 'expression', 'charId': character.id, 'exprId': picked.id });
                 });
             });
-            await Promise.all(Array.from(sources, (src) => new Promise((resolve) => {
-                const image = new Image();
-                image.onload = () => resolve();
-                image.onerror = () => resolve();
-                image.src = src;
-            })));
+            return jobs;
         };
 
-        // 取图：优先命中指定表情，其次回退角色代表图
+        // 压缩图足够覆盖角色框像素时直接使用；不够时取原图重新压缩到框尺寸
+        const prepareFace = async (job) => {
+            const key = faceCacheKey(job);
+            if (!job.thumb) return;
+            faceResolved.set(key, job.thumb);
+            if (!faceTarget.w || !faceTarget.h) return;
+            const size = await loadImageSize(job.thumb);
+            if (!size || (size.w >= faceTarget.w && size.h >= faceTarget.h)) return;
+            const original = await fetchFaceOriginal(job);
+            if (!original) return;
+            const resized = await resizeToFrame(original, faceTarget.w, faceTarget.h);
+            if (resized) faceResolved.set(key, resized);
+        };
+
+        // 立刻用已缓存的压缩图填充当前框（拖动窗口时先保证有图、不空白）
+        const primeFaceThumbs = (faces) => {
+            collectFaceJobs(faces).forEach((job) => {
+                if (job.thumb) faceResolved.set(faceCacheKey(job), job.thumb);
+            });
+        };
+
+        // 清掉旧框尺寸的缓存，避免拖动窗口时缓存无限增长
+        const pruneFaceCache = () => {
+            const suffix = `:${faceTarget.w}x${faceTarget.h}`;
+            Array.from(faceResolved.keys()).forEach((key) => {
+                if (!key.endsWith(suffix)) faceResolved.delete(key);
+            });
+        };
+
+        // 进入关卡前取齐并预加载本关用到的角色图；需要原图的先按框尺寸压缩，避免播放时闪烁
+        const preloadFaces = async (faces) => {
+            layoutFaceFrame();
+            await Promise.all(collectFaceJobs(faces).map((job) => prepareFace(job)));
+        };
+
+        // 取图：优先命中指定表情，其次回退角色代表图；命中预处理结果时用按框压缩后的图
         const faceImage = (speaker, expression) => {
-            const character = characterIndex.get(String(speaker == null ? '' : speaker));
-            if (!character) return '';
-            const image = expression ? character.expressions.get(String(expression)) : '';
-            return image || character.rep || '';
+            const job = faceJob(speaker, expression);
+            if (!job) return '';
+            return faceResolved.get(faceCacheKey(job)) || job.thumb || '';
         };
 
-        // 刷新表情框：角色名放在表情框下方，无图时回退占位图标；尺寸由 CSS 固定
+        // 刷新表情框：角色名放在表情框下方，无图时回退占位图标
         const renderFace = (speaker, expression) => {
+            lastFace = { 'speaker': speaker || '', 'expression': expression || '' };
             $('dialogue_speaker').textContent = speaker || '旁白';
             const image = faceImage(speaker, expression);
             const img = $('dialogue_face_img');
@@ -609,6 +734,11 @@
         const colorFor = (stone) => stone === STONE_ENUM.BLACK ? '#2c3e50' : stone === STONE_ENUM.WHITE ? '#ecf0f1' : stone === STONE_ENUM.BLACK_ASCEND ? '#e74c3c' : '#3498db';
         const fromPlayer = () => state.turn_player === PLAYER_ENUM.BLACK ? STONE_ENUM.BLACK : STONE_ENUM.WHITE;
         const legal = (x, y) => game && game.valid(x, y, fromPlayer());
+        // 防误触：清除待确认落点的紫色校验标记。
+        const clearPendingConfirm = () => {
+            pendingConfirm = null;
+            if (ui && typeof ui.clear_stone_validate === 'function') ui.clear_stone_validate();
+        };
         const moveLabel = (move) => `${move[0] + 1} · ${move[1] + 1}`;
         const archiveMoveToBoard = ([x, y]) => importedArchive ? [x, 8 - y] : [x, y];
 
@@ -845,13 +975,12 @@
         const aiThink = async () => {
             if (aiWorker) {
                 try {
-                    const search = await aiWorker.ENDGAME_THINK(ENDGAME_SIMULATIONS);
+                    // 纯 Zero MCTS：不调用残局链路，避免斩杀 / 防自杀矫正在剧情中改写落点。
+                    const search = await aiWorker.STORY_THINK(STORY_SIMULATIONS);
                     const index = search && search.action;
                     const move = Number.isInteger(index) && index >= 0 && index < 81 ? [index % 9, Math.floor(index / 9)] : null;
                     if (move && legal(move[0], move[1])) {
-                        const label = search.corrected || search.engine === 'endgame-tactics' ? `战术矫正：${search.reason || '矫正'}` : null;
-                        if (label) setStatus(`${label} @ ${move[0] + 1},${move[1] + 1}`, 'info');
-                        else setStatus(`4zero MCTS 完成：${search.simulations || 0}/${search.requestedSimulations || ENDGAME_SIMULATIONS} 次模拟`, 'info');
+                        setStatus(`4zero MCTS 完成：${search.simulations || 0}/${search.requestedSimulations || STORY_SIMULATIONS} 次模拟`, 'info');
                         return move;
                     }
                 } catch (error) { console.warn('剧情 AI 搜索失败，启用合法落点保护。', error); }
@@ -879,7 +1008,7 @@
 
         const runAiTurns = async (generation) => {
             while (!gameOver && generation === gameGeneration && state.turn_player === aiPlayer) {
-                setStatus('对手 AI（战术矫正 + 4zero）正在计算...', 'info');
+                setStatus('对手 AI（4zero MCTS）正在计算...', 'info');
                 const response = bookedWhite;
                 bookedWhite = null;
                 let move = response && response.white_move ? response.white_move : null;
@@ -913,6 +1042,7 @@
             if (mode !== 'game' || running || gameOver || !state || state.turn_player !== selfPlayer) return;
             if (!aiReady) { setStatus('对手 AI 仍在准备，请稍候。', 'warning'); return; }
             if (!legal(x, y)) { setStatus('此处不能落子。', 'danger'); return; }
+            clearPendingConfirm();
             if (activeCircle && activeCircle.x === x && activeCircle.y === y) clearMarks();
             running = true;
             const generation = gameGeneration;
@@ -939,11 +1069,25 @@
             const drawY = (event.clientY - rect.top) * ui.size / rect.height;
             return [Math.round((drawX - ui.offset) / ui.spacing), Math.round((drawY - ui.offset) / ui.spacing)];
         };
+        const handleBoardPress = (x, y) => {
+            if (mode !== 'game' || running || gameOver || !state || state.turn_player !== selfPlayer) return;
+            if (!aiReady || !legal(x, y)) { clearPendingConfirm(); playerTurn(x, y); return; }
+            // 等级 1 仅保护会触发 ASCEND「打」的落子；等级 2 所有落子都需二次确认。
+            const isAttack = clickLevel === 1 && game && game.board && typeof game.board.get_ascend === 'function'
+                ? Boolean(game.board.get_ascend(x, y, fromPlayer()))
+                : false;
+            const needConfirm = clickLevel === 2 || isAttack;
+            if (!needConfirm) { clearPendingConfirm(); playerTurn(x, y); return; }
+            if (pendingConfirm && pendingConfirm[0] === x && pendingConfirm[1] === y) { clearPendingConfirm(); playerTurn(x, y); return; }
+            pendingConfirm = [x, y];
+            if (ui) { if (typeof ui.clear_stone_validate === 'function') ui.clear_stone_validate(); ui.draw_stone_validate(x, y, '#BF00FF'); }
+            setStatus(isAttack ? '此落子会发动「打」，再次点击同一位置确认。' : '再次点击同一位置确认落子。', 'info');
+        };
         boardCanvas.addEventListener('pointerdown', (event) => {
             event.preventDefault();
             if (mode !== 'game') return;
             const [x, y] = pointFromEvent(event);
-            if (x >= 0 && x < 9 && y >= 0 && y < 9) playerTurn(x, y);
+            if (x >= 0 && x < 9 && y >= 0 && y < 9) handleBoardPress(x, y);
         });
 
         const archiveFlatToBoard = (values) => {
@@ -1088,7 +1232,25 @@
             if (!gameOver && generation === gameGeneration) setStatus(state.turn_player === selfPlayer ? '轮到你落子。' : '对手 AI 回合。', 'primary');
         };
 
-        window.addEventListener('resize', () => { if (ui && game) redraw(); dimKey = ''; drawDim(); refreshGuide(); });
+        // 页面尺寸变化时：角色框立即跟随对话框高度，先用缓存的压缩图填充；框大于压缩图时再取原图按新框像素重压
+        let faceRelayoutTimer = 0;
+        let levelFaces = [];
+        window.addEventListener('resize', () => {
+            if (ui && game) redraw();
+            dimKey = '';
+            drawDim();
+            refreshGuide();
+            layoutFaceFrame();
+            if (!levelFaces.length) return;
+            pruneFaceCache();
+            primeFaceThumbs(levelFaces);
+            renderFace(lastFace.speaker, lastFace.expression);
+            clearTimeout(faceRelayoutTimer);
+            faceRelayoutTimer = setTimeout(async () => {
+                await preloadFaces(levelFaces);
+                renderFace(lastFace.speaker, lastFace.expression);
+            }, 150);
+        });
 
         (async () => {
             if (!window.get_token || !window.get_token()) { playerName = '你'; }
@@ -1112,6 +1274,7 @@
             if (!level) { setStatus('未找到剧情关卡。', 'danger'); return; }
             const parsed = StoryScript.parse(level.script);
             const faces = StoryScript.faces(parsed);
+            levelFaces = faces;
             // 进入关卡前先取齐并预加载本关用到的角色图
             await loadCharacters(faces);
             await preloadFaces(faces);
