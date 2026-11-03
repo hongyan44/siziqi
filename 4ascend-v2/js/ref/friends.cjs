@@ -78,8 +78,12 @@ const FriendList = require('./friend-list.cjs');
         invite_key: null,
         running: false,
         version: 0,
+        // requests 为「未看过的好友申请数」，requests_total 为服务端待处理总数
         requests: 0,
+        requests_total: 0,
         messages: 0,
+        friend_id: '',
+        seen_requests: [],
         chat: null,
         request_mode: 'manual',
         profile_uuid: null
@@ -112,7 +116,41 @@ const FriendList = require('./friend-list.cjs');
         }
     };
 
-    // 红点 = 待处理好友申请 + 未读私信（收到消息即在主页标红）
+    // ---------- 好友申请已读状态 ----------
+    // 打开“好友申请”页即视为看过，不必通过或拒绝；之后新到的申请仍会重新亮红点。
+    const request_signature = (item) => `${(item && item.uuid) || ''}|${Number(item && item.created_at) || 0}`;
+    const seen_storage_key = () => `4ascend_friend_request_seen:${state.friend_id || 'guest'}`;
+    const read_seen_requests = () => {
+        try {
+            const list = JSON.parse(window.localStorage.getItem(seen_storage_key()));
+            return Array.isArray(list) ? list.map(String) : [];
+        } catch (_) {
+            return [];
+        }
+    };
+    const write_seen_requests = () => {
+        try { window.localStorage.setItem(seen_storage_key(), JSON.stringify(state.seen_requests)); } catch (_) { /* 隐私模式禁用存储时忽略 */ }
+    };
+    // 只保留仍在待处理列表里的签名，避免本地记录无限增长
+    const prune_seen_requests = (incoming) => {
+        const alive = new Set((incoming || []).map(request_signature));
+        const next = state.seen_requests.filter((value) => alive.has(value));
+        if (next.length === state.seen_requests.length) return;
+        state.seen_requests = next;
+        write_seen_requests();
+    };
+    const mark_requests_seen = (incoming) => {
+        const seen = new Set(state.seen_requests);
+        (incoming || []).forEach((item) => seen.add(request_signature(item)));
+        state.seen_requests = Array.from(seen);
+        write_seen_requests();
+    };
+    const unseen_requests = (incoming) => {
+        const seen = new Set(state.seen_requests);
+        return (incoming || []).filter((item) => !seen.has(request_signature(item))).length;
+    };
+
+    // 红点 = 未看过的好友申请 + 未读私信（收到消息即在主页标红）
     const refresh_badge = () => {
         update_badge(state.requests + state.messages);
         update_request_badge(state.requests);
@@ -125,7 +163,13 @@ const FriendList = require('./friend-list.cjs');
         const previous_messages = state.messages;
         const previous_requests = state.requests;
         if (result.version !== undefined && result.version !== null) state.version = Number(result.version) || 0;
-        state.requests = Number(result.requests) || 0;
+        // 心跳只给待处理总数，没有具体申请签名：按增量估算新到的申请，列表刷新时再精确校准。
+        if (result.requests !== undefined && result.requests !== null) {
+            const total = Number(result.requests) || 0;
+            if (total > state.requests_total) state.requests += total - state.requests_total;
+            else if (total < state.requests_total) state.requests = Math.min(state.requests, total);
+            state.requests_total = total;
+        }
         state.messages = Number(result.messages) || 0;
         refresh_badge();
         if (result.invite && result.invite.from) handle_invite(result.invite);
@@ -472,6 +516,12 @@ const FriendList = require('./friend-list.cjs');
         const select = byId('select_friend_request_mode');
         if (select) select.value = state.request_mode;
         render_requests_page_by_state();
+        // 进入好友申请页即视为已看过，红点立刻消失（无需通过/拒绝申请）
+        prune_seen_requests(latest_incoming);
+        mark_requests_seen(latest_incoming);
+        state.requests_total = latest_incoming.length;
+        state.requests = unseen_requests(latest_incoming);
+        refresh_badge();
         refresh_online();
         if (logged_in()) refresh_list();
     };
@@ -511,14 +561,22 @@ const FriendList = require('./friend-list.cjs');
                 if (!result) return;
                 const my_id = byId('span_friend_my_id');
                 if (my_id) my_id.textContent = result.friend_id || '----';
+                if (result.friend_id && result.friend_id !== state.friend_id) {
+                    state.friend_id = result.friend_id;
+                    state.seen_requests = read_seen_requests();
+                }
                 state.request_mode = result.request_mode || 'manual';
                 latest_incoming = result.incoming || [];
                 latest_outgoing = result.outgoing || [];
                 latest_friends = result.friends || [];
+                prune_seen_requests(latest_incoming);
+                // 正在浏览好友申请页时，新到的申请也直接算作已看过
+                if (requests_open()) mark_requests_seen(latest_incoming);
                 render_requests_page(latest_incoming);
                 render_outgoing_page(latest_outgoing);
                 render_friends(result.friends || []);
-                state.requests = latest_incoming.length;
+                state.requests_total = latest_incoming.length;
+                state.requests = unseen_requests(latest_incoming);
                 state.messages = Number(result.messages) || 0;
                 refresh_badge();
                 if (requests_open()) {
@@ -606,7 +664,8 @@ const FriendList = require('./friend-list.cjs');
 
     const drop_incoming = (uuid) => {
         latest_incoming = latest_incoming.filter((value) => value && value.uuid !== uuid);
-        state.requests = latest_incoming.length;
+        state.requests_total = latest_incoming.length;
+        state.requests = unseen_requests(latest_incoming);
         refresh_badge();
         render_requests_page(latest_incoming);
     };
@@ -650,7 +709,34 @@ const FriendList = require('./friend-list.cjs');
             return;
         }
         const now = Date.now();
-        sorted.forEach((friend) => box.append(friend_item(friend, now)));
+        const active_chat = state.chat && state.chat.friend ? state.chat.friend.uuid : '';
+        sorted.forEach((friend) => {
+            // 正在会话中的好友一律视为已读，避免列表刷新把刚清掉的红点又画回来
+            if (friend && friend.uuid === active_chat) friend.unread = 0;
+            box.append(friend_item(friend, now));
+        });
+    };
+
+    // 未读私信红点：显示与未读条数，点击对应好友（打开会话）后消失
+    const unread_badge = (count) => {
+        const value = Number(count) || 0;
+        if (value <= 0) return null;
+        return h('span', {
+            class: 'friend-unread badge rounded-pill bg-danger',
+            style: 'font-size:0.6rem;cursor:pointer;',
+            title: `${value} 条未读消息，点击查看`,
+            text: value > 99 ? '99+' : String(value)
+        });
+    };
+
+    // 就地清掉某位好友的未读红点，避免整表重绘
+    const update_friend_unread = (uuid, value) => {
+        const friend = latest_friends.find((item) => item && item.uuid === uuid);
+        if (!friend) return false;
+        const next = Number(value) || 0;
+        if ((Number(friend.unread) || 0) === next) return false;
+        friend.unread = next;
+        return true;
     };
 
     const friend_item = (friend, now) => {
@@ -662,6 +748,7 @@ const FriendList = require('./friend-list.cjs');
                 h('div', { class: 'd-flex align-items-center gap-1' }, [
                     name_node(friend),
                     FriendList.is_admin(friend) ? admin_badge() : null,
+                    unread_badge(friend.unread),
                     h('span', { class: online ? 'friend-dot online' : 'friend-dot' })
                 ]),
                 h('small', { class: 'text-secondary', text: FriendList.format_presence(friend, now) })
@@ -678,6 +765,9 @@ const FriendList = require('./friend-list.cjs');
                 h('sl-button', { size: 'small', variant: 'danger', outline: '', title: '删除好友' }, [h('sl-icon', { name: 'trash' })])
             ])
         ]);
+        // 点红点本身也能直接进入该好友会话，红点随即消失
+        const unread = item.querySelector('.friend-unread');
+        if (unread) unread.addEventListener('click', () => open_chat(friend));
         const buttons = Array.from(item.querySelectorAll('sl-button'));
         buttons[0].addEventListener('click', () => open_chat(friend));
         if (online) buttons[1].addEventListener('click', () => challenge(friend));
@@ -827,6 +917,8 @@ const FriendList = require('./friend-list.cjs');
         }
 
         state.chat = { friend };
+        // 进入与好友的会话即视为看过：立刻清掉该好友的未读红点
+        if (update_friend_unread(friend.uuid, 0)) render_friends(latest_friends);
         const title = byId('span_friend_chat_title');
         if (title) {
             title.textContent = '';
@@ -849,6 +941,8 @@ const FriendList = require('./friend-list.cjs');
         const result = await window.http_friend_message_list(token(), chat.friend.uuid);
         if (state.chat !== chat || !result) return;
         state.messages = Number(result.unread) || 0;
+        // 服务端已在拉取时把该好友来信标记为已读，这里同步清掉行内红点
+        if (update_friend_unread(chat.friend.uuid, 0)) render_friends(latest_friends);
         refresh_badge();
         render_chat_messages(chat, result.messages || []);
     };
@@ -1043,6 +1137,11 @@ const FriendList = require('./friend-list.cjs');
         // 好友申请页
         const requests = byId('button_friend_requests');
         if (requests) requests.addEventListener('click', open_requests);
+        // 红点覆盖在按钮之上，点击红点本身也要能进入对应界面
+        const request_badge = byId('badge_friend_requests');
+        if (request_badge) request_badge.addEventListener('click', open_requests);
+        const dot = byId('badge_friend_dot');
+        if (dot) dot.addEventListener('click', open_drawer);
 
         const requests_back = byId('button_friend_requests_back');
         if (requests_back) requests_back.addEventListener('click', close_requests);

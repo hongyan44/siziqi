@@ -63,6 +63,7 @@ jsoncons::json record_json(const Manager::Puzzle::Record& record) noexcept {
     value["id"] = record.id;
     value["level"] = record.level;
     value["title"] = record.title;
+    value["description"] = record.description;
     value["code"] = record.code;
     value["creator"] = record.creator;
     value["created_at"] = record.created_at;
@@ -72,6 +73,7 @@ jsoncons::json record_json(const Manager::Puzzle::Record& record) noexcept {
 jsoncons::json daily_json(const Manager::Puzzle::DailyRecord& record) noexcept {
     jsoncons::json value = jsoncons::json::object();
     value["title"] = record.title;
+    value["description"] = record.description;
     value["code"] = record.code;
     value["creator"] = record.creator;
     value["updated_at"] = record.updated_at;
@@ -114,7 +116,10 @@ void puzzle_daily_update(cinatra::coro_http_request& request, cinatra::coro_http
     const auto input_title = json_string(value, "title");
     const auto title = input_title.empty() ? std::string("每日挑战") : input_title;
     if (utf8_char_count(title) > 10) return api_http_error("puzzle_daily_update", response);
-    const bool status = Manager::Puzzle::update_daily(title, code, creator, static_cast<uint64_t>(Libs::Only::Time::timestamp_ms()));
+    // 描述可为空，最多 50 字。
+    const auto description = json_string(value, "description");
+    if (utf8_char_count(description) > 50) return api_http_error("puzzle_daily_update", response);
+    const bool status = Manager::Puzzle::update_daily(title, description, code, creator, static_cast<uint64_t>(Libs::Only::Time::timestamp_ms()));
     std::string buffer;
     api_end("puzzle_daily_update", status, jsoncons::json::null(), buffer);
     response.set_status_and_content(cinatra::status_type::ok, buffer);
@@ -128,13 +133,14 @@ void puzzle_add(cinatra::coro_http_request& request, cinatra::coro_http_response
     if (!is_admin(value, creator)) return api_http_error("puzzle_add", response);
 
     const auto title = json_string(value, "title");
+    const auto description = json_string(value, "description");
     const auto code = json_string(value, "code");
     uint32_t level = 0;
     try { level = value.at("level").as<uint32_t>(); } catch (...) { return api_http_error("puzzle_add", response); }
-    if (level < 1 || level > 100 || title.empty() || utf8_char_count(title) > 10 || code.empty() || code.size() > 16000) return api_http_error("puzzle_add", response);
+    if (level < 1 || level > 100 || title.empty() || utf8_char_count(title) > 10 || utf8_char_count(description) > 50 || code.empty() || code.size() > 16000) return api_http_error("puzzle_add", response);
 
     uint64_t id = 0;
-    if (!Manager::Puzzle::add_puzzle(level, title, code, creator, static_cast<uint64_t>(Libs::Only::Time::timestamp_ms()), id))
+    if (!Manager::Puzzle::add_puzzle(level, title, description, code, creator, static_cast<uint64_t>(Libs::Only::Time::timestamp_ms()), id))
         return api_http_error("puzzle_add", response);
 
     jsoncons::json result = jsoncons::json::object();
@@ -155,11 +161,12 @@ void puzzle_update(cinatra::coro_http_request& request, cinatra::coro_http_respo
     uint32_t level = 0;
     try { id = value.at("id").as<uint64_t>(); level = value.at("level").as<uint32_t>(); } catch (...) { return api_http_error("puzzle_update", response); }
     const auto title = json_string(value, "title");
+    const auto description = json_string(value, "description");
     const auto code = json_string(value, "code");
-    if (id == 0 || level < 1 || level > 100 || title.empty() || utf8_char_count(title) > 10 || code.empty() || code.size() > 16000)
+    if (id == 0 || level < 1 || level > 100 || title.empty() || utf8_char_count(title) > 10 || utf8_char_count(description) > 50 || code.empty() || code.size() > 16000)
         return api_http_error("puzzle_update", response);
 
-    const bool status = Manager::Puzzle::update_puzzle(id, level, title, code, static_cast<uint64_t>(Libs::Only::Time::timestamp_ms()));
+    const bool status = Manager::Puzzle::update_puzzle(id, level, title, description, code, static_cast<uint64_t>(Libs::Only::Time::timestamp_ms()));
     std::string buffer;
     api_end("puzzle_update", status, jsoncons::json::null(), buffer);
     response.set_status_and_content(cinatra::status_type::ok, buffer);
@@ -192,8 +199,9 @@ void puzzle_submit(cinatra::coro_http_request& request, cinatra::coro_http_respo
 
     const auto target = json_string(value, "target");
     const auto title = json_string(value, "title");
+    const auto description = json_string(value, "description");
     const auto code = json_string(value, "code");
-    if ((target != "daily" && target != "level") || title.empty() || utf8_char_count(title) > 10 || code.empty() || code.size() > 16000)
+    if ((target != "daily" && target != "level") || title.empty() || utf8_char_count(title) > 10 || utf8_char_count(description) > 50 || code.empty() || code.size() > 16000)
         return api_http_error("puzzle_submit", response);
 
     // daily 投稿忽略 level（存 0）；level 投稿必须落在 1..100 的关卡区间。
@@ -211,7 +219,7 @@ void puzzle_submit(cinatra::coro_http_request& request, cinatra::coro_http_respo
     }
 
     uint64_t id = 0;
-    if (!Manager::Puzzle::add_submission(target, sub_level, title, code, creator, static_cast<uint64_t>(Libs::Only::Time::timestamp_ms()), id))
+    if (!Manager::Puzzle::add_submission(target, sub_level, title, description, code, creator, static_cast<uint64_t>(Libs::Only::Time::timestamp_ms()), id))
         return api_http_error("puzzle_submit", response);
     if (use_ticket) Manager::User::consume_ticket(creator);
 
@@ -242,8 +250,9 @@ void puzzle_submission_update(cinatra::coro_http_request& request, cinatra::coro
     try { id = value.at("id").as<uint64_t>(); } catch (...) { return api_http_error("puzzle_submission_update", response); }
     const auto target = json_string(value, "target");
     const auto title = json_string(value, "title");
+    const auto description = json_string(value, "description");
     const auto code = json_string(value, "code");
-    if (id == 0 || (target != "daily" && target != "level") || title.empty() || utf8_char_count(title) > 10 || code.empty() || code.size() > 16000)
+    if (id == 0 || (target != "daily" && target != "level") || title.empty() || utf8_char_count(title) > 10 || utf8_char_count(description) > 50 || code.empty() || code.size() > 16000)
         return api_http_error("puzzle_submission_update", response);
 
     uint32_t sub_level = 0;
@@ -252,7 +261,7 @@ void puzzle_submission_update(cinatra::coro_http_request& request, cinatra::coro
         if (sub_level < 1 || sub_level > 100) return api_http_error("puzzle_submission_update", response);
     }
 
-    const bool status = Manager::Puzzle::update_submission(id, target, sub_level, title, code);
+    const bool status = Manager::Puzzle::update_submission(id, target, sub_level, title, description, code);
     std::string buffer;
     api_end("puzzle_submission_update", status, jsoncons::json::null(), buffer);
     response.set_status_and_content(cinatra::status_type::ok, buffer);
@@ -281,6 +290,7 @@ void puzzle_submission_query(cinatra::coro_http_request& request, cinatra::coro_
         item["target"] = submission.target;
         item["level"] = submission.level;
         item["title"] = submission.title;
+        item["description"] = submission.description;
         item["code"] = submission.code;
         item["creator"] = submission.creator;
 

@@ -212,6 +212,10 @@ void friend_list(cinatra::coro_http_request& request, cinatra::coro_http_respons
     std::vector<std::string> friends;
     Manager::Friend::list_friends(uuid, friends);
 
+    // 按发送方统计未读私信：好友行的独立红点据此显示各自的未读条数。
+    std::vector<std::pair<std::string, int64_t>> unread_by_sender;
+    Manager::Friend::count_unread_by_sender(uuid, now - MESSAGE_TTL_MS, unread_by_sender);
+
     jsoncons::json arr = jsoncons::json::array();
     for (const auto& other : friends) {
         if (other.empty()) continue;
@@ -221,6 +225,11 @@ void friend_list(cinatra::coro_http_request& request, cinatra::coro_http_respons
         const bool has_seen = Manager::Friend::last_seen(other, seen);
         item["last_seen"] = has_seen ? seen : 0;
         item["online"]    = has_seen && (now - seen) <= ONLINE_WINDOW_MS;
+        int64_t unread = 0;
+        for (const auto& entry : unread_by_sender) {
+            if (entry.first == other) { unread = entry.second; break; }
+        }
+        item["unread"] = unread;
         arr.push_back(std::move(item));
     }
     result["friends"] = std::move(arr);

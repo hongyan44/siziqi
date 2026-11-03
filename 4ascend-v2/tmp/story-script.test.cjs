@@ -80,10 +80,10 @@ const TYPES = ['say', 'choice', 'label', 'say', 'game', 'label', 'say', 'end', '
     assert.equal(game.type, 'game');
     assert.equal(game.title, '对局 第一场');
     assert.equal(game.config.archive, 'abc123');
-    assert.deepEqual(game.config.points, [[4, 4], [5, 4], [6, 5]]);
+    assert.deepEqual(game.config.points, [[3, 5], [4, 5], [5, 4]], '作者坐标 1-9 先横后竖应转为内部坐标');
     assert.deepEqual(game.config.schedule, [
-        { turn: 3, cells: [[4, 4], [5, 4]] },
-        { turn: 9, cells: [[2, 2]] },
+        { turn: 3, cells: [[3, 5], [4, 5]] },
+        { turn: 9, cells: [[1, 7]] },
     ], '刷草计划应解析为回合+坐标数组');
     assert.equal(game.config.self, 'black');
     assert.equal(game.config.first, 'white');
@@ -115,7 +115,7 @@ const TYPES = ['say', 'choice', 'label', 'say', 'game', 'label', 'say', 'end', '
 
 // 7) 校验：刷草点格式无效
 {
-    const bad = '[A] hi\n* 对局 x\n  刷草点=9,9\n结束';
+    const bad = '[A] hi\n* 对局 x\n  刷草点=10,10\n结束';
     assert.ok(StoryScript.validate(bad).some((e) => e.includes('刷草点')), '应报刷草点无效');
     console.log('PASS: 校验刷草点无效');
 }
@@ -196,7 +196,7 @@ const TYPES = ['say', 'choice', 'label', 'say', 'game', 'label', 'say', 'end', '
     assert.equal(marks[0].target, '名字');
     assert.equal(marks[0].color, null);
     assert.equal(marks[1].kind, 'circle');
-    assert.deepEqual(marks[1].cell, [4, 4], '圈坐标应解析为 [4,4]');
+    assert.deepEqual(marks[1].cell, [3, 5], '圈坐标 4,4 应按 1-9 先横后竖转为内部 [3,5]');
     assert.equal(marks[2].kind, 'clear');
     console.log('PASS: 标注节点解析');
 }
@@ -214,7 +214,7 @@ const TYPES = ['say', 'choice', 'label', 'say', 'game', 'label', 'say', 'end', '
 {
     const badAnchor = '[A] hi\n@ 箭头 不存在的东西\n结束';
     assert.ok(StoryScript.validate(badAnchor).some((e) => e.includes('锚点未知')), '应报锚点未知');
-    const badCell = '[A] hi\n@ 圈 9,9\n结束';
+    const badCell = '[A] hi\n@ 圈 10,10\n结束';
     assert.ok(StoryScript.validate(badCell).some((e) => e.includes('圈坐标无效')), '应报圈坐标无效');
     const badKind = '[A] hi\n@ 涂鸦 名字\n结束';
     assert.ok(StoryScript.validate(badKind).some((e) => e.includes('标注类型无效')), '应报标注类型无效');
@@ -238,8 +238,8 @@ const TYPES = ['say', 'choice', 'label', 'say', 'game', 'label', 'say', 'end', '
     const parsed = StoryScript.parse(src);
     const game = parsed.nodes.find((n) => n.type === 'game');
     assert.deepEqual(game.config.schedule, [
-        { turn: 3, cells: [[4, 4], [5, 4]] },
-        { turn: 9, cells: [[2, 2]] },
+        { turn: 3, cells: [[3, 5], [4, 5]] },
+        { turn: 9, cells: [[1, 7]] },
     ]);
     const out = StoryScript.stringify(parsed);
     assert.ok(out.includes('刷草计划=3:4,4;5,4|9:2,2'), `刷草计划应完整还原：${out}`);
@@ -251,7 +251,7 @@ const TYPES = ['say', 'choice', 'label', 'say', 'game', 'label', 'say', 'end', '
 {
     const badTurn = '[A] hi\n* 对局 x\n  刷草计划=abc:4,4\n结束';
     assert.ok(StoryScript.validate(badTurn).some((e) => e.includes('刷草计划')), '应报刷草计划回合无效');
-    const badCell = '[A] hi\n* 对局 x\n  刷草计划=3:9,9\n结束';
+    const badCell = '[A] hi\n* 对局 x\n  刷草计划=3:10,10\n结束';
     assert.ok(StoryScript.validate(badCell).some((e) => e.includes('刷草计划')), '应报刷草计划坐标无效');
     console.log('PASS: 刷草计划校验');
 }
@@ -260,7 +260,7 @@ const TYPES = ['say', 'choice', 'label', 'say', 'game', 'label', 'say', 'end', '
 {
     const parsed = StoryScript.parse('[A] hi\n* 对局 x\n  刷草计划=2:0,0;9,9;3,3\n结束');
     const game = parsed.nodes.find((n) => n.type === 'game');
-    assert.deepEqual(game.config.schedule, [{ turn: 2, cells: [[0, 0], [3, 3]] }], '越界坐标应被丢弃');
+    assert.deepEqual(game.config.schedule, [{ turn: 2, cells: [[8, 0], [2, 6]] }], '越界坐标应被丢弃，9,9 是合法角落');
     console.log('PASS: 刷草计划过滤越界坐标');
 }
 
@@ -459,7 +459,10 @@ const TYPES = ['say', 'choice', 'label', 'say', 'game', 'label', 'say', 'end', '
     const parsed = StoryScript.parse(src);
     assert.deepEqual(parsed.errors, [], '步数对话不应产生解析错误');
     const game = parsed.nodes.find((n) => n.type === 'game');
-    assert.deepEqual(game.config.dialogues, [{ step: 3, target: '中场' }, { step: 6, target: '结尾' }], '步数对话应解析为 手数+标签');
+    assert.deepEqual(game.config.dialogues, [
+        { type: 'step', step: 3, target: '中场' },
+        { type: 'step', step: 6, target: '结尾' },
+    ], '步数对话应解析为 类型+手数+标签');
     assert.equal(game.config.dialogues_text, '3:中场|6:结尾');
     assert.equal(StoryScript.parse('[A] x\n* 对局\n  步数对话=2：中场\n:中场\n[A] 中场\n结束').nodes.find((n) => n.type === 'game').config.dialogues[0].step, 2, '全角冒号也接受');
 
@@ -684,6 +687,325 @@ const TYPES = ['say', 'choice', 'label', 'say', 'game', 'label', 'say', 'end', '
         '非法的结束后取值应报错'
     );
     console.log('PASS: 结束后=继续 解析/校验/还原/运行时');
+}
+
+// 37) 步数对话：四类触发条件解析 / 坐标统一 / 还原 / 非法坐标校验
+{
+    const src = '[A] x\n* 对局\n  步数对话=3:步数|落子5,5:落子|拿起:拿起|AI拿起:AI拿起\n:步数\n[A] 步数\n继续对局\n:落子\n[A] 落子\n继续对局\n:拿起\n[A] 拿起\n继续对局\n:AI拿起\n[A] AI\n继续对局\n结束';
+    const config = StoryScript.parse(src).nodes.find((n) => n.type === 'game').config;
+    assert.deepEqual(config.dialogues, [
+        { type: 'step', step: 3, target: '步数' },
+        { type: 'cell', x: 4, y: 4, cell_text: '5,5', target: '落子' },
+        { type: 'pick', target: '拿起' },
+        { type: 'ai_pick', target: 'AI拿起' },
+    ], '四类触发条件应按顺序解析，5,5 对应内部正中心 [4,4]');
+    assert.equal(config.dialogues_text, '3:步数|落子5,5:落子|拿起:拿起|AI拿起:AI拿起');
+    assert.deepEqual(StoryScript.validate(src), [], '四类触发剧本应校验通过');
+
+    // 角落与边界：1,1 为左下角、9,9 为右上角
+    const corners = StoryScript.parse('[A] x\n* 对局\n  步数对话=落子1,1:左下|落子9,9:右上\n:左下\n[A] 左下\n继续对局\n:右上\n[A] 右上\n继续对局\n结束').nodes.find((n) => n.type === 'game').config;
+    assert.deepEqual(corners.dialogues[0], { type: 'cell', x: 0, y: 8, cell_text: '1,1', target: '左下' });
+    assert.deepEqual(corners.dialogues[1], { type: 'cell', x: 8, y: 0, cell_text: '9,9', target: '右上' });
+
+    // 还原后语义不变
+    const out = StoryScript.stringify(StoryScript.parse(src));
+    assert.ok(out.includes('步数对话=3:步数|落子5,5:落子|拿起:拿起|AI拿起:AI拿起'), `四类触发应完整还原：${out}`);
+    const again = StoryScript.parse(out).nodes.find((n) => n.type === 'game').config.dialogues;
+    assert.deepEqual(again, config.dialogues, '还原后四类触发应一致');
+    assert.deepEqual(StoryScript.validate(out), [], '还原后应校验通过');
+
+    // 非法位置坐标：0、10 应报错
+    ['0,5', '10,5', '5,0', '5,10'].forEach((cell) => {
+        const bad = `[A] x\n* 对局\n  步数对话=落子${cell}:中场\n:中场\n[A] 中场\n继续对局\n结束`;
+        assert.ok(StoryScript.validate(bad).some((e) => e.includes('对话触发坐标无效')), `${cell} 应报坐标无效`);
+    });
+    console.log('PASS: 四类对话触发解析与坐标统一');
+}
+
+// 38) 结构化菜单块：解析 / 校验 / 还原 / 运行时按选项执行并汇合
+{
+    const src = [
+        '? 你要去哪？',
+        '  - 左边',
+        '    [A] 走左边',
+        '  - 右边',
+        '    [A] 走右边',
+        '结束选择',
+        '[A] 汇合了',
+        '结束',
+    ].join('\n');
+    const parsed = StoryScript.parse(src);
+    assert.deepEqual(parsed.errors, [], '结构化菜单不应产生解析错误');
+    assert.deepEqual(
+        parsed.nodes.map((n) => n.type),
+        ['choice', 'label', 'say', 'jump', 'label', 'say', 'jump', 'choice_end', 'label', 'say', 'end'],
+        '每个选项应编译为「自动标签 + 内容 + 跳到块尾」'
+    );
+    const choice = parsed.nodes[0];
+    assert.equal(choice.block, true, '结构化菜单应标记为 block');
+    assert.deepEqual(choice.options.map((item) => item.text), ['左边', '右边']);
+    assert.equal(choice.options[0].explicit, false);
+    assert.equal(choice.options[0].body_nodes.length, 1, '选项内容应挂到 body_nodes 供编辑器还原');
+    assert.deepEqual(StoryScript.validate(src), [], '结构化菜单剧本应校验通过');
+
+    const rt = new StoryRuntime(parsed);
+    assert.equal(rt.current().type, 'choice');
+    assert.equal(rt.choose(0).text, '走左边', '选择左分支应进入对应内容');
+    assert.equal(rt.advance().text, '汇合了', '选项内容播完后应自动汇合到「结束选择」之后');
+
+    const out = StoryScript.stringify(parsed);
+    assert.ok(out.includes('? 你要去哪？'), `菜单提示应还原：${out}`);
+    assert.ok(out.includes('  - 左边') && out.includes('    [A] 走左边'), `选项内容应按层级还原：${out}`);
+    assert.ok(out.includes('结束选择'), `结束选择应还原：${out}`);
+    assert.ok(!out.includes('__menu_'), '内部自动标签不应出现在还原文本中');
+    assert.deepEqual(StoryScript.validate(out), [], '还原后应校验通过');
+    console.log('PASS: 结构化菜单块解析/运行时/还原');
+}
+
+// 39) 结构化菜单块：选项内嵌菜单，选择后逐层汇合
+{
+    const src = [
+        '? 外层',
+        '  - A',
+        '    ? 内层',
+        '      - A1',
+        '        [X] 叶子1',
+        '      - A2',
+        '        [X] 叶子2',
+        '    结束选择',
+        '  - B',
+        '    [X] B',
+        '结束选择',
+        '[X] 尾',
+        '结束',
+    ].join('\n');
+    const parsed = StoryScript.parse(src);
+    assert.deepEqual(parsed.errors, [], '嵌套菜单不应产生解析错误');
+    const outer = parsed.nodes[0];
+    assert.equal(outer.block, true);
+    const inner = outer.options[0].body_nodes.find((n) => n.type === 'choice');
+    assert.ok(inner && inner.block, '选项内应能再嵌套结构化菜单');
+    assert.deepEqual(inner.options.map((item) => item.text), ['A1', 'A2']);
+
+    const rt = new StoryRuntime(parsed);
+    rt.choose(0);
+    assert.equal(rt.current().type, 'choice', '选择外层 A 后应进入内层菜单');
+    assert.equal(rt.choose(1).text, '叶子2');
+    assert.equal(rt.advance().text, '尾', '内层与外层菜单都应逐层汇合到最外层之后');
+
+    const out = StoryScript.stringify(parsed);
+    const again = StoryScript.parse(out);
+    assert.deepEqual(again.errors, [], '嵌套菜单还原后应能重新解析');
+    assert.deepEqual(StoryScript.validate(out), [], '嵌套菜单还原后应校验通过');
+    assert.equal(again.nodes[0].options[0].body_nodes.filter((n) => n.type === 'choice').length, 1, '嵌套结构应保留');
+    console.log('PASS: 嵌套结构化菜单');
+}
+
+// 40) 封装块：定义跳过 / 调用进入 / 播完返回调用点
+{
+    const src = [
+        '定义 打招呼',
+        '  [A] 第一次',
+        '  [A] 第二次',
+        '结束定义',
+        '[A] 开始',
+        '调用 打招呼',
+        '[A] 回来',
+        '结束',
+    ].join('\n');
+    const parsed = StoryScript.parse(src);
+    assert.deepEqual(parsed.errors, [], '封装块不应产生解析错误');
+    assert.deepEqual(
+        parsed.nodes.map((n) => n.type),
+        ['def', 'say', 'say', 'def_end', 'say', 'call', 'say', 'end'],
+        '封装块应是独立节点'
+    );
+    assert.deepEqual(StoryScript.validate(src), [], '封装块剧本应校验通过');
+
+    const rt = new StoryRuntime(parsed);
+    assert.equal(rt.current().text, '开始', '未调用前应跳过封装块定义');
+    assert.equal(rt.advance().text, '第一次', '调用应进入封装块');
+    assert.equal(rt.advance().text, '第二次');
+    assert.equal(rt.advance().text, '回来', '封装块播完应回到调用点之后');
+    assert.equal(rt.call_stack.length, 0, '返回后调用栈应清空');
+    assert.equal(rt.advance().type, 'end');
+
+    const out = StoryScript.stringify(parsed);
+    assert.ok(out.includes('定义 打招呼'), `封装块定义应还原：${out}`);
+    assert.ok(out.includes('结束定义'), `结束定义应还原：${out}`);
+    assert.ok(out.includes('调用 打招呼'), `调用应还原：${out}`);
+    assert.deepEqual(StoryScript.validate(out), [], '还原后应校验通过');
+    console.log('PASS: 封装块定义/调用/返回');
+}
+
+// 41) 封装块：多次调用复用 + 提前「返回」
+{
+    const src = [
+        '定义 子过程',
+        '  [A] 前',
+        '  返回',
+        '  [A] 不该出现',
+        '结束定义',
+        '调用 子过程',
+        '调用 子过程',
+        '[A] 收尾',
+        '结束',
+    ].join('\n');
+    const rt = new StoryRuntime(StoryScript.parse(src));
+    assert.equal(rt.current().text, '前');
+    assert.equal(rt.advance().text, '前', '第二次调用应复用同一封装块');
+    assert.equal(rt.advance().text, '收尾', '提前返回后不应执行其后的内容');
+    assert.equal(rt.advance().type, 'end');
+    console.log('PASS: 封装块多次调用与提前返回');
+}
+
+// 42) 封装块：菜单选项内调用封装块，返回后继续走选项后续内容
+{
+    const src = [
+        '定义 提示',
+        '  [A] 来自封装块',
+        '结束定义',
+        '? 选择',
+        '  - 调用',
+        '    调用 提示',
+        '    [A] 选项后续',
+        '  - 跳过',
+        '    [A] 跳过内容',
+        '结束选择',
+        '[A] 尾',
+        '结束',
+    ].join('\n');
+    const rt = new StoryRuntime(StoryScript.parse(src));
+    rt.choose(0);
+    assert.equal(rt.current().text, '来自封装块');
+    assert.equal(rt.advance().text, '选项后续', '封装块返回点应在选项内容中');
+    assert.equal(rt.advance().text, '尾', '选项后续播完应汇合到菜单块之后');
+    console.log('PASS: 菜单选项内调用封装块');
+}
+
+// 43) 封装块与菜单块：结构/引用校验
+{
+    assert.ok(
+        StoryScript.validate('调用 不存在\n结束').some((e) => e.includes('不存在的封装块')),
+        '调用未定义的封装块应报错'
+    );
+    assert.ok(
+        StoryScript.validate('定义 A\n[A] hi\n结束').some((e) => e.includes('缺少「结束定义」')),
+        '封装块缺少结束定义应报错'
+    );
+    assert.ok(
+        StoryScript.validate('结束定义\n结束').some((e) => e.includes('没有对应的开始标记')),
+        '多余结束定义应报错'
+    );
+    assert.ok(
+        StoryScript.validate('[A] hi\n返回\n结束').some((e) => e.includes('必须位于封装块内')),
+        '封装块外的返回应报错'
+    );
+    assert.ok(
+        StoryScript.validate('定义 A\n  定义 B\n  结束定义\n结束定义\n结束').some((e) => e.includes('不能嵌套')),
+        '封装块不能嵌套'
+    );
+    assert.ok(
+        StoryScript.validate('定义 A\n[A] hi\n结束定义\n定义 A\n[A] hi\n结束定义\n结束').some((e) => e.includes('名称重复')),
+        '封装块名称重复应报错'
+    );
+    assert.ok(
+        StoryScript.validate('? 提示\n  - A -> 结束\n    [X] 多余内容\n结束选择\n结束').some((e) => e.includes('二者只能选一种')),
+        '菜单选项同时写跳转与内容应报错'
+    );
+    assert.ok(
+        StoryScript.validate('? 提示\n结束选择\n结束').some((e) => e.includes('没有任何选项')),
+        '空菜单块应报错'
+    );
+    console.log('PASS: 封装块与菜单块结构校验');
+}
+
+// 44) 角色资源收集：结构化菜单选项内的台词也应计入
+{
+    const src = [
+        '? [旁白] 提示',
+        '  - A',
+        '    [左边|微笑] 左',
+        '  - B',
+        '    [右边] 右',
+        '结束选择',
+        '结束',
+    ].join('\n');
+    const faces = StoryScript.faces(StoryScript.parse(src));
+    assert.deepEqual(
+        faces.map((item) => item.name).sort(),
+        ['旁白', '右边', '左边'].sort(),
+        '选项内容中的角色也应被收集'
+    );
+    const left = faces.find((item) => item.name === '左边');
+    assert.deepEqual(left.expressions, ['微笑'], '选项内容中的表情也应被收集');
+    console.log('PASS: 菜单选项角色资源收集');
+}
+
+// 45) 结构化菜单选项内仍可写旧式「选择 + 跳转标签」，不能被父级「结束选择」误吞
+{
+    const src = [
+        '? 外层',
+        '  - A',
+        '    ? [A] 旧式选择',
+        '    - 进入 -> 左',
+        '    - 离开 -> 右',
+        '  - B',
+        '    [A] B',
+        '结束选择',
+        ':左',
+        '[A] 左边剧情',
+        '结束',
+        ':右',
+        '[A] 右边剧情',
+        '结束',
+    ].join('\n');
+    const parsed = StoryScript.parse(src);
+    assert.deepEqual(parsed.errors, [], '菜单内容中的旧式选择不应产生错误');
+    const outer = parsed.nodes[0];
+    assert.equal(outer.block, true);
+    const legacy = outer.options[0].body_nodes.find((node) => node.type === 'choice');
+    assert.ok(legacy, '选项内容中应还原旧式选择节点');
+    assert.equal(legacy.block, undefined, '旧式选择不应被标记为结构化菜单块');
+    assert.deepEqual(legacy.options.map((item) => item.target), ['左', '右']);
+
+    const rt = new StoryRuntime(parsed);
+    rt.choose(0);
+    assert.equal(rt.current().type, 'choice');
+    assert.equal(rt.choose(0).text, '左边剧情');
+    console.log('PASS: 菜单内容中的旧式选择');
+}
+
+// 46) 对话框不透明度：全局设置解析 / 校验 / 还原 / 运行时跳过
+{
+    const src = [
+        '[A] hi',
+        '对话框不透明度=35',
+        '* 对局 x',
+        '  残局码=AB',
+        '  对话框不透明度=20',
+        '  我方=黑',
+        '结束',
+    ].join('\n');
+    const parsed = StoryScript.parse(src);
+    assert.deepEqual(parsed.errors, [], '透明度设置不应产生解析错误');
+    const settings = parsed.nodes.filter((n) => n.type === 'setting');
+    assert.deepEqual(settings.map((n) => n.value), [35, 20], '全局与对局内设置都应解析');
+    assert.equal(parsed.nodes.find((n) => n.type === 'game').config.self, 'black', '对局内的设置不应打断配置归属');
+    assert.deepEqual(StoryScript.validate(src), [], '应校验通过');
+
+    const out = StoryScript.stringify(parsed);
+    assert.ok(out.includes('对话框不透明度=35') && out.includes('对话框不透明度=20'), `应完整还原：${out}`);
+    const again = StoryScript.parse(out);
+    assert.deepEqual(StoryScript.validate(out), [], '还原后应校验通过');
+    assert.deepEqual(again.nodes.filter((n) => n.type === 'setting').map((n) => n.value), [35, 20]);
+
+    // 播放时设置节点应被跳过，不阻挡台词与对局推进
+    const rt = new StoryRuntime(parsed);
+    assert.equal(rt.current().text, 'hi');
+    assert.equal(rt.advance().type, 'game', '设置节点应被跳过');
+    assert.deepEqual(StoryScript.validate('对话框不透明度=999\n结束').some((e) => e.includes('对话框不透明度')), true, '越界应报错');
+    console.log('PASS: 对话框不透明度解析/校验/还原/运行时');
 }
 
 console.log('story-script: ALL PASS');

@@ -58,7 +58,7 @@
         /* 对话框高度固定为半屏；表情框尺寸由脚本按对话框高度的 2/5 计算（1:1.5），靠左并上下居中，此处为兜底值 */
         .dialogue-panel { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1100; height: 50vh; box-sizing: border-box; padding: .75rem; transition: transform .3s ease, opacity .3s ease; }
         .dialogue-panel.is-hidden { transform: translateY(120%); opacity: 0; pointer-events: none; }
-        .dialogue-inner { height: 100%; box-sizing: border-box; max-width: 900px; margin-inline: auto; background: rgba(23, 26, 33, .94); color: #f5f6f8; border-radius: .8rem; box-shadow: 0 -6px 26px rgba(0, 0, 0, .35); padding: 1rem 1.1rem 1.1rem; cursor: pointer; display: flex; align-items: center; gap: 1rem; }
+        .dialogue-inner { height: 100%; box-sizing: border-box; max-width: 900px; margin-inline: auto; background: rgba(23, 26, 33, var(--dialogue-alpha, .6)); color: #f5f6f8; border-radius: .8rem; box-shadow: 0 -6px 26px rgba(0, 0, 0, .35); padding: 1rem 1.1rem 1.1rem; cursor: pointer; display: flex; align-items: center; gap: 1rem; }
         .met-cursor-pointer .dialogue-inner { cursor: pointer; }
         .dialogue-face { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .4rem; }
         .dialogue-face-frame { position: relative; flex: 0 0 auto; width: 120px; height: 180px; display: flex; align-items: center; justify-content: center; border: 2px solid #000; border-radius: .4rem; background: #0b0d11; overflow: hidden; }
@@ -165,7 +165,7 @@
     <canvas id='canvas_annot' aria-hidden='true'></canvas>
 
     <div id='dialogue' class='dialogue-panel is-hidden'>
-        <div class='dialogue-inner'>
+        <div id='dialogue_inner' class='dialogue-inner'>
             <div id='dialogue_face' class='dialogue-face'>
                 <div id='dialogue_face_frame' class='dialogue-face-frame'>
                     <img id='dialogue_face_img' alt='角色表情' class='d-none'>
@@ -216,6 +216,27 @@
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const indexOf = (x, y) => y * 9 + x;
 
+        // 按剧情内的「对话框不透明度=xx」设置对话框背景透明度，默认 60%
+        const applyDialogueOpacity = (parsed) => {
+            const findSetting = (nodes) => {
+                for (const node of nodes || []) {
+                    if (node.type === 'setting' && node.key === 'opacity') return node;
+                    if (node.type === 'choice') {
+                        for (const option of node.options || []) {
+                            const found = findSetting(option.body_nodes);
+                            if (found) return found;
+                        }
+                    }
+                }
+                return null;
+            };
+            const setting = findSetting(parsed && parsed.nodes ? parsed.nodes : []);
+            const number = setting ? Number(setting.value) : 60;
+            const value = Number.isFinite(number) ? Math.max(0, Math.min(100, Math.round(number))) : 60;
+            const inner = $('dialogue_inner');
+            if (inner) inner.style.setProperty('--dialogue-alpha', String(value / 100));
+        };
+
         let runtime = null;
         let playerName = '你';
         let mode = 'dialogue';
@@ -225,8 +246,10 @@
         let bookedWhite = null;
         let moves = [];
         let endLimit = 0;
-        // 步数对话：按落子总手数计数（玩家第一步=1，AI 应手=2，玩家第二次=3），达到配置手数时暂停本局播放对话
-        let triggeredSteps = new Set();
+        // 步数对话：支持 步数 / 位置落子 / 拿起棋子 / AI拿起棋子 四类触发，按条目索引去重，每条只触发一次
+        let triggeredEvents = new Set();
+        // 本次落子是否形成了「打」（ASCEND），用于区分「拿起棋子」与「AI拿起棋子」
+        let lastMovePicked = false;
         let gameNodeIndex = 0;
         let pendingResume = null;
         let pendingConfirm = null;
@@ -666,19 +689,20 @@
                 renderFace(node.speaker, node.expression);
                 $('dialogue_options').classList.add('d-none');
                 $('dialogue_options').innerHTML = '';
-                typeText(applyPlaceholders(node.text));
+                typeText(applyPlaceholders(runtime.interpolate(node.text)));
                 return;
             }
             if (node.type === 'choice') {
                 renderFace(node.speaker || '请选择', node.expression || '');
-                typeText(applyPlaceholders(node.prompt));
+                typeText(applyPlaceholders(runtime.interpolate(node.prompt)));
                 const options = $('dialogue_options');
                 options.innerHTML = '';
                 options.classList.remove('d-none');
                 $('dialogue_next').classList.add('d-none');
                 node.options.forEach((option, index) => {
                     const button = document.createElement('button');
-                    button.type = 'button'; button.className = 'dialogue-option'; button.textContent = option.text;
+                    button.type = 'button'; button.className = 'dialogue-option';
+                    button.textContent = runtime.interpolate(option.text);
                     button.addEventListener('click', (event) => { event.stopPropagation(); runtime.choose(index); renderNode(); });
                     options.append(button);
                 });
@@ -739,7 +763,7 @@
             pendingConfirm = null;
             if (ui && typeof ui.clear_stone_validate === 'function') ui.clear_stone_validate();
         };
-        const moveLabel = (move) => `${move[0] + 1} · ${move[1] + 1}`;
+        const moveLabel = (move) => `${move[0] + 1} · ${9 - move[1]}`;
         const archiveMoveToBoard = ([x, y]) => importedArchive ? [x, 8 - y] : [x, y];
 
         // ==================== 引导落子（残局码内嵌，红色虚线旋转圈） ====================
@@ -908,6 +932,7 @@
             ui.draw_stone_turn(x, y, source === 'ai' ? '#00FFC5' : '#FFD700', 5);
             sound && sound.play_stone();
             const points = game.ed_as_1();
+            lastMovePicked = Boolean(points);
             renderInfo();
             if (sound && sound.context && sound.context.state === 'suspended') sound.context.resume().catch(() => {});
             if (!points) {
@@ -962,7 +987,7 @@
                     count === 1 ? ui.draw_plant(pos.x, pos.y) : ui.draw_2plant(pos.x, pos.y);
                 });
                 sound && sound.play_plant();
-                setStatus(`刷草点生成：${plants.map((pos) => `${pos.x + 1},${pos.y + 1}`).join(' / ')}`, 'info');
+                setStatus(`刷草点生成：${plants.map((pos) => `${pos.x + 1},${9 - pos.y}`).join(' / ')}`, 'info');
                 // 新草必须同步给 AI：Worker 不会自然刷草，否则 AI 看到的盘面落后一株。
                 await syncAiBoard();
                 await sleep(420);
@@ -1001,8 +1026,8 @@
             if (ended || gameOver) return true;
             // 残局结束条件：本局落子数达到设定步数即结束（胜负优先，此处按平局处理）
             if (endLimit > 0 && moves.length >= endLimit) { await concludeGame(null); return true; }
-            // 步数对话：双方每次落子后都按当前总手数检查是否触发（支持任意步数）
-            await runStepDialogues();
+            // 步数对话：每次落子后按当前总手数检查是否触发（支持任意步数）
+            await runStepDialogues(source, move);
             return false;
         };
 
@@ -1020,15 +1045,22 @@
             }
         };
 
-        // 步数对话：第 N 手落子后暂停本局，跳转到配置的标签播放对话；“继续对局”回到棋盘
-        // 手数按落子总手数计：玩家第一步=1、AI 应手=2、玩家第二次=3，可配置在任意步数触发
-        const runStepDialogues = async () => {
+        // 步数对话：命中触发条件后暂停本局，跳转到配置的标签播放对话；“继续对局”回到棋盘
+        // 四类触发：步数（玩家第一步=1、AI 应手=2…）、位置落子（先横后竖，1-9，5,5 为正中心）、拿起棋子、AI拿起棋子
+        const runStepDialogues = async (source, move) => {
             const entries = (currentConfig && currentConfig.dialogues) || [];
             const step = moves.length;
-            const hit = entries.find((item) => item.step === step && !triggeredSteps.has(item.step));
-            if (!hit || !hit.target) return;
+            const hitIndex = entries.findIndex((item, index) => {
+                if (!item || !item.target || triggeredEvents.has(index)) return false;
+                if (item.type === 'cell') return Boolean(move) && item.x === move[0] && item.y === move[1];
+                if (item.type === 'pick') return source === 'player' && lastMovePicked;
+                if (item.type === 'ai_pick') return source === 'ai' && lastMovePicked;
+                return item.step === step;
+            });
+            if (hitIndex < 0) return;
+            const hit = entries[hitIndex];
             if (!Object.prototype.hasOwnProperty.call(runtime.labels, hit.target) && hit.target !== '结束' && hit.target !== '剧终') return;
-            triggeredSteps.add(hit.step);
+            triggeredEvents.add(hitIndex);
             await new Promise((resolve) => {
                 pendingResume = resolve;
                 mode = 'dialogue';
@@ -1211,7 +1243,7 @@
             $('board_wrap').classList.remove('is-dialogue');
             const generation = ++gameGeneration;
             running = true; gameOver = false; moves = []; bookedWhite = null;
-            triggeredSteps = new Set(); gameNodeIndex = runtime.index; pendingResume = null;
+            triggeredEvents = new Set(); lastMovePicked = false; gameNodeIndex = runtime.index; pendingResume = null;
             // 结束残局=步数:N -> 本局第 N 手落子后结束；胜负 或未配置 -> 分出胜负才结束
             endLimit = config.end_kind === 'steps' ? Math.max(0, Math.trunc(Number(config.end_steps) || 0)) : 0;
             pendingAscend[0].length = 0; pendingAscend[1].length = 0;
@@ -1273,6 +1305,7 @@
             }
             if (!level) { setStatus('未找到剧情关卡。', 'danger'); return; }
             const parsed = StoryScript.parse(level.script);
+            applyDialogueOpacity(parsed);
             const faces = StoryScript.faces(parsed);
             levelFaces = faces;
             // 进入关卡前先取齐并预加载本关用到的角色图

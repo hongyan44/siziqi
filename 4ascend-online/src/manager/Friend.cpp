@@ -41,6 +41,7 @@ sqlite3_stmt* p_invite_clear   = nullptr;
 sqlite3_stmt* p_msg_add        = nullptr;
 sqlite3_stmt* p_msg_conv       = nullptr;
 sqlite3_stmt* p_msg_unread     = nullptr;
+sqlite3_stmt* p_msg_unread_by  = nullptr;
 sqlite3_stmt* p_msg_read       = nullptr;
 sqlite3_stmt* p_msg_purge      = nullptr;
 
@@ -188,6 +189,12 @@ void init() noexcept {
         -1, &p_msg_conv, nullptr
     );
     sqlite3_prepare_v2(db, "SELECT COUNT(1) FROM messages WHERE to_uuid = ? AND read_at = 0 AND created_at >= ?", -1, &p_msg_unread, nullptr);
+    sqlite3_prepare_v2(
+        db,
+        "SELECT from_uuid, COUNT(1) FROM messages WHERE to_uuid = ? AND read_at = 0 AND created_at >= ? "
+        "GROUP BY from_uuid",
+        -1, &p_msg_unread_by, nullptr
+    );
     sqlite3_prepare_v2(db, "UPDATE messages SET read_at = ? WHERE to_uuid = ? AND from_uuid = ? AND read_at = 0", -1, &p_msg_read, nullptr);
     sqlite3_prepare_v2(db, "DELETE FROM messages WHERE created_at < ?", -1, &p_msg_purge, nullptr);
 
@@ -236,6 +243,7 @@ void close() noexcept {
     sqlite3_finalize(p_msg_add);
     sqlite3_finalize(p_msg_conv);
     sqlite3_finalize(p_msg_unread);
+    sqlite3_finalize(p_msg_unread_by);
     sqlite3_finalize(p_msg_read);
     sqlite3_finalize(p_msg_purge);
     p_touch = nullptr;
@@ -257,6 +265,7 @@ void close() noexcept {
     p_msg_add = nullptr;
     p_msg_conv = nullptr;
     p_msg_unread = nullptr;
+    p_msg_unread_by = nullptr;
     p_msg_read = nullptr;
     p_msg_purge = nullptr;
 
@@ -581,6 +590,21 @@ bool count_unread(std::string_view to, int64_t since, int64_t& out) noexcept {
     if (rc == SQLITE_ROW) out = sqlite3_column_int64(p_msg_unread, 0);
     reset(p_msg_unread);
     return rc == SQLITE_ROW;
+}
+
+bool count_unread_by_sender(std::string_view to, int64_t since, std::vector<std::pair<std::string, int64_t>>& out) noexcept {
+    out.clear();
+    if (!db || !p_msg_unread_by || to.empty()) return false;
+
+    bind_text(p_msg_unread_by, 1, to);
+    sqlite3_bind_int64(p_msg_unread_by, 2, static_cast<sqlite3_int64>(since));
+    while (sqlite3_step(p_msg_unread_by) == SQLITE_ROW) {
+        const auto from_uuid = column_text(p_msg_unread_by, 0);
+        if (from_uuid.empty()) continue;
+        out.emplace_back(from_uuid, sqlite3_column_int64(p_msg_unread_by, 1));
+    }
+    reset(p_msg_unread_by);
+    return true;
 }
 
 bool mark_read(std::string_view to, std::string_view from, int64_t now) noexcept {

@@ -106,6 +106,26 @@
         }
 
         .challenge-dialog::part(panel) { max-width: 460px; }
+        .daily-prep-icon {
+            width: 42px;
+            height: 42px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 auto;
+            border-radius: 50%;
+            color: var(--sl-color-primary-700);
+            background: var(--sl-color-primary-50);
+            font-size: 1.25rem;
+        }
+        .daily-prep-board-wrap {
+            width: min(100%, 240px);
+            aspect-ratio: 1;
+            background: #fff;
+            border-radius: .65rem;
+            overflow: hidden;
+        }
+        .daily-prep-board-wrap canvas { display: block; width: 100%; height: 100%; }
         .challenge-option { text-align: left; height: auto; }
         .challenge-option::part(label) { white-space: normal; }
         .challenge-option small { display: block; margin-top: 0.2rem; color: var(--sl-color-neutral-600); }
@@ -313,6 +333,7 @@
                 <div class='fw-bold mt-2'>选择挑战方式</div>
                 <div class='text-secondary small'>准备好后，从下面两种方式开始一局残局挑战。</div>
             </div>
+            <div id='challenge_daily_description' class='border rounded p-2 bg-light small d-none'></div>
             <div class='d-flex flex-column gap-2'>
                 <sl-button id='button_daily_challenge' class='challenge-option' variant='primary' size='large' outline>
                     <sl-icon slot='prefix' name='calendar3'></sl-icon>
@@ -332,11 +353,40 @@
             </div>
             <sl-input id='input_challenge_code' class='d-none' label='残局码' placeholder='填入残局码' clearable></sl-input>
             <sl-input id='input_daily_title' class='d-none' label='挑战标题' value='每日挑战' placeholder='可选，默认每日挑战'></sl-input>
+            <sl-input id='input_daily_description' class='d-none' maxlength='50' label='残局描述（可选）' placeholder='最多50字，可留空' help-text='会显示在挑战开始前的准备页面' clearable></sl-input>
             <div id='challenge_code_error' class='text-danger small d-none'>请输入有效的残局码。</div>
         </div>
         <div slot='footer' class='d-flex gap-2'>
             <sl-button id='button_challenge_cancel' variant='neutral'>取消</sl-button>
             <sl-button id='button_challenge_start' variant='primary' disabled>开始挑战</sl-button>
+        </div>
+    </sl-dialog>
+
+    <!-- 每日挑战预备进入页：与残局闯关的关卡信息弹窗保持一致 -->
+    <sl-dialog id='dialog_daily_prep' class='challenge-dialog d-none' label='每日挑战'>
+        <div class='d-flex flex-column gap-3'>
+            <div class='d-flex align-items-center gap-3'>
+                <span class='daily-prep-icon'><sl-icon name='calendar3'></sl-icon></span>
+                <div>
+                    <div id='daily_prep_title' class='h5 fw-bold mb-1'>每日挑战</div>
+                    <div id='daily_prep_status' class='text-secondary small'>今日残局</div>
+                </div>
+            </div>
+            <div id='daily_prep_desc_wrap' class='border rounded p-3 bg-light d-none'><div class='text-secondary small mb-1'>残局描述</div><div id='daily_prep_desc'></div></div>
+            <div class='border rounded p-3 bg-light'><div class='text-secondary small mb-1'>挑战说明</div><div id='daily_prep_note'>每日残局每日更新，命中正着即可完成挑战。</div></div>
+            <div id='daily_prep_preview' class='border rounded p-3 bg-light d-none'>
+                <div class='d-flex align-items-center justify-content-between gap-2 mb-2'>
+                    <span class='text-secondary small'>黑方 HP <strong id='daily_prep_black_hp' class='text-body'>-</strong></span>
+                    <span class='text-secondary small'>白方 HP <strong id='daily_prep_white_hp' class='text-body'>-</strong></span>
+                </div>
+                <div class='daily-prep-board-wrap mx-auto'><canvas id='daily_prep_board' aria-label='每日挑战棋局预览'></canvas></div>
+                <div id='daily_prep_code_hint' class='text-secondary small mt-2'>今日残局尚未发布。</div>
+            </div>
+        </div>
+        <div slot='footer' class='d-flex gap-2'>
+            <sl-button id='button_daily_prep_close' variant='neutral'>关闭</sl-button>
+            <sl-button id='button_daily_prep_copy' variant='default' disabled><sl-icon slot='prefix' name='clipboard'></sl-icon>复制残局码</sl-button>
+            <sl-button id='button_daily_prep_start' variant='primary' disabled>开始挑战</sl-button>
         </div>
     </sl-dialog>
 
@@ -355,8 +405,16 @@
         const dailyEditButton = document.getElementById('button_daily_edit');
         const codeInput = document.getElementById('input_challenge_code');
         const dailyTitleInput = document.getElementById('input_daily_title');
+        const dailyDescriptionInput = document.getElementById('input_daily_description');
+        const dailyDescriptionView = document.getElementById('challenge_daily_description');
         const codeError = document.getElementById('challenge_code_error');
         const startChallengeButton = document.getElementById('button_challenge_start');
+        const dailyPrepDialog = document.getElementById('dialog_daily_prep');
+        const dailyPrepCanvas = document.getElementById('daily_prep_board');
+        const dailyPrepContext = dailyPrepCanvas.getContext('2d');
+        const dailyPrepCopyButton = document.getElementById('button_daily_prep_copy');
+        const dailyPrepStartButton = document.getElementById('button_daily_prep_start');
+        let dailyPrepCells = [];
         let challengeMode = 'daily';
         let dailyChallenge = null;
         let endgameUserInfo = null;
@@ -476,6 +534,11 @@
             dailyEditButton.variant = mode === 'daily-edit' ? 'warning' : 'default';
             codeInput.classList.toggle('d-none', !codeMode);
             dailyTitleInput.classList.toggle('d-none', mode !== 'daily-edit');
+            dailyDescriptionInput.classList.toggle('d-none', mode !== 'daily-edit');
+            // 每日残局描述只在「进行每日挑战」的准备界面展示；为空时隐藏。
+            const dailyDescription = mode === 'daily' && dailyChallenge ? String(dailyChallenge.description || '').trim() : '';
+            dailyDescriptionView.textContent = dailyDescription;
+            dailyDescriptionView.classList.toggle('d-none', !dailyDescription);
             codeError.classList.add('d-none');
             startChallengeButton.textContent = mode === 'daily-edit' ? '发布每日挑战' : '开始挑战';
             startChallengeButton.disabled = codeMode && !codeInput.value.trim();
@@ -486,15 +549,66 @@
             setChallengeMode('daily');
             codeInput.value = '';
             dailyTitleInput.value = dailyChallenge && dailyChallenge.title ? dailyChallenge.title : '每日挑战';
+            dailyDescriptionInput.value = dailyChallenge && dailyChallenge.description ? dailyChallenge.description : '';
             challengeDialog.classList.remove('d-none');
             challengeDialog.show();
         };
+
+        // 每日挑战预备进入页：展示标题、描述、盘面预览与双方血量，与关卡信息弹窗一致。
+        const copyDailyPrepCode = async (text) => {
+            try { await navigator.clipboard.writeText(text); return true; }
+            catch (_) {
+                const area = document.createElement('textarea');
+                area.value = text; area.style.position = 'fixed'; area.style.opacity = '0';
+                document.body.append(area); area.select();
+                const copied = document.execCommand('copy'); area.remove();
+                return copied;
+            }
+        };
+        const openDailyPrep = () => {
+            challengeDialog.hide();
+            const record = dailyChallenge;
+            const hasCode = Boolean(record && record.code);
+            document.getElementById('daily_prep_title').textContent = (record && record.title) || '每日挑战';
+            document.getElementById('daily_prep_status').textContent = hasCode ? '今日残局 · 每日更新' : '今日残局尚未发布';
+            // 残局描述由投稿者或管理员填写，可为空；为空时隐藏该区块。
+            const description = hasCode ? String(record.description || '').trim() : '';
+            document.getElementById('daily_prep_desc').textContent = description;
+            document.getElementById('daily_prep_desc_wrap').classList.toggle('d-none', !description);
+            document.getElementById('daily_prep_note').textContent = hasCode ? '每日残局每日更新，命中正着即可完成挑战。' : '管理员发布每日残局后即可开始挑战。';
+            dailyPrepCopyButton.disabled = !hasCode;
+            dailyPrepStartButton.disabled = !hasCode;
+            let archive = null;
+            if (hasCode) { try { archive = window.EndgameExports.EndgameArchive.decode(record.code); } catch (_) { archive = null; } }
+            document.getElementById('daily_prep_preview').classList.toggle('d-none', !archive);
+            if (archive) {
+                // 与挑战页一致：残局码盘面以左下角为原点，预览需上下翻转。
+                const decoded = archive.cells.map((item) => ({ stone: item.stone || 'none', plant: Number(item.plant) || 0 }));
+                dailyPrepCells = Array.from({ length: 81 }, (_, index) => decoded[(8 - Math.floor(index / 9)) * 9 + (index % 9)]);
+                const hp = archive.hp || {};
+                document.getElementById('daily_prep_black_hp').textContent = String(Number(hp.black) || 0);
+                document.getElementById('daily_prep_white_hp').textContent = String(Number(hp.white) || 0);
+                document.getElementById('daily_prep_code_hint').textContent = `残局码已同步（${record.code.length} 字符）`;
+            } else {
+                dailyPrepCells = [];
+            }
+            dailyPrepDialog.classList.remove('d-none');
+            dailyPrepDialog.show();
+            requestAnimationFrame(() => requestAnimationFrame(redrawDailyPrepBoard));
+        };
+        dailyPrepCopyButton.addEventListener('click', async () => {
+            if (!dailyChallenge || !dailyChallenge.code) return;
+            const ok = await copyDailyPrepCode(dailyChallenge.code);
+            if (window.UiExports && window.UiExports.ShToast) new window.UiExports.ShToast()[ok ? 'success' : 'error'](ok ? '残局码已复制到剪贴板。' : '复制失败，请手动选择残局码。');
+        });
+        dailyPrepStartButton.addEventListener('click', () => { window.location.href = '/pages/endgame/challenge.html?mode=daily'; });
+        document.getElementById('button_daily_prep_close').addEventListener('click', () => dailyPrepDialog.hide());
 
         challengeEntry.addEventListener('click', openChallengeDialog);
         challengeEntry.addEventListener('keydown', (event) => {
             if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openChallengeDialog(); }
         });
-        dailyButton.addEventListener('click', () => setChallengeMode('daily'));
+        dailyButton.addEventListener('click', openDailyPrep);
         codeButton.addEventListener('click', () => setChallengeMode('code'));
         dailyEditButton.addEventListener('click', () => setChallengeMode('daily-edit'));
         codeInput.addEventListener('sl-input', () => {
@@ -519,9 +633,11 @@
                 setChallengeSubmitting(true);
                 try {
                     const title = dailyTitleInput.value.trim() || '每日挑战';
-                    if (!await window.http_puzzle_daily_update(window.get_token(), code, title)) throw new Error('服务端拒绝了发布请求，请检查登录状态。');
+                    const description = dailyDescriptionInput.value.trim();
+                    if (Array.from(description).length > 50) { codeError.textContent = '残局描述最多50字，可留空。'; codeError.classList.remove('d-none'); setChallengeSubmitting(false); return; }
+                    if (!await window.http_puzzle_daily_update(window.get_token(), code, title, description)) throw new Error('服务端拒绝了发布请求，请检查登录状态。');
                     const uploaded = await window.http_puzzle_daily_query();
-                    if (!uploaded || uploaded.code !== code || uploaded.title !== title) throw new Error('服务端校验失败，发布内容未正确保存。');
+                    if (!uploaded || uploaded.code !== code || uploaded.title !== title || String(uploaded.description || '') !== description) throw new Error('服务端校验失败，发布内容未正确保存。');
                     dailyChallenge = uploaded;
                     drawDailyPreview(uploaded.code);
                     codeError.textContent = '';
@@ -562,36 +678,45 @@
                 redrawChallengeBoard();
             } catch (_) { /* 发布前已校验，预览失败不影响发布结果 */ }
         };
-        const redrawChallengeBoard = () => {
-            const size = challengeCanvas.clientWidth || 210;
+        const drawPreviewBoard = (canvas, context, cells) => {
+            const size = canvas.clientWidth || 210;
             const dpr = window.devicePixelRatio || 1;
-            challengeCanvas.width = size * dpr; challengeCanvas.height = size * dpr;
-            challengeContext.setTransform(dpr, 0, 0, dpr, 0, 0);
+            canvas.width = size * dpr; canvas.height = size * dpr;
+            context.setTransform(dpr, 0, 0, dpr, 0, 0);
             const skins = previewSkins ? previewSkins.read() : { piece: false, grass: false, board: false, board_gold: false };
             // 棋盘风格：棋盘皮肤（青玉 / 玄金）> 风格 UI（黑派 / 虚空舰队）> 默认白底
             const goldTheme = Boolean(previewSkins && skins.board_gold);
             const jadeTheme = Boolean(previewSkins && !goldTheme && skins.board);
             const blackTheme = Boolean(previewSkins && !goldTheme && !jadeTheme && skins.theme_black);
             const voidTheme = Boolean(previewSkins && !goldTheme && !jadeTheme && !blackTheme && skins.theme);
-            if (blackTheme) previewSkins.draw_board_black(challengeContext, size);
-            else if (voidTheme) previewSkins.draw_board_void(challengeContext, size);
-            else if (goldTheme) previewSkins.draw_board_gold(challengeContext, size);
-            else if (jadeTheme) previewSkins.draw_board_jade(challengeContext, size);
-            else { challengeContext.fillStyle = '#fff'; challengeContext.fillRect(0, 0, size, size); }
+            if (blackTheme) previewSkins.draw_board_black(context, size);
+            else if (voidTheme) previewSkins.draw_board_void(context, size);
+            else if (goldTheme) previewSkins.draw_board_gold(context, size);
+            else if (jadeTheme) previewSkins.draw_board_jade(context, size);
+            else { context.fillStyle = '#fff'; context.fillRect(0, 0, size, size); }
             const pad = size * 0.1; const spacing = (size - pad * 2) / 8;
-            challengeContext.strokeStyle = voidTheme
+            context.strokeStyle = voidTheme
                 ? 'rgba(255, 255, 255, 0.62)'
                 : (blackTheme ? 'rgba(180, 144, 74, 0.52)' : (goldTheme ? 'rgba(245, 205, 110, 0.86)' : (jadeTheme ? 'rgba(31, 74, 55, 0.42)' : '#d0d0d0')));
-            challengeContext.lineWidth = 1;
-            for (let i = 0; i < 9; i++) { const point = pad + i * spacing; challengeContext.beginPath(); challengeContext.moveTo(point, pad); challengeContext.lineTo(point, size - pad); challengeContext.stroke(); challengeContext.beginPath(); challengeContext.moveTo(pad, point); challengeContext.lineTo(size - pad, point); challengeContext.stroke(); }
-            previewCells.forEach((item, index) => { if (item.stone === 'none') return; const x = index % 9; const y = Math.floor(index / 9); const px = pad + x * spacing; const py = pad + y * spacing; const color = item.stone === 'black' ? '#2c3e50' : '#ecf0f1'; if (previewSkins && previewSkins.draw_stone(challengeContext, px, py, spacing * 0.31, color, { skins })) return; challengeContext.beginPath(); challengeContext.arc(px, py, spacing * 0.31, 0, Math.PI * 2); challengeContext.fillStyle = color; challengeContext.fill(); if (item.stone === 'white') { challengeContext.strokeStyle = '#8b949e'; challengeContext.stroke(); } });
-            previewCells.forEach((item, index) => { if (!item.plant) return; const x = index % 9; const y = Math.floor(index / 9); const px = pad + x * spacing; const py = pad + y * spacing; const radius = Math.max(2, spacing * 0.09); const centers = item.plant === 2 ? [px - radius * 1.3, px + radius * 1.3] : [px]; if (previewSkins && centers.every((center_x) => previewSkins.draw_grass(challengeContext, center_x, py, radius, { skins }))) return; challengeContext.fillStyle = '#2ecc71'; for (let i = 0; i < item.plant; i++) { challengeContext.beginPath(); challengeContext.arc(px + (i - (item.plant - 1) / 2) * spacing * 0.17, py, Math.max(2, spacing * 0.055), 0, Math.PI * 2); challengeContext.fill(); } });
+            context.lineWidth = 1;
+            for (let i = 0; i < 9; i++) { const point = pad + i * spacing; context.beginPath(); context.moveTo(point, pad); context.lineTo(point, size - pad); context.stroke(); context.beginPath(); context.moveTo(pad, point); context.lineTo(size - pad, point); context.stroke(); }
+            cells.forEach((item, index) => { if (item.stone === 'none') return; const x = index % 9; const y = Math.floor(index / 9); const px = pad + x * spacing; const py = pad + y * spacing; const color = item.stone === 'black' ? '#2c3e50' : '#ecf0f1'; if (previewSkins && previewSkins.draw_stone(context, px, py, spacing * 0.31, color, { skins })) return; context.beginPath(); context.arc(px, py, spacing * 0.31, 0, Math.PI * 2); context.fillStyle = color; context.fill(); if (item.stone === 'white') { context.strokeStyle = '#8b949e'; context.stroke(); } });
+            cells.forEach((item, index) => { if (!item.plant) return; const x = index % 9; const y = Math.floor(index / 9); const px = pad + x * spacing; const py = pad + y * spacing; const radius = Math.max(2, spacing * 0.09); const centers = item.plant === 2 ? [px - radius * 1.3, px + radius * 1.3] : [px]; if (previewSkins && centers.every((center_x) => previewSkins.draw_grass(context, center_x, py, radius, { skins }))) return; context.fillStyle = '#2ecc71'; for (let i = 0; i < item.plant; i++) { context.beginPath(); context.arc(px + (i - (item.plant - 1) / 2) * spacing * 0.17, py, Math.max(2, spacing * 0.055), 0, Math.PI * 2); context.fill(); } });
         };
-        window.addEventListener('resize', redrawChallengeBoard);
+        const redrawChallengeBoard = () => drawPreviewBoard(challengeCanvas, challengeContext, previewCells);
+        const redrawDailyPrepBoard = () => { if (dailyPrepCells.length) drawPreviewBoard(dailyPrepCanvas, dailyPrepContext, dailyPrepCells); };
+        window.addEventListener('resize', () => {
+            redrawChallengeBoard();
+            if (!dailyPrepDialog.classList.contains('d-none')) redrawDailyPrepBoard();
+        });
         redrawChallengeBoard();
         (async () => {
-            try { dailyChallenge = await window.http_puzzle_daily_query(); if (dailyChallenge && dailyChallenge.code) drawDailyPreview(dailyChallenge.code); }
-            catch (_) { /* 服务端未配置每日残局时使用内置兼容盘面 */ }
+            try {
+                dailyChallenge = await window.http_puzzle_daily_query();
+                if (dailyChallenge && dailyChallenge.code) drawDailyPreview(dailyChallenge.code);
+                // 若预备页在请求返回前已打开，用最新数据刷新一次。
+                if (!dailyPrepDialog.classList.contains('d-none')) openDailyPrep();
+            } catch (_) { /* 服务端未配置每日残局时使用内置兼容盘面 */ }
         })();
     </script>
 </body>

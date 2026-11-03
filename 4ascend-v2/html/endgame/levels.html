@@ -114,6 +114,7 @@
                         <div class='col-12 col-sm-3 col-md-2'><sl-input id='input_level' type='number' min='1' max='100' value='1' label='目标关卡' help-text='1 - 100'></sl-input></div>
                         <div class='col-12 col-sm-9 col-md-4'><sl-input id='input_title' maxlength='10' label='残局名称' placeholder='最多10个中文字符'></sl-input></div>
                         <div class='col-12 col-md-6'><sl-input id='input_code' label='残局码' placeholder='粘贴残局编辑器生成的残局码' clearable></sl-input></div>
+                        <div class='col-12'><sl-input id='input_description' maxlength='50' label='残局描述（可选）' placeholder='最多50字，可留空' help-text='会显示在挑战开始前的准备页面' clearable></sl-input></div>
                     </div>
                     <div class='d-flex flex-wrap gap-2 mt-3'>
                         <sl-button id='button_save' variant='primary'><sl-icon slot='prefix' name='cloud-arrow-up'></sl-icon>保存到服务端</sl-button>
@@ -154,6 +155,7 @@
     <sl-dialog id='dialog_level' class='d-none' label='关卡信息'>
         <div class='d-flex flex-column gap-3'>
             <div class='d-flex align-items-center gap-3'><span id='dialog_level_number' class='level-number'>01</span><div><div id='dialog_level_title' class='h5 fw-bold mb-1'>第 1 关</div><div id='dialog_level_status' class='text-secondary small'>尚未导入残局</div></div></div>
+            <div id='dialog_level_desc_wrap' class='border rounded p-3 bg-light d-none'><div class='text-secondary small mb-1'>残局描述</div><div id='dialog_level_desc'></div></div>
             <div class='border rounded p-3 bg-light'><div class='text-secondary small mb-1'>挑战说明</div><div id='dialog_level_description'>导入残局码后开始挑战，命中正着即可完成本关。</div></div>
             <div id='dialog_level_preview' class='border rounded p-3 bg-light d-none'>
                 <div class='d-flex align-items-center justify-content-between gap-2 mb-2'>
@@ -196,8 +198,8 @@
         const validTitle = (title) => { const value = String(title || '').trim(); return value.length > 0 && Array.from(value).length <= 10; };
         const refreshServerRecords = async () => { try { serverRecords = await window.http_puzzle_query(); } catch (_) { serverRecords = []; } renderLevels(); };
         const renderAdminEditor = () => { $('admin_editor').classList.toggle('d-none', !isAdmin()); $('visitor_notice').classList.toggle('d-none', isAdmin()); $('reviewer_notice').classList.toggle('d-none', !isReviewer()); };
-        const resetEditor = () => { editingId = 0; $('input_level').value = '1'; $('input_title').value = ''; $('input_code').value = ''; $('button_save').innerHTML = '<sl-icon slot=\'prefix\' name=\'cloud-arrow-up\'></sl-icon>保存到服务端'; };
-        const editRecord = (record) => { if (!isAdmin()) return; editingId = Number(record.id); $('input_level').value = String(record.level); $('input_title').value = record.title; $('input_code').value = record.code; $('button_save').innerHTML = '<sl-icon slot=\'prefix\' name=\'pencil-square\'></sl-icon>更新服务端残局'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+        const resetEditor = () => { editingId = 0; $('input_level').value = '1'; $('input_title').value = ''; $('input_description').value = ''; $('input_code').value = ''; $('button_save').innerHTML = '<sl-icon slot=\'prefix\' name=\'cloud-arrow-up\'></sl-icon>保存到服务端'; };
+        const editRecord = (record) => { if (!isAdmin()) return; editingId = Number(record.id); $('input_level').value = String(record.level); $('input_title').value = record.title; $('input_description').value = record.description || ''; $('input_code').value = record.code; $('button_save').innerHTML = '<sl-icon slot=\'prefix\' name=\'pencil-square\'></sl-icon>更新服务端残局'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
         // 关卡预进入界面：按残局码解析出的盘面绘制预览，并展示双方血量。
         const previewSkins = window.UiExports && window.UiExports.Skins ? window.UiExports.Skins : null;
         const dialogCanvas = document.getElementById('dialog_board');
@@ -250,6 +252,10 @@
             $('dialog_level_number').textContent = String(level).padStart(2, '0');
             $('dialog_level_title').textContent = `第 ${level} 关`;
             $('dialog_level_status').textContent = record ? `${status.label} · ${record.title}` : '尚未发布残局';
+            // 残局描述由投稿者或管理员填写，可为空；为空时隐藏该区块。
+            const description = record ? String(record.description || '').trim() : '';
+            $('dialog_level_desc').textContent = description;
+            $('dialog_level_desc_wrap').classList.toggle('d-none', !description);
             $('dialog_level_description').textContent = record ? '残局码已就绪，可以开始挑战；完成后会记录本机进度。' : '管理员发布残局后即可开始挑战。';
             $('button_dialog_start').disabled = !record;
             $('button_dialog_copy').disabled = !record;
@@ -301,13 +307,14 @@
         };
         const saveServerLevel = async () => {
             if (!isAdmin()) { showFeedback('只有权限等级4管理员可以导入残局。', 'danger'); return; }
-            const level = safeLevel($('input_level').value); const title = ($('input_title').value || '').trim(); const code = ($('input_code').value || '').trim(); $('input_level').value = String(level);
+            const level = safeLevel($('input_level').value); const title = ($('input_title').value || '').trim(); const description = ($('input_description').value || '').trim(); const code = ($('input_code').value || '').trim(); $('input_level').value = String(level);
             if (!validTitle(title)) { showFeedback('残局名称不能为空，且最多10个中文字符。', 'danger'); return; }
+            if (Array.from(description).length > 50) { showFeedback('残局描述最多50字，可留空。', 'danger'); return; }
             if (!code) { showFeedback('请输入残局码后再保存。', 'danger'); return; }
             try { if (window.EndgameExports && window.EndgameExports.EndgameArchive) window.EndgameExports.EndgameArchive.decode(code); }
             catch (error) { showFeedback(error.message || '残局码格式无效，请检查后重试。', 'danger'); return; }
             try {
-                const success = editingId ? await window.http_puzzle_update(window.get_token(), editingId, level, title, code) : await window.http_puzzle_add(window.get_token(), level, title, code);
+                const success = editingId ? await window.http_puzzle_update(window.get_token(), editingId, level, title, description, code) : await window.http_puzzle_add(window.get_token(), level, title, description, code);
                 if (!success) throw new Error('服务端保存失败，可能是关卡已被占用。');
                 levelRecords[String(level)] = { completed: Boolean(localProgressFor(level) && localProgressFor(level).completed) };
                 writeRecords(); currentPage = Math.ceil(level / PAGE_SIZE); resetEditor(); await refreshServerRecords(); showFeedback(`第 ${level} 关“${title}”已同步到服务端，所有玩家可见。`, 'success');

@@ -17,6 +17,7 @@ struct Record {
     uint64_t id;
     uint32_t level;
     std::string title;
+    std::string description; // 残局描述，可为空，最多 50 字
     std::string code;
     std::string creator;
     uint64_t created_at;
@@ -24,6 +25,7 @@ struct Record {
 
 struct DailyRecord {
     std::string title;
+    std::string description;
     std::string code;
     std::string creator;
     uint64_t updated_at;
@@ -34,6 +36,7 @@ struct Submission {
     std::string target;   // "daily" or "level"
     uint32_t level;       // 0 for daily, 1..100 for level
     std::string title;
+    std::string description;
     std::string code;
     std::string creator;  // uuid
     uint64_t created_at;
@@ -45,16 +48,16 @@ struct Submission {
 void init() noexcept;
 void close() noexcept;
 
-bool add_puzzle(uint32_t level, std::string_view title, std::string_view code, std::string_view creator, uint64_t created_at, uint64_t& id) noexcept;
-bool update_puzzle(uint64_t id, uint32_t level, std::string_view title, std::string_view code, uint64_t updated_at) noexcept;
+bool add_puzzle(uint32_t level, std::string_view title, std::string_view description, std::string_view code, std::string_view creator, uint64_t created_at, uint64_t& id) noexcept;
+bool update_puzzle(uint64_t id, uint32_t level, std::string_view title, std::string_view description, std::string_view code, uint64_t updated_at) noexcept;
 bool delete_puzzle(uint64_t id) noexcept;
 bool query_puzzles(std::vector<Record>& result) noexcept;
 bool query_daily(DailyRecord& result) noexcept;
-bool update_daily(std::string_view title, std::string_view code, std::string_view creator, uint64_t updated_at) noexcept;
+bool update_daily(std::string_view title, std::string_view description, std::string_view code, std::string_view creator, uint64_t updated_at) noexcept;
 
-bool add_submission(std::string_view target, uint32_t level, std::string_view title, std::string_view code, std::string_view creator, uint64_t created_at, uint64_t& id) noexcept;
-// 审核前修改待审核投稿（仅 status=0 可改），用于管理员纠正投稿位置/名称/残局码
-bool update_submission(uint64_t id, std::string_view target, uint32_t level, std::string_view title, std::string_view code) noexcept;
+bool add_submission(std::string_view target, uint32_t level, std::string_view title, std::string_view description, std::string_view code, std::string_view creator, uint64_t created_at, uint64_t& id) noexcept;
+// 审核前修改待审核投稿（仅 status=0 可改），用于管理员纠正投稿位置/名称/描述/残局码
+bool update_submission(uint64_t id, std::string_view target, uint32_t level, std::string_view title, std::string_view description, std::string_view code) noexcept;
 bool list_submissions(std::string_view creator, int status_filter, std::vector<Submission>& out) noexcept;
 // 审核投稿：通过时发布到目标位置并返回投稿人 uuid，供上层发放投稿奖励
 bool review_submission(uint64_t id, bool approve, std::string_view reviewer, uint64_t now, bool allow_overwrite, bool& slot_occupied, std::string& creator) noexcept;

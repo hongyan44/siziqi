@@ -60,6 +60,10 @@ ok('前端：调用 message_list', friends_src.includes('http_friend_message_lis
 ok('前端：好友项含「消息」按钮', friends_src.includes('text: \'消息\''));
 ok('前端：红点合计申请数 + 未读私信', /state\.requests \+ state\.messages/.test(friends_src));
 ok('前端：apply_state 记录未读数', /state\.messages = Number\(result\.messages\)/.test(friends_src));
+ok('前端：好友行未读红点', /unread_badge\(friend\.unread\)/.test(friends_src));
+ok('前端：打开会话清好友红点', /update_friend_unread\(friend\.uuid, 0\)/.test(friends_src));
+ok('前端：申请页签即已读（无需通过/拒绝）', /const open_requests[\s\S]{0,400}?mark_requests_seen/.test(friends_src));
+ok('前端：申请红点只计未看过', /const unseen_requests/.test(friends_src) && /state\.requests = unseen_requests/.test(friends_src));
 
 const html_src = read(path.join(root, 'html', 'index.html'));
 ok('页面：好友弹窗占屏宽 75%', html_src.includes('width: 75vw'));
@@ -71,6 +75,7 @@ ok('后端：建 messages 表', manager_src.includes('CREATE TABLE IF NOT EXISTS
 ok('后端：send_message 已实现', /bool send_message\(/.test(manager_src));
 ok('后端：list_conversation 已实现', /bool list_conversation\(/.test(manager_src));
 ok('后端：count_unread 已实现', /bool count_unread\(/.test(manager_src));
+ok('后端：按发送方统计未读', /bool count_unread_by_sender\(/.test(manager_src));
 ok('后端：mark_read 已实现', /bool mark_read\(/.test(manager_src));
 ok('后端：purge_expired 已实现', /void purge_expired\(/.test(manager_src));
 ok('后端：发送私信触发通知', /send_message[\s\S]{0,900}?bump\(to\)/.test(manager_src));
@@ -82,6 +87,7 @@ ok('后端：注册 /friend/message_send', api_src.includes('"/friend/message_se
 ok('后端：注册 /friend/message_list', api_src.includes('"/friend/message_list"'));
 ok('后端：私信有效期 30 天', /MESSAGE_TTL_MS\s*=\s*30LL \* 24 \* 60 \* 60 \* 1000/.test(api_src));
 ok('后端：心跳状态含未读私信数', /result\["messages"\]\s*=\s*unread/.test(api_src));
+ok('后端：好友列表回传行内未读', /item\["unread"\]\s*=\s*unread/.test(api_src));
 
 // ---------- 3. 行为模拟 ----------
 const friends_path = path.join(root, 'js', 'ref', 'friends.cjs');
@@ -144,6 +150,7 @@ const run_badge = async () => {
     const built_index = read(path.join(root, 'root', 'index.html'));
     ok('产物：http.min.js 含 message_list', built_http.includes('/friend/message_list'));
     ok('产物：friends.min.js 含聊天逻辑', built_friends.includes('http_friend_message_send'));
+    ok('产物：friends.min.js 含行内未读红点', built_friends.includes('unread'));
     ok('产物：index.html 含聊天样式', built_index.includes('friend-chat-list'));
     ok('产物：index.html 好友弹窗宽度 75vw', built_index.includes('width:75vw'));
 

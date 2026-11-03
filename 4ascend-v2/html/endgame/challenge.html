@@ -310,7 +310,7 @@
             const whiteHp = state.hp[1];
             const playerWon = winner === PLAYER_ENUM.BLACK;
             // 成就：破解残局（按不同盘面去重计数）；投稿验证/审核预览不计入成就。
-            if (playerWon && !previewMode && typeof window.achievement_event === 'function') window.achievement_event('endgame_win', { 'endgame_id': endgameIdentity() });
+            if (playerWon && !previewMode && typeof window.achievement_event === 'function') window.achievement_event('endgame_win', { 'endgame_id': endgameIdentity(), 'own_hp': blackHp });
             const dialog = document.getElementById('challenge_result');
             dialog.classList.remove('d-none');
             dialog.classList.toggle('is-win', playerWon);
@@ -370,7 +370,7 @@
                 return false;
             }
             try {
-                const submitted = await window.http_puzzle_submit(token, pending.target, Number(pending.level) || 0, pending.title, pending.code);
+                const submitted = await window.http_puzzle_submit(token, pending.target, Number(pending.level) || 0, pending.title, String(pending.description || ''), pending.code);
                 clearPendingSubmission();
                 if (submitted) {
                     // 标记投稿成功，回到投稿页时提示“等待审核”。

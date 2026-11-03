@@ -165,10 +165,11 @@ window.http_puzzle_claim_clear = async (token, target, level = 0) => {
  * @param {string} token
  * @param {string} code
  * @param {string} title
+ * @param {string} description 残局描述，可为空，最多 50 字
  * @return {Promise<boolean>}
  */
-window.http_puzzle_daily_update = async (token, code, title = '每日挑战') => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/puzzle/daily_update`, { token, code, title });
+window.http_puzzle_daily_update = async (token, code, title = '每日挑战', description = '') => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/puzzle/daily_update`, { token, code, title, description });
     return Boolean(rjson && rjson.status);
 };
 
@@ -177,11 +178,12 @@ window.http_puzzle_daily_update = async (token, code, title = '每日挑战') =>
  * @param {string} token
  * @param {number} level
  * @param {string} title
+ * @param {string} description 残局描述，可为空，最多 50 字
  * @param {string} code
  * @return {Promise<number | void>}
  */
-window.http_puzzle_add = async (token, level, title, code) => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/puzzle/add`, { token, level, title, code });
+window.http_puzzle_add = async (token, level, title, description, code) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/puzzle/add`, { token, level, title, description, code });
     if (!rjson || !rjson.status) return;
     return rjson.result.id;
 };
@@ -192,8 +194,8 @@ window.http_puzzle_add = async (token, level, title, code) => {
  * @param {number} id
  * @return {Promise<boolean>}
  */
-window.http_puzzle_update = async (token, id, level, title, code) => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/puzzle/update`, { token, id, level, title, code });
+window.http_puzzle_update = async (token, id, level, title, description, code) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/puzzle/update`, { token, id, level, title, description, code });
     return Boolean(rjson && rjson.status);
 };
 
@@ -214,11 +216,12 @@ window.http_puzzle_delete = async (token, id) => {
  * @param {'daily'|'level'} target
  * @param {number} level 仅 target 为 level 时需要
  * @param {string} title
+ * @param {string} description 残局描述，可为空，最多 50 字
  * @param {string} code
  * @return {Promise<{id: number, ticket_used: boolean, tickets?: number, task_reward: number} | void>}
  */
-window.http_puzzle_submit = async (token, target, level, title, code) => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/puzzle/submit`, { token, target, level, title, code });
+window.http_puzzle_submit = async (token, target, level, title, description, code) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/puzzle/submit`, { token, target, level, title, description, code });
     if (!rjson || !rjson.status) return;
     return rjson.result;
 };
@@ -241,11 +244,12 @@ window.http_puzzle_submission_query = async (token) => {
  * @param {'daily'|'level'} target
  * @param {number} level 仅 target 为 level 时需要
  * @param {string} title
+ * @param {string} description 残局描述，可为空，最多 50 字
  * @param {string} code
  * @return {Promise<boolean>}
  */
-window.http_puzzle_submission_update = async (token, id, target, level, title, code) => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/puzzle/submission_update`, { token, id, target, level, title, code });
+window.http_puzzle_submission_update = async (token, id, target, level, title, description, code) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/puzzle/submission_update`, { token, id, target, level, title, description, code });
     return Boolean(rjson && rjson.status);
 };
 

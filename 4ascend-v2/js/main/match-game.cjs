@@ -429,7 +429,7 @@ const contest_event_name = async () => {
 };
 
 /**
- * @description: 决赛获胜后授予「赛事名：冠军」金色成就（仅获胜方本地记录）
+ * @description: 决赛获胜后授予「赛事名：冠军」钻石成就（仅获胜方本地记录）
  * @param {string} node_id 决赛方块 id
  * @return {Promise<void>}
  */
@@ -478,7 +478,7 @@ const handle_contest_end = (payload) => {
         // 依局号与记录预置下一局先手（与重赛按钮的交换结果一致）
         apply_next_first();
 
-        // BO 已分出胜负时先判断是否决赛：获胜方授予「赛事名：冠军」金色成就
+        // BO 已分出胜负时先判断是否决赛：获胜方授予「赛事名：冠军」钻石成就
         const completed = contest_ctx.mine >= contest_ctx.target || contest_ctx.foe >= contest_ctx.target;
         if (completed) {
             if (is_final && result.winner_uuid === my_uuid) await grant_champion(node_id);

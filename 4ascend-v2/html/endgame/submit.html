@@ -321,6 +321,9 @@
                         <div class='col-12'>
                             <sl-input id='submit_title' maxlength='10' label='残局名称' placeholder='最多10个中文字符' size='small'></sl-input>
                         </div>
+                        <div class='col-12'>
+                            <sl-input id='submit_description' maxlength='50' label='残局描述（可选）' placeholder='最多50字，可留空' help-text='会显示在挑战开始前的准备页面' size='small' clearable></sl-input>
+                        </div>
                     </div>
                     <div class='d-flex flex-wrap align-items-center gap-2 mt-3'>
                         <sl-button id='button_submit_puzzle' variant='primary' pill><sl-icon slot='prefix' name='cloud-arrow-up'></sl-icon>验证并投稿</sl-button>
@@ -974,8 +977,10 @@
             const button = document.getElementById('button_submit_puzzle');
             const target = document.getElementById('submit_target').value === 'level' ? 'level' : 'daily';
             const title = (document.getElementById('submit_title').value || '').trim();
+            const description = (document.getElementById('submit_description').value || '').trim();
             const level = target === 'level' ? clamp(Math.floor(Number(document.getElementById('submit_level').value) || 1), 1, 100) : 0;
             if (!Array.from(title).length || Array.from(title).length > 10) { setSubmitFeedback('残局名称不能为空，且最多10个中文字符。', 'danger'); return; }
+            if (Array.from(description).length > 50) { setSubmitFeedback('残局描述最多50字，可留空。', 'danger'); return; }
             // 等级不足 2 时必须持有一张单局投稿券，否则服务端会拒绝。
             const current_level = submit_level();
             if (current_level < 2 && submit_tickets() < 1) { setSubmitFeedback('等级不足 2，需要先在棋币商店购买单局投稿券。', 'danger'); return; }
@@ -993,7 +998,7 @@
                 }
                 const code = EndgameArchive.encode(exportData());
                 // 先记录待投稿数据，再进入残局对局验证；只有获胜后才会真正提交到待审队列。
-                if (!writePendingSubmission({ target, level, title, code, created_at: Date.now() })) {
+                if (!writePendingSubmission({ target, level, title, description, code, created_at: Date.now() })) {
                     setSubmitFeedback('无法保存待投稿数据，请检查浏览器存储权限。', 'danger');
                     return;
                 }
@@ -1030,18 +1035,20 @@
                 return ok;
             }
         };
-        // 读取审核卡片上的可编辑字段（投稿位置 / 关卡 / 名称 / 残局码）
+        // 读取审核卡片上的可编辑字段（投稿位置 / 关卡 / 名称 / 描述 / 残局码）
         const reviewFormData = (nodes) => {
             const target = nodes.target.value === 'level' ? 'level' : 'daily';
             return {
                 target,
                 level: target === 'level' ? clamp(Math.floor(Number(nodes.level.value) || 1), 1, 100) : 0,
                 title: String(nodes.title.value || '').trim(),
+                description: String(nodes.description.value || '').trim(),
                 code: String(nodes.code.value || '').trim()
             };
         };
         const reviewFormError = (data) => {
             if (!Array.from(data.title).length || Array.from(data.title).length > 10) return '残局名称不能为空，且最多10个中文字符。';
+            if (Array.from(data.description).length > 50) return '残局描述最多50字，可留空。';
             if (!data.code) return '残局码不能为空。';
             try { EndgameArchive.decode(data.code); } catch (_) { return '残局码格式无效，请检查后重试。'; }
             return '';
@@ -1049,6 +1056,7 @@
         const reviewFormDirty = (item, data) => data.target !== (item.target === 'level' ? 'level' : 'daily')
             || data.level !== Number(item.level || 0)
             || data.title !== (item.title || '')
+            || data.description !== (item.description || '')
             || data.code !== (item.code || '');
         const renderReviewList = (submissions) => {
             const list = document.getElementById('review_list');
@@ -1074,7 +1082,7 @@
                 line2.textContent = `提交人：${item.creator_name || item.creator || '未知'} · ${formatSubmitTime(item.created_at)}`;
                 info.append(line1, line2);
 
-                // 可编辑字段：投稿位置 / 目标关卡 / 残局名称 / 残局码
+                // 可编辑字段：投稿位置 / 目标关卡 / 残局名称 / 残局描述 / 残局码
                 const form = document.createElement('div');
                 form.className = 'row g-2';
                 const target = document.createElement('sl-select');
@@ -1093,6 +1101,11 @@
                 title.size = 'small'; title.label = '残局名称'; title.className = 'col-12 col-md-6';
                 title.setAttribute('maxlength', '10');
                 title.value = item.title || '';
+                const description = document.createElement('sl-input');
+                description.size = 'small'; description.label = '残局描述（可选）'; description.className = 'col-12';
+                description.setAttribute('maxlength', '50');
+                description.setAttribute('placeholder', '最多50字，可留空');
+                description.value = item.description || '';
                 const code = document.createElement('sl-textarea');
                 code.size = 'small'; code.label = '残局码'; code.className = 'col-12';
                 code.setAttribute('rows', '2'); code.setAttribute('resize', 'auto');
@@ -1100,7 +1113,7 @@
                 const syncLevelVisible = () => level.classList.toggle('d-none', (target.value === 'level' ? 'level' : 'daily') !== 'level');
                 target.addEventListener('sl-change', syncLevelVisible);
                 syncLevelVisible();
-                form.append(target, level, title, code);
+                form.append(target, level, title, description, code);
 
                 const copy = document.createElement('sl-button');
                 copy.size = 'small'; copy.variant = 'default'; copy.outline = true; copy.textContent = '复制残局码';
@@ -1122,10 +1135,10 @@
                 });
                 const save = document.createElement('sl-button');
                 save.size = 'small'; save.variant = 'default'; save.outline = true; save.textContent = '保存修改';
-                save.addEventListener('click', () => saveReviewEdits(item, save, { target, level, title, code }));
+                save.addEventListener('click', () => saveReviewEdits(item, save, { target, level, title, description, code }));
                 const approve = document.createElement('sl-button');
                 approve.size = 'small'; approve.variant = 'primary'; approve.textContent = '通过';
-                approve.addEventListener('click', () => reviewSubmission(item, 'approve', approve, { target, level, title, code }));
+                approve.addEventListener('click', () => reviewSubmission(item, 'approve', approve, { target, level, title, description, code }));
                 const reject = document.createElement('sl-button');
                 reject.size = 'small'; reject.variant = 'danger'; reject.outline = true; reject.textContent = '驳回';
                 reject.addEventListener('click', () => reviewSubmission(item, 'reject', reject, null));
@@ -1145,7 +1158,7 @@
             if (!reviewFormDirty(item, data)) return showAlert('没有需要保存的修改。', 'info');
             button.disabled = true;
             try {
-                const saved = await window.http_puzzle_submission_update(token, item.id, data.target, data.level, data.title, data.code);
+                const saved = await window.http_puzzle_submission_update(token, item.id, data.target, data.level, data.title, data.description, data.code);
                 if (!saved) { showAlert('修改保存失败，请稍后重试。', 'danger'); return; }
                 showAlert('投稿修改已保存。', 'success');
                 await refresh_review();
@@ -1168,7 +1181,7 @@
             button.disabled = true;
             try {
                 if (action === 'approve' && reviewFormDirty(item, data)) {
-                    const saved = await window.http_puzzle_submission_update(token, item.id, data.target, data.level, data.title, data.code);
+                    const saved = await window.http_puzzle_submission_update(token, item.id, data.target, data.level, data.title, data.description, data.code);
                     if (!saved) { showAlert('修改未能保存，未执行审核。', 'danger'); return; }
                 }
                 const success = await window.http_puzzle_submission_review(token, item.id, action);

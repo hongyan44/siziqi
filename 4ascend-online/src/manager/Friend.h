@@ -75,6 +75,8 @@ bool send_message(std::string_view from, std::string_view to, std::string_view c
 bool list_conversation(std::string_view a, std::string_view b, int64_t since, int64_t limit, std::vector<MessageRecord>& out) noexcept;
 // 未读私信数（仅统计 created_at >= since 的来信）
 bool count_unread(std::string_view to, int64_t since, int64_t& out) noexcept;
+// 按发送方统计未读私信数（仅统计 created_at >= since 且 read_at = 0 的来信）
+bool count_unread_by_sender(std::string_view to, int64_t since, std::vector<std::pair<std::string, int64_t>>& out) noexcept;
 // 将 from 发给 to 的消息全部标记为已读
 bool mark_read(std::string_view to, std::string_view from, int64_t now) noexcept;
 // 清理早于 before 的过期消息

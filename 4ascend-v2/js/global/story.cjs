@@ -8,6 +8,9 @@ const BOARD_SIZE = 9;
 
 // 对局节点允许的配置键（结束对局=... 为新写法，结束残局=... 兼容旧剧本）
 const GAME_KEYS = ['残局码', '结束对局', '结束残局', '结束后', '步数对话', '刷草点', '刷草计划', '我方', '先手', '胜利', '失败', '平局'];
+// 剧情级设置：可写在任意位置，播放时跳过；对话框不透明度单位为百分比，默认 60%
+const STORY_SETTING_KEYS = ['对话框不透明度'];
+const DEFAULT_DIALOGUE_OPACITY = 60;
 // 保留目标：直接结束剧情
 const END_TARGETS = ['结束', '剧终'];
 // 返回对局：中途触发的对话播完后回到当前对局继续下棋
@@ -31,6 +34,18 @@ const MARK_ANCHORS = ['名字', '棋子颜色', '生命值', '信息', '刷草�
 const MARK_KIND_MAP = { '箭头': 'arrow', '圈': 'circle', '清除': 'clear' };
 
 /**
+ * @description: 解析对话框不透明度（百分比 0-100），支持省略 % 号
+ * @param {string|number} value
+ * @return {number | null}
+ */
+const parseDialogueOpacity = (value) => {
+    const text = String(value == null ? '' : value).replace(/[%％]/g, '').trim();
+    if (!/^\d{1,3}$/.test(text)) return null;
+    const number = Number.parseInt(text, 10);
+    return number >= 0 && number <= 100 ? number : null;
+};
+
+/**
  * @description: 归一化阵营写法
  * @param {string} value
  * @return {'black' | 'white' | null}
@@ -44,7 +59,29 @@ const toSide = (value) => {
 };
 
 /**
- * @description: 解析刷草点字符串：4,4;5,4;6,5
+ * @description: 作者坐标（1-9，左下原点，先横后竖）转棋盘内部坐标（0-8，左上原点）
+ * @param {number|string} x
+ * @param {number|string} y
+ * @return {[number, number] | null}
+ */
+const toBoardPoint = (x, y) => {
+    const px = Number.parseInt(x, 10);
+    const py = Number.parseInt(y, 10);
+    if (!Number.isInteger(px) || !Number.isInteger(py)) return null;
+    if (px < 1 || px > BOARD_SIZE || py < 1 || py > BOARD_SIZE) return null;
+    return [px - 1, BOARD_SIZE - py];
+};
+
+/**
+ * @description: 棋盘内部坐标转作者坐标（1-9，左下原点，先横后竖）
+ * @param {number} x
+ * @param {number} y
+ * @return {[number, number]}
+ */
+const fromBoardPoint = (x, y) => [x + 1, BOARD_SIZE - y];
+
+/**
+ * @description: 解析刷草点字符串：5,5;6,5;7,6
  * @param {string} value
  * @return {[number, number][]}
  */
@@ -55,32 +92,25 @@ const parsePoints = (value) => {
         if (!text) return;
         const parts = text.split(',');
         if (parts.length < 2) return;
-        const x = Number.parseInt(parts[0], 10);
-        const y = Number.parseInt(parts[1], 10);
-        if (!Number.isInteger(x) || !Number.isInteger(y)) return;
-        if (x < 0 || x >= BOARD_SIZE || y < 0 || y >= BOARD_SIZE) return;
-        result.push([x, y]);
+        const point = toBoardPoint(parts[0], parts[1]);
+        if (point) result.push(point);
     });
     return result;
 };
 
 /**
- * @description: 解析单个棋盘交叉点：4,4
+ * @description: 解析单个棋盘交叉点：5,5
  * @param {string} value
  * @return {[number, number] | null}
  */
 const parseCell = (value) => {
     const parts = String(value == null ? '' : value).trim().split(',');
     if (parts.length < 2) return null;
-    const x = Number.parseInt(parts[0], 10);
-    const y = Number.parseInt(parts[1], 10);
-    if (!Number.isInteger(x) || !Number.isInteger(y)) return null;
-    if (x < 0 || x >= BOARD_SIZE || y < 0 || y >= BOARD_SIZE) return null;
-    return [x, y];
+    return toBoardPoint(parts[0], parts[1]);
 };
 
 /**
- * @description: 解析刷草计划：3:4,4;5,4|9:2,2
+ * @description: 解析刷草计划：3:5,5;6,5|9:3,3
  * 每条计划形如 回合:坐标;坐标，多条用 | 分隔；坐标数即该回合刷草的数量。
  * @param {string} value
  * @return {{turn: number, cells: [number, number][]}[]}
@@ -143,11 +173,11 @@ const normalizeGameConfig = (raw) => {
 };
 
 /**
- * @description: 把刷草点数组还原成文本
+ * @description: 把刷草点数组还原成文本（作者坐标 1-9）
  * @param {[number, number][]} points
  * @return {string}
  */
-const pointsToText = (points) => (points || []).map((point) => `${point[0]},${point[1]}`).join(';');
+const pointsToText = (points) => (points || []).map((point) => fromBoardPoint(point[0], point[1]).join(',')).join(';');
 
 /**
  * @description: 把刷草计划数组还原成文本
@@ -157,29 +187,894 @@ const pointsToText = (points) => (points || []).map((point) => `${point[0]},${po
 const scheduleToText = (schedule) => (schedule || []).map((entry) => `${entry.turn}:${pointsToText(entry.cells)}`).join('|');
 
 /**
- * @description: 解析步数对话：3:标签A|6:标签B
- * 每条形如 第几手:标签，多条用 | 分隔；第几手按落子总手数计数（玩家第一步=1、AI 应手=2、玩家第二次=3），可在任意步数触发。
+ * @description: 解析对话触发条件：3:标签A|落子5,5:标签B|拿起:标签C|AI拿起:标签D
+ * 步数按落子总手数计数（玩家第一步=1、AI 应手=2、玩家第二次=3）；
+ * 位置坐标为作者坐标（1-9，先横后竖，5,5 为正中心），内部转换为 0-8 棋盘坐标。
  * @param {string} value
- * @return {{step: number, target: string}[]}
+ * @return {{type: string, step?: number, x?: number|null, y?: number|null, cell_text?: string, target: string}[]}
  */
 const parseDialogues = (value) => {
     const result = [];
     String(value == null ? '' : value).split('|').forEach((chunk) => {
-        const match = /^(\d+)\s*[:：]\s*(.+?)\s*$/.exec(chunk.trim());
+        const text = chunk.trim();
+        if (!text) return;
+        // 位置落子触发：落子5,5:标签
+        const cell = /^落子\s*([0-9]+)\s*,\s*([0-9]+)\s*[:：]\s*(.+)$/.exec(text);
+        if (cell) {
+            const point = toBoardPoint(cell[1], cell[2]);
+            result.push({
+                'type': 'cell',
+                'x': point ? point[0] : null,
+                'y': point ? point[1] : null,
+                'cell_text': `${Number.parseInt(cell[1], 10)},${Number.parseInt(cell[2], 10)}`,
+                'target': cell[3].trim(),
+            });
+            return;
+        }
+        // AI 拿起棋子触发：AI拿起:标签
+        const aiPick = /^AI\s*拿起\s*[:：]\s*(.+)$/i.exec(text);
+        if (aiPick) {
+            result.push({ 'type': 'ai_pick', 'target': aiPick[1].trim() });
+            return;
+        }
+        // 我方拿起棋子触发：拿起:标签
+        const pick = /^拿起\s*[:：]\s*(.+)$/.exec(text);
+        if (pick) {
+            result.push({ 'type': 'pick', 'target': pick[1].trim() });
+            return;
+        }
+        // 步数触发：3:标签
+        const match = /^(\d+)\s*[:：]\s*(.+?)\s*$/.exec(text);
         if (!match) return;
         const step = Number.parseInt(match[1], 10);
         if (!Number.isInteger(step) || step < 1) return;
-        result.push({ 'step': step, 'target': match[2] });
+        result.push({ 'type': 'step', 'step': step, 'target': match[2] });
     });
     return result;
 };
 
 /**
- * @description: 把步数对话数组还原成文本
- * @param {{step: number, target: string}[]} dialogues
+ * @description: 把对话触发条件还原成文本
+ * @param {{type: string, step?: number, x?: number|null, y?: number|null, cell_text?: string, target: string}[]} dialogues
  * @return {string}
  */
-const dialoguesToText = (dialogues) => (dialogues || []).map((entry) => `${entry.step}:${entry.target}`).join('|');
+const dialoguesToText = (dialogues) => (dialogues || []).map((entry) => {
+    if (entry.type === 'cell') {
+        const cell = entry.cell_text || (entry.x == null || entry.y == null ? '5,5' : fromBoardPoint(entry.x, entry.y).join(','));
+        return `落子${cell}:${entry.target}`;
+    }
+    if (entry.type === 'pick') return `拿起:${entry.target}`;
+    if (entry.type === 'ai_pick') return `AI拿起:${entry.target}`;
+    return `${entry.step}:${entry.target}`;
+}).join('|');
+
+
+// ==================== JQBJ 语言（v0.3）====================
+// 文本、拖动框与运行时共用同一套节点；JQBJ 是旧剧本 DSL 的超集。
+// 新语法：说 / 菜单 / 如果 / 重复 / 当 / 直到 / 设 / 赋值 / 跳出 / 继续 / 对局 等。
+const JQBJ_DETECT = /^(?:说(?:\s|$)|菜单(?:\s|$)|选项(?:\s|$)|结束菜单$|如果(?:\s|$)|否则如果(?:\s|$)|否则$|结束如果$|重复(?:\s|$)|当(?:\s|$)|直到(?:\s|$)|结束重复$|结束当$|结束直到$|跳出$|继续$|设(?:\s|$)|赋值(?:\s|$)|对局(?:\s|$)|结束对局$|标签(?:\s|$)|跳转(?:\s|$)|标注(?:\s|$)|不透明度(?:\s|$)|如果胜利$|如果失败$|如果平局$)/;
+const JQBJ_NAME_RE = /^[A-Za-z_\u4e00-\u9fa5][A-Za-z0-9_\u4e00-\u9fa5]*$/;
+const JQBJ_OUTCOME_TEXT = { 'win': '胜利', 'lose': '失败', 'draw': '平局' };
+const JQBJ_OUTCOME_KEY = { '胜利': 'win', '失败': 'lose', '平局': 'draw' };
+const JQBJ_GAME_KEYS = [...GAME_KEYS, '结束条件'];
+const JQBJ_OP_RE = /^(.+?)\s*(==|!=|>=|<=|>|<)\s*(.+)$/;
+const JQBJ_ASSIGN_RE = /^(设|赋值)\s+([^\s=+\-*/%&]+)\s*(=|\+=|-=|\*=|\/=|%=|&=)\s*(\S[\s\S]*)$/;
+
+const jqbjIsClosing = (text) => (
+    text === '结束如果' || text === '否则如果' || text === '否则'
+    || text === '结束菜单' || text === '结束选择'
+    || text === '结束重复' || text === '结束当' || text === '结束直到'
+    || text === '结束定义' || text === '结束框' || text === '框结束'
+    || GAME_END_KEYWORDS.includes(text) || text === '结束对局'
+);
+
+const jqbjValueType = (raw, vars) => {
+    const text = String(raw == null ? '' : raw).trim();
+    if (text === '真' || text === '假') return 'boolean';
+    if (/^"(?:[^"\\]|\\.)*"$/.test(text) || /^'(?:[^'\\]|\\.)*'$/.test(text)) return 'string';
+    if (/^-?\d+(?:\.\d+)?$/.test(text)) return 'number';
+    if (JQBJ_NAME_RE.test(text) && vars && vars.has(text)) return vars.get(text);
+    return 'string';
+};
+
+const jqbjUnquote = (raw) => {
+    const text = String(raw == null ? '' : raw).trim();
+    const matched = /^"(?:[^"\\]|\\.)*"$/.test(text) || /^'(?:[^'\\]|\\.)*'$/.test(text);
+    if (!matched) return text;
+    const body = text.slice(1, -1);
+    return body.replace(/\\(["'\\nrt])/g, (_, ch) => ({ '"': '"', "'": "'", '\\': '\\', 'n': '\n', 'r': '\r', 't': '\t' }[ch]));
+};
+
+/**
+ * @description: JQBJ v0.3 解析器：先构造语法树（供编辑器还原拖动框），再编译为运行时节点
+ */
+class JQBJParser {
+    constructor(text) {
+        const source = String(text == null ? '' : text).replace(/\r\n?/g, '\n');
+        this.errors = [];
+        this.nodes = [];
+        this.labels = {};
+        this.seq = { 'if': 0, 'loop': 0, 'menu': 0, 'game': 0 };
+        this.lines = source.split('\n').map((line, lineIndex) => {
+            const expanded = line.replace(/\t/g, '  ');
+            const trimmed = expanded.trim();
+            return {
+                'raw': expanded.replace(/\s+$/, ''),
+                'text': trimmed,
+                'indent': Math.min(20, Math.floor((expanded.length - expanded.trimStart().length) / 2)),
+                'lineIndex': lineIndex,
+            };
+        });
+    }
+
+    error(lineIndex, message) {
+        this.errors.push(`第 ${Number(lineIndex) + 1} 行：${message}`);
+    }
+
+    parse() {
+        this.tree = this.parseBlock(0, this.lines.length);
+        this.compileList(this.tree, { 'loopStack': [], 'defDepth': 0 });
+        this.nodes.forEach((node) => {
+            if (node.type === 'game') {
+                node.config = normalizeGameConfig(node.config_raw);
+                delete node.config_raw;
+            }
+            if (node.type === 'mark' && node.kind === 'circle') node.cell = parseCell(node.target);
+        });
+        return { 'nodes': this.nodes, 'labels': this.labels, 'errors': this.errors, 'tree': this.tree, 'jqbj': true };
+    }
+
+    /** 从语法树中取回原始代码行（按块首行缩进反缩进），供拖动框模式只读展示 */
+    spanLines(start, end) {
+        const base = this.lines[start] ? this.lines[start].indent : 0;
+        const strip = '  '.repeat(base);
+        const result = this.lines.slice(start, end).map((line) => (
+            line.raw.startsWith(strip) ? line.raw.slice(strip.length) : line.raw.replace(/^\s+/, '')
+        ));
+        while (result.length && !result[0].trim()) result.shift();
+        while (result.length && !result[result.length - 1].trim()) result.pop();
+        return result;
+    }
+
+    parseBlock(start, end) {
+        const list = [];
+        let index = start;
+        while (index < end) {
+            const line = this.lines[index];
+            if (!line.text || line.text.startsWith('#')) { index += 1; continue; }
+            const result = this.parseStatement(index, end);
+            if (!result || !result.node) { index += 1; continue; }
+            list.push(result.node);
+            index = Math.max(index + 1, result.next);
+        }
+        return list;
+    }
+
+    /** 找同级缩进的块结束标记 */
+    findEnd(from, end, indent, keywords) {
+        for (let index = from; index < end; index += 1) {
+            const line = this.lines[index];
+            if (!line.text) continue;
+            if (line.indent === indent && keywords.includes(line.text)) return index;
+        }
+        return -1;
+    }
+
+    /** 没有显式结束标记时，遇到同级或更浅缩进的行即视为块结束 */
+    implicitEnd(from, end, indent) {
+        for (let index = from; index < end; index += 1) {
+            const line = this.lines[index];
+            if (!line.text || line.text.startsWith('#')) continue;
+            if (line.indent <= indent) return index;
+        }
+        return end;
+    }
+
+    parseFace(rest) {
+        const face = rest.match(/^\[([^\]]*)\]\s*([\s\S]*)$/);
+        if (!face) return { 'speaker': '', 'expression': '', 'text': rest.trim() };
+        const raw = face[1].trim();
+        const split = raw.indexOf('|');
+        return {
+            'speaker': split < 0 ? raw : raw.slice(0, split).trim(),
+            'expression': split < 0 ? '' : raw.slice(split + 1).trim(),
+            'text': face[2].trim(),
+        };
+    }
+
+    parseCondition(raw) {
+        const matched = JQBJ_OP_RE.exec(raw.trim());
+        if (!matched) return null;
+        const name = matched[1].trim();
+        if (!JQBJ_NAME_RE.test(name)) return null;
+        return { 'name': name, 'op': matched[2], 'value': matched[3].trim(), 'raw': raw.trim() };
+    }
+
+    parseStatement(start, end) {
+        const line = this.lines[start];
+        const text = line.text;
+        const indent = line.indent;
+
+        const closing = jqbjIsClosing(text);
+        if (closing || text === '选项' || /^-(?:\s|$)/.test(text)) {
+            this.error(line.lineIndex, `「${text}」没有对应的开始标记。`);
+            return { 'node': null, 'next': start + 1 };
+        }
+
+        // 说 [角色|表情] 台词 / 说 旁白
+        const say = /^说(?:\s+|$)([\s\S]*)$/.exec(text);
+        if (say) {
+            const rest = say[1].trim();
+            const face = this.parseFace(rest);
+            if (!face.text) this.error(line.lineIndex, '「说」缺少台词内容。');
+            return { 'node': { 'type': 'say', 'speaker': face.speaker, 'expression': face.expression, 'text': face.text, 'indent': indent, 'lineStart': start, 'lineEnd': start + 1 }, 'next': start + 1 };
+        }
+
+        // 兼容旧写法：[角色|表情] 台词
+        const legacySay = text.match(/^\[([^\]]*)\]\s*([\s\S]*)$/);
+        if (legacySay) {
+            const face = this.parseFace(text);
+            return { 'node': { 'type': 'say', 'speaker': face.speaker, 'expression': face.expression, 'text': face.text, 'indent': indent, 'lineStart': start, 'lineEnd': start + 1 }, 'next': start + 1 };
+        }
+
+        // 菜单 / 选项 / 结束菜单（结构化）
+        if (/^菜单(?:\s|$)/.test(text) || text.startsWith('?')) {
+            const endIndex = this.findEnd(start + 1, end, indent, ['结束菜单', '结束选择']);
+            if (endIndex >= 0) return this.parseMenu(start, endIndex, text.startsWith('?'));
+            if (text.startsWith('?')) return this.parseLegacyChoice(start, end);
+            this.error(line.lineIndex, '菜单块缺少「结束菜单」。');
+            const fallback = this.implicitEnd(start + 1, end, indent);
+            return this.parseMenu(start, fallback, false);
+        }
+
+        // 如果 / 否则如果 / 否则 / 结束如果
+        if (/^如果(?:\s|$)/.test(text)) {
+            const endIndex = this.findEnd(start + 1, end, indent, ['结束如果']);
+            if (endIndex < 0) this.error(line.lineIndex, '「如果」缺少「结束如果」。');
+            return this.parseIf(start, endIndex < 0 ? this.implicitEnd(start + 1, end, indent) : endIndex);
+        }
+
+        // 循环：重复 N 次 / 当 条件 / 直到 条件
+        const repeat = /^重复\s+(.+?)(?:\s*次)?$/.exec(text);
+        if (repeat) {
+            const endIndex = this.findEnd(start + 1, end, indent, ['结束重复']);
+            if (endIndex < 0) this.error(line.lineIndex, '「重复」缺少「结束重复」。');
+            const bodyEnd = endIndex < 0 ? this.implicitEnd(start + 1, end, indent) : endIndex;
+            return {
+                'node': {
+                    'type': 'repeat', 'count_raw': repeat[1].trim(), 'body': this.parseBlock(start + 1, bodyEnd),
+                    'indent': indent, 'lineStart': start, 'lineEnd': bodyEnd + 1,
+                },
+                'next': bodyEnd + 1,
+            };
+        }
+        if (/^当(?:\s|$)/.test(text)) {
+            const endIndex = this.findEnd(start + 1, end, indent, ['结束当']);
+            if (endIndex < 0) this.error(line.lineIndex, '「当」缺少「结束当」。');
+            const bodyEnd = endIndex < 0 ? this.implicitEnd(start + 1, end, indent) : endIndex;
+            const cond = this.parseCondition(text.slice(1).trim());
+            if (!cond) this.error(line.lineIndex, `「当」条件格式无效：${text.slice(1).trim()}（应形如 变量 比较符 值）`);
+            return {
+                'node': { 'type': 'while', 'cond': cond, 'body': this.parseBlock(start + 1, bodyEnd), 'indent': indent, 'lineStart': start, 'lineEnd': bodyEnd + 1 },
+                'next': bodyEnd + 1,
+            };
+        }
+        if (/^直到(?:\s|$)/.test(text)) {
+            const endIndex = this.findEnd(start + 1, end, indent, ['结束直到']);
+            if (endIndex < 0) this.error(line.lineIndex, '「直到」缺少「结束直到」。');
+            const bodyEnd = endIndex < 0 ? this.implicitEnd(start + 1, end, indent) : endIndex;
+            const cond = this.parseCondition(text.slice(2).trim());
+            if (!cond) this.error(line.lineIndex, `「直到」条件格式无效：${text.slice(2).trim()}（应形如 变量 比较符 值）`);
+            return {
+                'node': { 'type': 'until', 'cond': cond, 'body': this.parseBlock(start + 1, bodyEnd), 'indent': indent, 'lineStart': start, 'lineEnd': bodyEnd + 1 },
+                'next': bodyEnd + 1,
+            };
+        }
+
+        // 对局 / 结束对局 / 如果胜利·失败·平局
+        if (/^对局(?:\s|$)/.test(text) || text.startsWith('*')) {
+            return this.parseGame(start, end);
+        }
+        if (/^如果胜利$|^如果失败$|^如果平局$/.test(text)) {
+            this.error(line.lineIndex, `「${text}」只能写在「对局」块内。`);
+            return { 'node': null, 'next': start + 1 };
+        }
+
+        // 定义 / 结束定义
+        if (/^定义(?:\s|$)/.test(text)) {
+            const endIndex = this.findEnd(start + 1, end, indent, ['结束定义']);
+            if (endIndex < 0) this.error(line.lineIndex, '定义块缺少「结束定义」。');
+            const bodyEnd = endIndex < 0 ? this.implicitEnd(start + 1, end, indent) : endIndex;
+            const name = text.slice(2).trim();
+            if (!name) this.error(line.lineIndex, '定义块缺少名称。');
+            return {
+                'node': { 'type': 'def', 'name': name, 'body': this.parseBlock(start + 1, bodyEnd), 'indent': indent, 'lineStart': start, 'lineEnd': bodyEnd + 1 },
+                'next': bodyEnd + 1,
+            };
+        }
+
+        // 框 / 结束框（仅编辑器分组）
+        if (/^框(?:\s|$)/.test(text)) {
+            const endIndex = this.findEnd(start + 1, end, indent, ['结束框', '框结束']);
+            if (endIndex < 0) this.error(line.lineIndex, '框缺少「结束框」。');
+            const bodyEnd = endIndex < 0 ? this.implicitEnd(start + 1, end, indent) : endIndex;
+            const tokens = text.slice(1).trim().split(/\s+/).filter(Boolean);
+            let color = null;
+            const titleParts = [];
+            tokens.forEach((token) => {
+                const matched = token.match(/^色=(.+)$/);
+                if (matched) { color = matched[1].trim(); return; }
+                titleParts.push(token);
+            });
+            return {
+                'node': { 'type': 'box', 'title': titleParts.join(' '), 'color': color, 'body': this.parseBlock(start + 1, bodyEnd), 'indent': indent, 'lineStart': start, 'lineEnd': bodyEnd + 1 },
+                'next': bodyEnd + 1,
+            };
+        }
+
+        // 标签 / 跳转
+        if (/^标签(?:\s|$)/.test(text) || text.startsWith(':')) {
+            const name = text.replace(/^标签\s*/, '').replace(/^:/, '').trim();
+            if (!name) this.error(line.lineIndex, '标签缺少名称。');
+            return { 'node': { 'type': 'label', 'name': name, 'indent': indent, 'lineStart': start, 'lineEnd': start + 1 }, 'next': start + 1 };
+        }
+        if (/^跳转(?:\s|$)/.test(text) || text.startsWith('->')) {
+            const target = text.replace(/^跳转\s*/, '').replace(/^->/, '').trim();
+            if (!target) this.error(line.lineIndex, '跳转缺少目标标签。');
+            return { 'node': { 'type': 'jump', 'target': target, 'indent': indent, 'lineStart': start, 'lineEnd': start + 1 }, 'next': start + 1 };
+        }
+
+        // 结束 / 继续对局 / 返回 / 调用
+        if (END_TARGETS.includes(text)) {
+            return { 'node': { 'type': 'end', 'indent': indent, 'lineStart': start, 'lineEnd': start + 1 }, 'next': start + 1 };
+        }
+        if (RESUME_KEYWORDS.includes(text)) {
+            return { 'node': { 'type': 'resume', 'indent': indent, 'lineStart': start, 'lineEnd': start + 1 }, 'next': start + 1 };
+        }
+        if (text === '返回') {
+            return { 'node': { 'type': 'return', 'indent': indent, 'lineStart': start, 'lineEnd': start + 1 }, 'next': start + 1 };
+        }
+        if (/^调用(?:\s|$)/.test(text)) {
+            const target = text.slice(2).trim();
+            if (!target) this.error(line.lineIndex, '调用缺少封装块名称。');
+            return { 'node': { 'type': 'call', 'target': target, 'indent': indent, 'lineStart': start, 'lineEnd': start + 1 }, 'next': start + 1 };
+        }
+
+        // 变量：设 / 赋值
+        const assign = JQBJ_ASSIGN_RE.exec(text);
+        if (assign) {
+            const name = assign[2].trim();
+            if (!JQBJ_NAME_RE.test(name)) this.error(line.lineIndex, `变量名无效：${name}`);
+            return {
+                'node': { 'type': assign[1] === '设' ? 'declare' : 'assign', 'name': name, 'op': assign[3], 'value_raw': assign[4].trim(), 'indent': indent, 'lineStart': start, 'lineEnd': start + 1 },
+                'next': start + 1,
+            };
+        }
+
+        // 跳出 / 继续
+        if (text === '跳出') {
+            return { 'node': { 'type': 'break', 'indent': indent, 'lineStart': start, 'lineEnd': start + 1 }, 'next': start + 1 };
+        }
+        if (text === '继续') {
+            return { 'node': { 'type': 'continue', 'indent': indent, 'lineStart': start, 'lineEnd': start + 1 }, 'next': start + 1 };
+        }
+
+        // 标注 / 不透明度
+        if (/^标注(?:\s|$)/.test(text) || text.startsWith('@')) {
+            const body = text.replace(/^标注\s*/, '').replace(/^@\s*/, '');
+            const tokens = body.split(/\s+/).filter(Boolean);
+            const kind = MARK_KIND_MAP[tokens[0]] || null;
+            if (!kind) {
+                this.error(line.lineIndex, `标注类型无效：${text}（可用 箭头 / 圈 / 清除）`);
+                return { 'node': null, 'next': start + 1 };
+            }
+            let color = null;
+            const positional = [];
+            tokens.slice(1).forEach((token) => {
+                const matched = token.match(/^色=(.+)$/);
+                if (matched) { color = matched[1].trim(); return; }
+                positional.push(token);
+            });
+            return {
+                'node': { 'type': 'mark', 'kind': kind, 'target': positional[0] || '', 'color': color, 'indent': indent, 'lineStart': start, 'lineEnd': start + 1 },
+                'next': start + 1,
+            };
+        }
+        const opacity = /^(?:不透明度|对话框不透明度=)\s*([\s\S]*)$/.exec(text);
+        if (opacity) {
+            const raw = opacity[1].trim();
+            const value = parseDialogueOpacity(raw);
+            if (value === null) this.error(line.lineIndex, `对话框不透明度无效：${raw}（应为 0-100 的整数）`);
+            return {
+                'node': { 'type': 'setting', 'key': 'opacity', 'value': value === null ? DEFAULT_DIALOGUE_OPACITY : value, 'raw': raw, 'indent': indent, 'lineStart': start, 'lineEnd': start + 1 },
+                'next': start + 1,
+            };
+        }
+
+        // 旧式结果条件：% IF 胜利 -> 标签 / % ELSE -> 标签
+        if (text.startsWith('%')) {
+            const body = text.slice(1).trim();
+            const arrow = body.indexOf('->');
+            if (arrow < 0) {
+                this.error(line.lineIndex, `条件分支缺少“-> 标签”：${text}`);
+                return { 'node': null, 'next': start + 1 };
+            }
+            const head = body.slice(0, arrow).trim();
+            const target = body.slice(arrow + 2).trim();
+            if (/^else$/i.test(head)) {
+                return { 'node': { 'type': 'cond', 'kind': 'else', 'condition': null, 'target': target, 'indent': indent, 'lineStart': start, 'lineEnd': start + 1 }, 'next': start + 1 };
+            }
+            const stripped = head.replace(/^if\s*/i, '').trim();
+            const condition = COND_MAP[stripped] || COND_MAP[stripped.toLowerCase()] || null;
+            if (!condition) {
+                this.error(line.lineIndex, `条件无效：${text}（可用 胜利 / 失败 / 平局）`);
+                return { 'node': null, 'next': start + 1 };
+            }
+            return { 'node': { 'type': 'cond', 'kind': 'if', 'condition': condition, 'target': target, 'indent': indent, 'lineStart': start, 'lineEnd': start + 1 }, 'next': start + 1 };
+        }
+
+        this.error(line.lineIndex, `无法识别：${text}`);
+        return { 'node': null, 'next': start + 1 };
+    }
+
+    parseMenu(start, endIndex, legacyHeader) {
+        const line = this.lines[start];
+        const rest = legacyHeader ? line.text.slice(1).trim() : line.text.replace(/^菜单\s*/, '');
+        const header = this.parseFace(rest);
+        const bodyStart = start + 1;
+        const bodyEnd = endIndex;
+        let optionIndent = -1;
+        const optionLines = [];
+        for (let index = bodyStart; index < bodyEnd; index += 1) {
+            const item = this.lines[index];
+            if (!item.text) continue;
+            if (!/^(?:选项|-)(?:\s|$)/.test(item.text)) continue;
+            if (optionIndent < 0 || item.indent < optionIndent) optionIndent = item.indent;
+        }
+        for (let index = bodyStart; index < bodyEnd; index += 1) {
+            const item = this.lines[index];
+            if (item.indent === optionIndent && /^(?:选项|-)(?:\s|$)/.test(item.text)) optionLines.push(index);
+        }
+        if (!optionLines.length) this.error(line.lineIndex, '菜单块内没有任何选项。');
+        const options = optionLines.map((optionLine, position) => {
+            const option = this.lines[optionLine];
+            const raw = option.text.replace(/^(?:选项|-)\s*/, '').trim();
+            const segmentEnd = position + 1 < optionLines.length ? optionLines[position + 1] : bodyEnd;
+            const arrow = /^(.+?)\s*->\s*(.+)$/.exec(raw);
+            const text = arrow ? arrow[1].trim() : raw;
+            if (!text) this.error(option.lineIndex, '菜单选项文字为空。');
+            if (arrow) {
+                if (segmentEnd > optionLine + 1 && this.lines.slice(optionLine + 1, segmentEnd).some((item) => item.text)) {
+                    this.error(option.lineIndex, `选项“${text}”既写了“-> 标签”又带缩进内容，二者只能选一种。`);
+                }
+                return { 'text': text, 'target': arrow[2].trim(), 'explicit': true, 'body': [], 'indent': option.indent, 'lineStart': optionLine, 'lineEnd': optionLine + 1 };
+            }
+            return { 'text': text, 'target': '', 'explicit': false, 'body': this.parseBlock(optionLine + 1, segmentEnd), 'indent': option.indent, 'lineStart': optionLine, 'lineEnd': segmentEnd };
+        });
+        return {
+            'node': {
+                'type': 'menu', 'speaker': header.speaker, 'expression': header.expression, 'prompt': header.text,
+                'options': options, 'indent': line.indent, 'lineStart': start, 'lineEnd': bodyEnd + 1,
+            },
+            'next': bodyEnd + 1,
+        };
+    }
+
+    parseLegacyChoice(start, end) {
+        const line = this.lines[start];
+        const header = this.parseFace(line.text.slice(1).trim());
+        const options = [];
+        let index = start + 1;
+        while (index < end) {
+            const item = this.lines[index];
+            if (!item.text) { index += 1; continue; }
+            if (!/^-\s*/.test(item.text)) break;
+            const raw = item.text.replace(/^-\s*/, '').trim();
+            const arrow = /^(.+?)\s*->\s*(.+)$/.exec(raw);
+            if (!arrow) {
+                this.error(item.lineIndex, `旧式选项缺少“-> 标签”：${item.text}`);
+                options.push({ 'text': raw, 'target': '', 'indent': item.indent });
+            } else {
+                options.push({ 'text': arrow[1].trim(), 'target': arrow[2].trim(), 'indent': item.indent });
+            }
+            index += 1;
+        }
+        return {
+            'node': { 'type': 'choice', 'speaker': header.speaker, 'expression': header.expression, 'prompt': header.text, 'options': options, 'indent': line.indent, 'lineStart': start, 'lineEnd': index },
+            'next': index,
+        };
+    }
+
+    parseIf(start, endIndex) {
+        const line = this.lines[start];
+        const branches = [];
+        let branchStart = start;
+        let cond = this.parseCondition(line.text.replace(/^如果\s*/, ''));
+        if (!cond) this.error(line.lineIndex, `「如果」条件格式无效：${line.text.slice(2).trim()}`);
+        let index = start + 1;
+        while (index <= endIndex) {
+            const item = this.lines[index];
+            const isElseIf = item && item.indent === line.indent && /^否则如果(?:\s|$)/.test(item.text);
+            const isElse = item && item.indent === line.indent && item.text === '否则';
+            if (index === endIndex || isElseIf || isElse) {
+                branches.push({ 'cond': cond, 'body': this.parseBlock(branchStart + 1, index), 'lineStart': branchStart, 'lineEnd': index });
+                if (index === endIndex) break;
+                cond = isElse ? null : this.parseCondition(item.text.replace(/^否则如果\s*/, ''));
+                if (!isElse && !cond) this.error(item.lineIndex, `「否则如果」条件格式无效：${item.text}`);
+                branchStart = index;
+            }
+            index += 1;
+        }
+        return {
+            'node': { 'type': 'if', 'branches': branches, 'indent': line.indent, 'lineStart': start, 'lineEnd': endIndex + 1 },
+            'next': endIndex + 1,
+        };
+    }
+
+    parseGame(start, end) {
+        const line = this.lines[start];
+        const title = line.text.replace(/^对局\s*/, '').replace(/^\*\s*/, '').replace(/^对局\s*/, '').trim();
+        let endIndex = this.findEnd(start + 1, end, line.indent, ['结束对局', ...GAME_END_KEYWORDS]);
+        if (endIndex < 0) endIndex = this.implicitEnd(start + 1, end, line.indent);
+        const configs = [];
+        const configRaw = {};
+        const branches = [];
+        const body = [];
+        let branchIndent = -1;
+        let index = start + 1;
+        while (index < endIndex) {
+            const item = this.lines[index];
+            if (!item.text || item.text.startsWith('#')) { index += 1; continue; }
+            const result = /^(如果胜利|如果失败|如果平局)$/.exec(item.text);
+            if (result && item.indent > line.indent) {
+                if (branchIndent < 0) branchIndent = item.indent;
+                if (item.indent === branchIndent || branchIndent < 0) {
+                    const outcome = JQBJ_OUTCOME_KEY[result[1].slice(2)];
+                    let next = index + 1;
+                    while (next < endIndex) {
+                        const sibling = this.lines[next];
+                        if (sibling.text && sibling.indent === branchIndent && /^(如果胜利|如果失败|如果平局)$/.test(sibling.text)) break;
+                        next += 1;
+                    }
+                    branches.push({ 'outcome': outcome, 'body': this.parseBlock(index + 1, next), 'indent': item.indent, 'lineStart': index, 'lineEnd': next });
+                    index = next;
+                    continue;
+                }
+            }
+            const config = item.text.match(/^([^\s=]+)\s*=\s*([\s\S]*)$/);
+            if (config && JQBJ_GAME_KEYS.includes(config[1])) {
+                const key = config[1] === '结束条件' ? '结束对局' : config[1];
+                configs.push({ 'key': key, 'value': config[2].trim(), 'lineIndex': item.lineIndex });
+                configRaw[key] = config[2].trim();
+                index += 1;
+                continue;
+            }
+            const parsed = this.parseStatement(index, endIndex);
+            if (!parsed || !parsed.node) { index += 1; continue; }
+            body.push(parsed.node);
+            index = Math.max(index + 1, parsed.next);
+        }
+        return {
+            'node': {
+                'type': 'game', 'title': title, 'configs': configs, 'config_raw': configRaw, 'branches': branches, 'body': body,
+                'indent': line.indent, 'lineStart': start, 'lineEnd': endIndex + 1,
+            },
+            'next': endIndex + 1,
+        };
+    }
+
+    // ---------- 语法树 → 运行时节点 ----------
+
+    emitAutoJump(target, indent, kind) {
+        this.nodes.push({ 'type': 'jump', 'target': target, 'auto': kind || 'jqbj', 'indent': indent });
+    }
+
+    emitLabel(name, indent, auto) {
+        if (Object.prototype.hasOwnProperty.call(this.labels, name)) this.errors.push(`标签重复：${name}`);
+        this.labels[name] = this.nodes.length;
+        this.nodes.push({ 'type': 'label', 'name': name, 'auto': auto || 'jqbj', 'indent': indent });
+    }
+
+    compileList(list, ctx) {
+        (list || []).forEach((node) => this.compileNode(node, ctx));
+    }
+
+    compileNode(node, ctx) {
+        const indent = node.indent == null ? 0 : node.indent;
+        if (node.type === 'say') {
+            this.nodes.push({ 'type': 'say', 'speaker': node.speaker, 'expression': node.expression, 'text': node.text, 'indent': indent });
+            return;
+        }
+        if (node.type === 'choice') {
+            this.nodes.push({ 'type': 'choice', 'speaker': node.speaker, 'expression': node.expression, 'prompt': node.prompt, 'options': node.options, 'indent': indent });
+            return;
+        }
+        if (node.type === 'menu') {
+            const seq = this.seq.menu;
+            this.seq.menu += 1;
+            const endLabel = `__jqbj_menu_end_${seq}`;
+            const choice = { 'type': 'choice', 'block': true, 'speaker': node.speaker, 'expression': node.expression, 'prompt': node.prompt, 'options': [], 'indent': indent };
+            this.nodes.push(choice);
+            node.options.forEach((option, position) => {
+                const record = { 'text': option.text, 'target': option.target || '', 'explicit': Boolean(option.explicit), 'body': [] };
+                if (option.explicit) { choice.options.push(record); return; }
+                record.target = `__jqbj_menu_${seq}_${position}`;
+                this.emitLabel(record.target, indent + 1, 'menu');
+                const before = this.nodes.length;
+                this.compileList(option.body, ctx);
+                record.body = this.nodes.slice(before);
+                this.emitAutoJump(endLabel, indent + 1, 'menu');
+                choice.options.push(record);
+            });
+            this.nodes.push({ 'type': 'choice_end', 'auto': 'menu', 'indent': indent });
+            this.emitLabel(endLabel, indent, 'menu_end');
+            return;
+        }
+        if (node.type === 'if') {
+            const seq = this.seq.if;
+            this.seq.if += 1;
+            const endLabel = `__jqbj_if_${seq}_end`;
+            node.branches.forEach((branch, position) => {
+                const bodyLabel = `__jqbj_if_${seq}_${position}_body`;
+                const nextLabel = `__jqbj_if_${seq}_${position}_next`;
+                if (branch.cond) {
+                    this.nodes.push({ 'type': 'if', 'cond': branch.cond, 'target': bodyLabel, 'indent': indent });
+                    this.emitAutoJump(nextLabel, indent);
+                }
+                this.emitLabel(bodyLabel, indent + 1);
+                this.compileList(branch.body, ctx);
+                this.emitAutoJump(endLabel, indent + 1);
+                this.emitLabel(nextLabel, indent);
+            });
+            this.emitLabel(endLabel, indent);
+            return;
+        }
+        if (node.type === 'repeat') {
+            const seq = this.seq.loop;
+            this.seq.loop += 1;
+            const bodyLabel = `__jqbj_repeat_${seq}_body`;
+            const contLabel = `__jqbj_repeat_${seq}_cont`;
+            const endLabel = `__jqbj_repeat_${seq}_end`;
+            this.nodes.push({ 'type': 'repeat', 'count_raw': node.count_raw, 'body': bodyLabel, 'end': endLabel, 'loop_id': seq, 'indent': indent });
+            this.emitLabel(bodyLabel, indent + 1);
+            ctx.loopStack.push({ 'break': endLabel, 'continue': contLabel, 'defDepth': ctx.defDepth });
+            this.compileList(node.body, ctx);
+            ctx.loopStack.pop();
+            this.emitLabel(contLabel, indent + 1);
+            this.nodes.push({ 'type': 'repeat_end', 'body': bodyLabel, 'end': endLabel, 'loop_id': seq, 'indent': indent });
+            this.emitLabel(endLabel, indent);
+            return;
+        }
+        if (node.type === 'while') {
+            const seq = this.seq.loop;
+            this.seq.loop += 1;
+            const checkLabel = `__jqbj_while_${seq}_check`;
+            const bodyLabel = `__jqbj_while_${seq}_body`;
+            const endLabel = `__jqbj_while_${seq}_end`;
+            this.emitLabel(checkLabel, indent);
+            this.nodes.push({ 'type': 'while', 'cond': node.cond, 'body': bodyLabel, 'end': endLabel, 'indent': indent });
+            this.emitLabel(bodyLabel, indent + 1);
+            ctx.loopStack.push({ 'break': endLabel, 'continue': checkLabel, 'defDepth': ctx.defDepth });
+            this.compileList(node.body, ctx);
+            ctx.loopStack.pop();
+            this.emitAutoJump(checkLabel, indent + 1, 'loop');
+            this.emitLabel(endLabel, indent);
+            return;
+        }
+        if (node.type === 'until') {
+            const seq = this.seq.loop;
+            this.seq.loop += 1;
+            const bodyLabel = `__jqbj_until_${seq}_body`;
+            const condLabel = `__jqbj_until_${seq}_cond`;
+            const endLabel = `__jqbj_until_${seq}_end`;
+            this.emitLabel(bodyLabel, indent + 1);
+            ctx.loopStack.push({ 'break': endLabel, 'continue': condLabel, 'defDepth': ctx.defDepth });
+            this.compileList(node.body, ctx);
+            ctx.loopStack.pop();
+            this.emitLabel(condLabel, indent + 1);
+            this.nodes.push({ 'type': 'until', 'cond': node.cond, 'body': bodyLabel, 'end': endLabel, 'indent': indent });
+            this.emitLabel(endLabel, indent);
+            return;
+        }
+        if (node.type === 'game') {
+            const seq = this.seq.game;
+            this.seq.game += 1;
+            const endLabel = `__jqbj_game_${seq}_end`;
+            const gameNode = { 'type': 'game', 'title': node.title, 'config_raw': Object.assign({}, node.config_raw), 'indent': indent };
+            this.nodes.push(gameNode);
+            this.emitAutoJump(endLabel, indent);
+            const seen = new Set();
+            node.branches.forEach((branch) => {
+                if (seen.has(branch.outcome)) { this.errors.push(`对局“${node.title}”重复配置了「如果${JQBJ_OUTCOME_TEXT[branch.outcome]}」。`); return; }
+                seen.add(branch.outcome);
+                const label = `__jqbj_game_${seq}_${branch.outcome}`;
+                gameNode.config_raw[JQBJ_OUTCOME_TEXT[branch.outcome]] = label;
+                this.emitLabel(label, indent + 1, 'game');
+                this.compileList(branch.body, ctx);
+                this.emitAutoJump(endLabel, indent + 1, 'game');
+            });
+            this.emitLabel(endLabel, indent, 'game_end');
+            this.nodes.push({ 'type': 'game_end', 'indent': indent });
+            this.compileList(node.body, ctx);
+            return;
+        }
+        if (node.type === 'def') {
+            this.nodes.push({ 'type': 'def', 'name': node.name, 'indent': indent });
+            ctx.defDepth += 1;
+            this.compileList(node.body, ctx);
+            ctx.defDepth -= 1;
+            this.nodes.push({ 'type': 'def_end', 'name': node.name, 'indent': indent });
+            return;
+        }
+        if (node.type === 'box') {
+            this.nodes.push({ 'type': 'box', 'title': node.title, 'color': node.color, 'indent': indent });
+            this.compileList(node.body, ctx);
+            this.nodes.push({ 'type': 'box_end', 'indent': indent });
+            return;
+        }
+        if (node.type === 'label') {
+            if (node.name) this.emitLabel(node.name, indent, '');
+            return;
+        }
+        if (node.type === 'declare' || node.type === 'assign') {
+            this.nodes.push({ 'type': node.type, 'name': node.name, 'op': node.op, 'value_raw': node.value_raw, 'indent': indent });
+            return;
+        }
+        if (node.type === 'break' || node.type === 'continue') {
+            const loop = ctx.loopStack[ctx.loopStack.length - 1];
+            if (!loop || ctx.defDepth > loop.defDepth) {
+                this.error(node.lineStart, `「${node.type === 'break' ? '跳出' : '继续'}」必须直接位于循环体内。`);
+                return;
+            }
+            this.nodes.push({ 'type': node.type, 'target': loop[node.type], 'indent': indent });
+            return;
+        }
+        if (node.type === 'mark') {
+            if (node.kind === 'circle') node.cell = parseCell(node.target);
+            this.nodes.push(Object.assign({}, node, { 'indent': indent, 'cell': node.cell || null }));
+            return;
+        }
+        // 其余语句与旧 DSL 节点同名同构
+        this.nodes.push(Object.assign({}, node, { 'indent': indent }));
+    }
+}
+
+const parseJQBJ = (text) => new JQBJParser(text).parse();
+
+const validateJQBJTree = (tree) => {
+    const errors = [];
+    const vars = new Map();
+    const loops = [];
+    let defDepth = 0;
+
+    const lineOf = (node) => `第 ${Number(node && node.lineStart != null ? node.lineStart : 0) + 1} 行：`;
+    const typeOfValue = (raw) => jqbjValueType(raw, vars);
+    const checkInterp = (text, node) => {
+        String(text == null ? '' : text).replace(/\$\{([^}]+)\}/g, (whole, name) => {
+            if (!vars.has(String(name).trim())) errors.push(`${lineOf(node)}引用了未声明的变量：${String(name).trim()}`);
+            return whole;
+        });
+    };
+    const checkCondition = (cond, node) => {
+        if (!cond) return;
+        if (!vars.has(cond.name)) { errors.push(`${lineOf(node)}条件引用了未声明的变量：${cond.name}`); return; }
+        const left = vars.get(cond.name);
+        const right = typeOfValue(cond.value);
+        if ((cond.op === '>' || cond.op === '<' || cond.op === '>=' || cond.op === '<=') && left !== 'number' && left !== 'string') {
+            errors.push(`${lineOf(node)}变量 ${cond.name} 的类型是 ${left}，不能使用 ${cond.op} 比较。`);
+        }
+        if (left !== right) errors.push(`${lineOf(node)}变量 ${cond.name}（${left}）与比较值（${right}）类型不一致。`);
+    };
+    const checkAssignValue = (name, op, raw, node) => {
+        const base = vars.get(name);
+        const right = typeOfValue(raw);
+        if (op === '=') {
+            if (base !== right) errors.push(`${lineOf(node)}变量 ${name} 的类型固定为 ${base}，不能赋值为 ${right}。`);
+        } else if (op === '&=') {
+            if (base !== 'string') errors.push(`${lineOf(node)}只有字符串变量可以使用 &=：${name}`);
+            if (right !== 'string') errors.push(`${lineOf(node)}变量 ${name} 只能拼接字符串。`);
+        } else {
+            if (base !== 'number') errors.push(`${lineOf(node)}只有数字变量可以使用 ${op}：${name}`);
+            if (right !== 'number') errors.push(`${lineOf(node)}变量 ${name} 只能与数字进行 ${op} 运算。`);
+            if (op === '/=' || op === '%=') {
+                const value = jqbjUnquote(raw);
+                if (/^-?\d+(?:\.\d+)?$/.test(value) && Number(value) === 0) errors.push(`${lineOf(node)}不能除以 0。`);
+            }
+        }
+    };
+
+    const walk = (list) => {
+        (list || []).forEach((node) => {
+            if (!node) return;
+            if (node.type === 'say') { checkInterp(node.text, node); return; }
+            if (node.type === 'menu') {
+                checkInterp(node.prompt, node);
+                node.options.forEach((option) => { checkInterp(option.text, option); walk(option.body); });
+                return;
+            }
+            if (node.type === 'choice') {
+                checkInterp(node.prompt, node);
+                node.options.forEach((option) => checkInterp(option.text, option));
+                return;
+            }
+            if (node.type === 'if') {
+                node.branches.forEach((branch) => { checkCondition(branch.cond, node); walk(branch.body); });
+                return;
+            }
+            if (node.type === 'repeat') {
+                const raw = String(node.count_raw || '').trim();
+                if (/^-?\d+(?:\.\d+)?$/.test(raw)) {
+                    if (Number(raw) < 0) errors.push(`${lineOf(node)}重复次数不能为负数。`);
+                } else if (JQBJ_NAME_RE.test(raw)) {
+                    if (!vars.has(raw)) errors.push(`${lineOf(node)}重复次数引用了未声明的变量：${raw}`);
+                    else if (vars.get(raw) !== 'number') errors.push(`${lineOf(node)}重复次数变量 ${raw} 必须是数字。`);
+                } else {
+                    errors.push(`${lineOf(node)}重复次数格式无效：${raw}`);
+                }
+                loops.push({ 'defDepth': defDepth });
+                walk(node.body);
+                loops.pop();
+                return;
+            }
+            if (node.type === 'while' || node.type === 'until') {
+                checkCondition(node.cond, node);
+                loops.push({ 'defDepth': defDepth });
+                walk(node.body);
+                loops.pop();
+                return;
+            }
+            if (node.type === 'declare') {
+                if (!JQBJ_NAME_RE.test(node.name)) return;
+                if (vars.has(node.name)) { errors.push(`${lineOf(node)}变量已存在：${node.name}`); return; }
+                const op = node.op;
+                if (op === '=') {
+                    vars.set(node.name, typeOfValue(node.value_raw));
+                } else {
+                    const base = op === '&=' ? 'string' : 'number';
+                    vars.set(node.name, base);
+                    // 复合赋值本身相当于“声明初始值 + 立即运算”
+                    const scratch = new Map(vars);
+                    checkAssignValue(node.name, op, node.value_raw, node);
+                    vars.clear();
+                    scratch.forEach((value, key) => vars.set(key, value));
+                }
+                checkInterp(jqbjUnquote(node.value_raw), node);
+                return;
+            }
+            if (node.type === 'assign') {
+                if (!vars.has(node.name)) { errors.push(`${lineOf(node)}未声明的变量：${node.name}`); return; }
+                checkAssignValue(node.name, node.op, node.value_raw, node);
+                checkInterp(jqbjUnquote(node.value_raw), node);
+                return;
+            }
+            if (node.type === 'break' || node.type === 'continue') {
+                const loop = loops[loops.length - 1];
+                if (!loop || defDepth > loop.defDepth) errors.push(`${lineOf(node)}「${node.type === 'break' ? '跳出' : '继续'}」必须直接位于循环体内（封装块内不可用）。`);
+                return;
+            }
+            if (node.type === 'def') {
+                if (!node.name) errors.push(`${lineOf(node)}定义块缺少名称。`);
+                defDepth += 1;
+                walk(node.body);
+                defDepth -= 1;
+                return;
+            }
+            if (node.type === 'box') { walk(node.body); return; }
+            if (node.type === 'game') {
+                const seen = new Set();
+                node.branches.forEach((branch) => {
+                    if (seen.has(branch.outcome)) errors.push(`${lineOf(node)}对局“${node.title}”重复配置了「如果${JQBJ_OUTCOME_TEXT[branch.outcome]}」。`);
+                    seen.add(branch.outcome);
+                    walk(branch.body);
+                });
+                walk(node.body);
+            }
+        });
+    };
+
+    walk(tree);
+    return errors;
+};
 
 
 class StoryScript {
@@ -189,166 +1084,370 @@ class StoryScript {
      * @return {{nodes: object[], labels: object, errors: string[]}}
      */
     static parse(text) {
+        const source = String(text == null ? '' : text).replace(/\r\n?/g, '\n');
+        // 含 JQBJ 专属语法时走新解析器；纯旧剧本仍走原解析器，保证历史剧本零差异
+        if (source.split('\n').some((line) => JQBJ_DETECT.test(line.trim()))) return parseJQBJ(source);
         const nodes = [];
         const labels = {};
         const errors = [];
-        const lines = String(text == null ? '' : text).replace(/\r\n?/g, '\n').split('\n');
-        let pending = null;
-
-        lines.forEach((line, lineIndex) => {
-            // 行首缩进（2 空格 = 1 级，Tab 按 2 空格计）仅用于编辑器排版，解析时照常 trim
+        const rawLines = source.split('\n');
+        // 行首缩进（2 空格 = 1 级，Tab 按 2 空格计）：既用于编辑器排版，也用于结构化菜单块的边界判定
+        const lines = rawLines.map((line, lineIndex) => {
             const expanded = line.replace(/\t/g, '  ');
-            const indent = Math.min(8, Math.floor((expanded.length - expanded.trimStart().length) / 2));
-            const text_ = expanded.trim();
-            if (!text_ || text_.startsWith('#')) return;
-
-            // 统一写入行首缩进，供编辑器回填时还原手动缩进
-            const push = (node) => { node.indent = indent; nodes.push(node); return node; };
-
-            // 选项行：- 文本 -> 标签
-            const option = text_.match(/^-\s*(.+?)\s*->\s*(.+)$/);
-            if (option && pending && pending.type === 'choice') {
-                pending.options.push({ 'text': option[1].trim(), 'target': option[2].trim() });
-                return;
-            }
-
-            // 对局配置行：键=值
-            const config = text_.match(/^([^\s=]+)\s*=\s*(.*)$/);
-            if (config && pending && pending.type === 'game' && GAME_KEYS.includes(config[1])) {
-                pending.config_raw[config[1]] = config[2].trim();
-                return;
-            }
-
-            // 对话框：[说话人] 台词 / [角色|表情] 台词
-            const say = text_.match(/^\[([^\]]*)\]\s*(.*)$/);
-            if (say) {
-                const raw = say[1].trim();
-                const split = raw.indexOf('|');
-                const speaker = split < 0 ? raw : raw.slice(0, split).trim();
-                const expression = split < 0 ? '' : raw.slice(split + 1).trim();
-                push({ 'type': 'say', 'speaker': speaker, 'expression': expression, 'text': say[2].trim() });
-                pending = null;
-                return;
-            }
-
-            // 条件分支：% IF 胜利 -> 标签 / % ELSE -> 标签
-            if (text_.startsWith('%')) {
-                const body = text_.slice(1).trim();
-                const arrow = body.indexOf('->');
-                if (arrow < 0) { errors.push(`第 ${lineIndex + 1} 行条件分支缺少“-> 标签”：${text_}`); return; }
-                const head = body.slice(0, arrow).trim();
-                const target = body.slice(arrow + 2).trim();
-                if (/^else$/i.test(head)) {
-                    push({ 'type': 'cond', 'kind': 'else', 'condition': null, 'target': target });
-                    pending = null;
-                    return;
-                }
-                const stripped = head.replace(/^if\s*/i, '').trim();
-                const condition = COND_MAP[stripped] || COND_MAP[stripped.toLowerCase()] || null;
-                if (!condition) { errors.push(`第 ${lineIndex + 1} 行条件无效：${text_}（可用 胜利 / 失败 / 平局）`); return; }
-                push({ 'type': 'cond', 'kind': 'if', 'condition': condition, 'target': target });
-                pending = null;
-                return;
-            }
-
-            if (text_.startsWith('?')) {
-                // 选择节点可携带角色表情：? [角色|表情] 提示（与对话台词写法一致，可省略）
-                let body = text_.slice(1).trim();
-                let speaker = '';
-                let expression = '';
-                const face = body.match(/^\[([^\]]*)\]\s*(.*)$/);
-                if (face) {
-                    const raw = face[1].trim();
-                    const split = raw.indexOf('|');
-                    speaker = split < 0 ? raw : raw.slice(0, split).trim();
-                    expression = split < 0 ? '' : raw.slice(split + 1).trim();
-                    body = face[2].trim();
-                }
-                pending = push({ 'type': 'choice', 'speaker': speaker, 'expression': expression, 'prompt': body, 'options': [] });
-                return;
-            }
-
-            if (text_.startsWith('*')) {
-                pending = push({ 'type': 'game', 'title': text_.slice(1).trim(), 'config_raw': {} });
-                return;
-            }
-
-            // 对局块结束标记：结束此对局（仅作分块边界，运行时按普通节点跳过）
-            if (GAME_END_KEYWORDS.includes(text_)) {
-                push({ 'type': 'game_end' });
-                pending = null;
-                return;
-            }
-
-            // 分组框：框 标题 色=#6f42c1 / 结束框（仅编辑器分区，播放时跳过）
-            if (text_ === '结束框' || text_ === '框结束') {
-                push({ 'type': 'box_end' });
-                pending = null;
-                return;
-            }
-            if (/^框(?:\s|$)/.test(text_)) {
-                const tokens = text_.slice(1).trim().split(/\s+/).filter(Boolean);
-                let color = null;
-                const titleParts = [];
-                tokens.forEach((token) => {
-                    const matched = token.match(/^色=(.+)$/);
-                    if (matched) { color = matched[1].trim(); return; }
-                    titleParts.push(token);
-                });
-                push({ 'type': 'box', 'title': titleParts.join(' '), 'color': color });
-                pending = null;
-                return;
-            }
-
-            // 标注：@ 箭头 锚点 / @ 圈 4,4 / @ 清除（可选 色=#ff3b30）
-            if (text_.startsWith('@')) {
-                const tokens = text_.slice(1).trim().split(/\s+/).filter(Boolean);
-                const kind = MARK_KIND_MAP[tokens[0]] || null;
-                if (!kind) {
-                    errors.push(`第 ${lineIndex + 1} 行标注类型无效：${text_}`);
-                    return;
-                }
-                let color = null;
-                const positional = [];
-                tokens.slice(1).forEach((token) => {
-                    const matched = token.match(/^色=(.+)$/);
-                    if (matched) { color = matched[1].trim(); return; }
-                    positional.push(token);
-                });
-                push({ 'type': 'mark', 'kind': kind, 'target': positional[0] || '', 'color': color });
-                pending = null;
-                return;
-            }
-
-            if (text_.startsWith(':')) {
-                const name = text_.slice(1).trim();
-                labels[name] = nodes.length;
-                push({ 'type': 'label', 'name': name });
-                pending = null;
-                return;
-            }
-
-            if (text_.startsWith('->')) {
-                push({ 'type': 'jump', 'target': text_.slice(2).trim() });
-                pending = null;
-                return;
-            }
-
-            if (END_TARGETS.includes(text_)) {
-                push({ 'type': 'end' });
-                pending = null;
-                return;
-            }
-
-            // 继续对局：步数对话播完后回到当前对局
-            if (RESUME_KEYWORDS.includes(text_)) {
-                push({ 'type': 'resume' });
-                pending = null;
-                return;
-            }
-
-            errors.push(`第 ${lineIndex + 1} 行无法识别：${text_}`);
+            return {
+                'text': expanded.trim(),
+                'indent': Math.min(8, Math.floor((expanded.length - expanded.trimStart().length) / 2)),
+                'lineIndex': lineIndex,
+            };
         });
+        let menuSeq = 0;
+
+        // 选择提示可携带角色表情：? [角色|表情] 提示
+        const parseChoiceHeader = (body) => {
+            const face = body.match(/^\[([^\]]*)\]\s*(.*)$/);
+            if (!face) return { 'speaker': '', 'expression': '', 'prompt': body };
+            const raw = face[1].trim();
+            const split = raw.indexOf('|');
+            return {
+                'speaker': split < 0 ? raw : raw.slice(0, split).trim(),
+                'expression': split < 0 ? '' : raw.slice(split + 1).trim(),
+                'prompt': face[2].trim(),
+            };
+        };
+
+        // 查找与结构化菜单配对的「结束选择」；只认同级缩进的结束标记，避免吞掉父级菜单或后续剧情
+        const findMenuEnd = (from, to, indent) => {
+            for (let index = from; index < to; index += 1) {
+                const line = lines[index];
+                if (!line.text || line.indent > indent) continue;
+                // 只认与菜单标题同缩进的结束标记；更低缩进的是父级菜单的结束，不能误配
+                if (line.text === '结束选择') {
+                    if (line.indent === indent) return index;
+                    continue;
+                }
+                if (line.text === '结束定义' || line.text === '结束框' || line.text === '框结束' || GAME_END_KEYWORDS.includes(line.text)) return -1;
+            }
+            return -1;
+        };
+
+        const findDefEnd = (from, to, indent) => {
+            for (let index = from; index < to; index += 1) {
+                const line = lines[index];
+                if (line.indent === indent && line.text === '结束定义') return index;
+            }
+            return -1;
+        };
+
+        // 结构化菜单块：? 提示 / - 选项（缩进内容即该选项剧情）/ 结束选择
+        // 每个选项编译为「自动标签 + 内容 + 跳到块尾」，旧式「- 文本 -> 标签」写法保持原样。
+        const parseMenuBlock = (start, end) => {
+            const line = lines[start];
+            const header = parseChoiceHeader(line.text.slice(1).trim());
+            const seq = menuSeq;
+            menuSeq += 1;
+            const choice = {
+                'type': 'choice',
+                'block': true,
+                'speaker': header.speaker,
+                'expression': header.expression,
+                'prompt': header.prompt,
+                'options': [],
+            };
+            choice.indent = line.indent;
+            nodes.push(choice);
+
+            // 只把块内最外层缩进的「-」行当作选项；嵌套菜单的选项缩进更深，不会被误认
+            let optionIndent = -1;
+            for (let index = start + 1; index < end; index += 1) {
+                const item = lines[index];
+                if (!/^-\s*/.test(item.text)) continue;
+                if (optionIndent < 0 || item.indent < optionIndent) optionIndent = item.indent;
+            }
+            const optionLines = [];
+            if (optionIndent >= 0) {
+                for (let index = start + 1; index < end; index += 1) {
+                    if (lines[index].indent === optionIndent && /^-\s*/.test(lines[index].text)) optionLines.push(index);
+                }
+            }
+            if (!optionLines.length) errors.push(`第 ${line.lineIndex + 1} 行菜单块内没有任何选项。`);
+
+            optionLines.forEach((optionLine, position) => {
+                const segmentEnd = position + 1 < optionLines.length ? optionLines[position + 1] : end;
+                const optionLineInfo = lines[optionLine];
+                const raw = optionLineInfo.text.replace(/^-\s*/, '').trim();
+                const arrow = /^(.+?)\s*->\s*(.+)$/.exec(raw);
+                const option = { 'text': arrow ? arrow[1].trim() : raw, 'target': '', 'explicit': Boolean(arrow) };
+                choice.options.push(option);
+                if (!option.text) errors.push(`第 ${optionLineInfo.lineIndex + 1} 行菜单选项文字为空。`);
+                if (arrow) {
+                    option.target = arrow[2].trim();
+                    if (segmentEnd > optionLine + 1) {
+                        errors.push(`第 ${optionLineInfo.lineIndex + 1} 行菜单选项既写了“-> 标签”又带缩进内容，二者只能选一种。`);
+                        parseRange(optionLine + 1, segmentEnd);
+                    }
+                    return;
+                }
+                option.target = `__menu_${seq}_${position}`;
+                labels[option.target] = nodes.length;
+                const labelNode = { 'type': 'label', 'name': option.target, 'auto': 'menu', 'menu': seq, 'option': position };
+                labelNode.indent = optionIndent < 0 ? line.indent + 1 : optionIndent;
+                nodes.push(labelNode);
+                const before = nodes.length;
+                parseRange(optionLine + 1, segmentEnd);
+                option.body_nodes = nodes.slice(before);
+                const jumpNode = { 'type': 'jump', 'target': `__menu_end_${seq}`, 'auto': 'menu', 'menu': seq };
+                jumpNode.indent = optionIndent < 0 ? line.indent + 1 : optionIndent;
+                nodes.push(jumpNode);
+            });
+
+            const endNode = { 'type': 'choice_end', 'auto': 'menu', 'menu': seq };
+            endNode.indent = line.indent;
+            nodes.push(endNode);
+            labels[`__menu_end_${seq}`] = nodes.length;
+            const endLabel = { 'type': 'label', 'name': `__menu_end_${seq}`, 'auto': 'menu_end', 'menu': seq };
+            endLabel.indent = line.indent;
+            nodes.push(endLabel);
+            return end + 1;
+        };
+
+        // 封装块：定义 名称 / 内容 / 结束定义
+        // 播放时遇到定义行整块跳过，由「调用 名称」进入；块内执行到「结束定义」（或「返回」）时回到调用点。
+        const parseDefBlock = (start, end) => {
+            const line = lines[start];
+            const name = line.text.slice(2).trim();
+            if (!name) errors.push(`第 ${line.lineIndex + 1} 行封装块缺少名称。`);
+            const defNode = { 'type': 'def', 'name': name };
+            defNode.indent = line.indent;
+            nodes.push(defNode);
+            parseRange(start + 1, end);
+            const endNode = { 'type': 'def_end', 'name': name };
+            endNode.indent = line.indent;
+            nodes.push(endNode);
+            return end + 1;
+        };
+
+        const parseRange = (from, to) => {
+            let pending = null;
+            let index = from;
+            while (index < to) {
+                const line = lines[index];
+                const text_ = line.text;
+                const indent = line.indent;
+                const lineIndex = line.lineIndex;
+                if (!text_ || text_.startsWith('#')) { index += 1; continue; }
+
+                // 统一写入行首缩进，供编辑器回填时还原手动缩进
+                const push = (node) => { node.indent = indent; nodes.push(node); return node; };
+
+                // 选项行：- 文本 -> 标签（旧式选择）
+                const option = text_.match(/^-\s*(.+?)\s*->\s*(.+)$/);
+                if (option && pending && pending.type === 'choice') {
+                    pending.options.push({ 'text': option[1].trim(), 'target': option[2].trim() });
+                    index += 1;
+                    continue;
+                }
+
+                // 剧情级设置：对话框不透明度=60（可写在任意位置，播放时跳过；不影响后续对局配置）
+                const setting = text_.match(/^([^\s=]+)\s*=\s*(.*)$/);
+                if (setting && STORY_SETTING_KEYS.includes(setting[1])) {
+                    const value = parseDialogueOpacity(setting[2]);
+                    if (value === null) errors.push(`第 ${lineIndex + 1} 行对话框不透明度无效：${setting[2]}（应为 0-100 的整数）`);
+                    push({ 'type': 'setting', 'key': 'opacity', 'value': value === null ? DEFAULT_DIALOGUE_OPACITY : value, 'raw': setting[2].trim() });
+                    index += 1;
+                    continue;
+                }
+
+                // 对局配置行：键=值
+                const config = text_.match(/^([^\s=]+)\s*=\s*(.*)$/);
+                if (config && pending && pending.type === 'game' && GAME_KEYS.includes(config[1])) {
+                    pending.config_raw[config[1]] = config[2].trim();
+                    index += 1;
+                    continue;
+                }
+
+                // 对话框：[说话人] 台词 / [角色|表情] 台词
+                const say = text_.match(/^\[([^\]]*)\]\s*(.*)$/);
+                if (say) {
+                    const raw = say[1].trim();
+                    const split = raw.indexOf('|');
+                    const speaker = split < 0 ? raw : raw.slice(0, split).trim();
+                    const expression = split < 0 ? '' : raw.slice(split + 1).trim();
+                    push({ 'type': 'say', 'speaker': speaker, 'expression': expression, 'text': say[2].trim() });
+                    pending = null;
+                    index += 1;
+                    continue;
+                }
+
+                // 条件分支：% IF 胜利 -> 标签 / % ELSE -> 标签
+                if (text_.startsWith('%')) {
+                    const body = text_.slice(1).trim();
+                    const arrow = body.indexOf('->');
+                    if (arrow < 0) { errors.push(`第 ${lineIndex + 1} 行条件分支缺少“-> 标签”：${text_}`); index += 1; continue; }
+                    const head = body.slice(0, arrow).trim();
+                    const target = body.slice(arrow + 2).trim();
+                    if (/^else$/i.test(head)) {
+                        push({ 'type': 'cond', 'kind': 'else', 'condition': null, 'target': target });
+                        pending = null;
+                        index += 1;
+                        continue;
+                    }
+                    const stripped = head.replace(/^if\s*/i, '').trim();
+                    const condition = COND_MAP[stripped] || COND_MAP[stripped.toLowerCase()] || null;
+                    if (!condition) { errors.push(`第 ${lineIndex + 1} 行条件无效：${text_}（可用 胜利 / 失败 / 平局）`); index += 1; continue; }
+                    push({ 'type': 'cond', 'kind': 'if', 'condition': condition, 'target': target });
+                    pending = null;
+                    index += 1;
+                    continue;
+                }
+
+                // 结构化菜单块优先于旧式选择节点
+                if (text_.startsWith('?')) {
+                    const end = findMenuEnd(index + 1, to, indent);
+                    if (end >= 0) {
+                        index = parseMenuBlock(index, end);
+                        pending = null;
+                        continue;
+                    }
+                }
+
+                // 封装块
+                if (/^定义(?:\s|$)/.test(text_)) {
+                    const end = findDefEnd(index + 1, to, indent);
+                    if (end < 0) {
+                        errors.push(`第 ${lineIndex + 1} 行封装块缺少「结束定义」。`);
+                        index += 1;
+                        pending = null;
+                        continue;
+                    }
+                    index = parseDefBlock(index, end);
+                    pending = null;
+                    continue;
+                }
+
+                if (text_ === '结束选择' || text_ === '结束定义') {
+                    errors.push(`第 ${lineIndex + 1} 行「${text_}」没有对应的开始标记。`);
+                    index += 1;
+                    continue;
+                }
+
+                // 调用封装块 / 提前返回
+                if (/^调用(?:\s|$)/.test(text_)) {
+                    const target = text_.slice(2).trim();
+                    push({ 'type': 'call', 'target': target });
+                    pending = null;
+                    index += 1;
+                    continue;
+                }
+                if (text_ === '返回') {
+                    push({ 'type': 'return' });
+                    pending = null;
+                    index += 1;
+                    continue;
+                }
+
+                if (text_.startsWith('?')) {
+                    // 旧式选择节点可携带角色表情：? [角色|表情] 提示
+                    const header = parseChoiceHeader(text_.slice(1).trim());
+                    pending = push({ 'type': 'choice', 'speaker': header.speaker, 'expression': header.expression, 'prompt': header.prompt, 'options': [] });
+                    index += 1;
+                    continue;
+                }
+
+                if (text_.startsWith('*')) {
+                    pending = push({ 'type': 'game', 'title': text_.slice(1).trim(), 'config_raw': {} });
+                    index += 1;
+                    continue;
+                }
+
+                // 对局块结束标记：结束此对局（仅作分块边界，运行时按普通节点跳过）
+                if (GAME_END_KEYWORDS.includes(text_)) {
+                    push({ 'type': 'game_end' });
+                    pending = null;
+                    index += 1;
+                    continue;
+                }
+
+                // 分组框：框 标题 色=#6f42c1 / 结束框（仅编辑器分区，播放时跳过）
+                if (text_ === '结束框' || text_ === '框结束') {
+                    push({ 'type': 'box_end' });
+                    pending = null;
+                    index += 1;
+                    continue;
+                }
+                if (/^框(?:\s|$)/.test(text_)) {
+                    const tokens = text_.slice(1).trim().split(/\s+/).filter(Boolean);
+                    let color = null;
+                    const titleParts = [];
+                    tokens.forEach((token) => {
+                        const matched = token.match(/^色=(.+)$/);
+                        if (matched) { color = matched[1].trim(); return; }
+                        titleParts.push(token);
+                    });
+                    push({ 'type': 'box', 'title': titleParts.join(' '), 'color': color });
+                    pending = null;
+                    index += 1;
+                    continue;
+                }
+
+                // 标注：@ 箭头 锚点 / @ 圈 5,5 / @ 清除（可选 色=#ff3b30）
+                if (text_.startsWith('@')) {
+                    const tokens = text_.slice(1).trim().split(/\s+/).filter(Boolean);
+                    const kind = MARK_KIND_MAP[tokens[0]] || null;
+                    if (!kind) {
+                        errors.push(`第 ${lineIndex + 1} 行标注类型无效：${text_}`);
+                        index += 1;
+                        continue;
+                    }
+                    let color = null;
+                    const positional = [];
+                    tokens.slice(1).forEach((token) => {
+                        const matched = token.match(/^色=(.+)$/);
+                        if (matched) { color = matched[1].trim(); return; }
+                        positional.push(token);
+                    });
+                    push({ 'type': 'mark', 'kind': kind, 'target': positional[0] || '', 'color': color });
+                    pending = null;
+                    index += 1;
+                    continue;
+                }
+
+                if (text_.startsWith(':')) {
+                    const name = text_.slice(1).trim();
+                    labels[name] = nodes.length;
+                    push({ 'type': 'label', 'name': name });
+                    pending = null;
+                    index += 1;
+                    continue;
+                }
+
+                if (text_.startsWith('->')) {
+                    push({ 'type': 'jump', 'target': text_.slice(2).trim() });
+                    pending = null;
+                    index += 1;
+                    continue;
+                }
+
+                if (END_TARGETS.includes(text_)) {
+                    push({ 'type': 'end' });
+                    pending = null;
+                    index += 1;
+                    continue;
+                }
+
+                // 继续对局：步数对话播完后回到当前对局
+                if (RESUME_KEYWORDS.includes(text_)) {
+                    push({ 'type': 'resume' });
+                    pending = null;
+                    index += 1;
+                    continue;
+                }
+
+                errors.push(`第 ${lineIndex + 1} 行无法识别：${text_}`);
+                index += 1;
+            }
+        };
+
+        parseRange(0, lines.length);
 
         nodes.forEach((node) => {
             if (node.type === 'game') {
@@ -368,10 +1467,15 @@ class StoryScript {
      * @return {string[]} 错误列表，空数组表示通过
      */
     static validate(text) {
-        const { nodes, labels, errors } = StoryScript.parse(text);
+        const { nodes, labels, errors, tree } = StoryScript.parse(text);
         const result = [...errors];
+        if (tree) result.push(...validateJQBJTree(tree));
 
         const hasTarget = (name) => Object.prototype.hasOwnProperty.call(labels, name) || END_TARGETS.includes(name);
+        const defNames = new Set();
+        nodes.forEach((node) => {
+            if (node.type === 'def' && node.name) defNames.add(node.name);
+        });
 
         nodes.forEach((node, index) => {
             if (node.type === 'choice') {
@@ -380,6 +1484,11 @@ class StoryScript {
                     if (!item.text) result.push(`第 ${index + 1} 个节点存在空选项文字。`);
                     if (!hasTarget(item.target)) result.push(`选项“${item.text}”指向了不存在的标签：${item.target}`);
                 });
+            } else if (node.type === 'call') {
+                if (!node.target) result.push(`第 ${index + 1} 次调用缺少封装块名称。`);
+                else if (!defNames.has(node.target)) result.push(`调用了不存在的封装块：${node.target}`);
+            } else if (node.type === 'def') {
+                if (!node.name) result.push(`第 ${index + 1} 个封装块缺少名称。`);
             } else if (node.type === 'jump') {
                 if (!hasTarget(node.target)) result.push(`跳转指向了不存在的标签：${node.target}`);
             } else if (node.type === 'cond') {
@@ -393,12 +1502,13 @@ class StoryScript {
                     if (config[key] && !hasTarget(config[key])) result.push(`对局“${node.title}”的“${key}”指向了不存在的标签：${config[key]}`);
                 });
                 if (config.points_text && config.points.length === 0) result.push(`对局“${node.title}”的刷草点格式无效：${config.points_text}`);
-                if (config.schedule_text && config.schedule.length === 0) result.push(`对局“${node.title}”的刷草计划格式无效：${config.schedule_text}（应形如 3:4,4;5,4|9:2,2）`);
+                if (config.schedule_text && config.schedule.length === 0) result.push(`对局“${node.title}”的刷草计划格式无效：${config.schedule_text}（应形如 3:5,5;6,5|9:3,3）`);
                 if (config.end_text && !config.end_kind) result.push(`对局“${node.title}”的“结束对局”格式无效：${config.end_text}（应为 胜负 或 步数:12）`);
                 if (config.post_text && !config.post) result.push(`对局“${node.title}”的“结束后”格式无效：${config.post_text}（应为 结果 或 继续）`);
-                if (config.dialogues_text && !config.dialogues.length) result.push(`对局“${node.title}”的“步数对话”格式无效：${config.dialogues_text}（应形如 3:标签|6:标签）`);
+                if (config.dialogues_text && !config.dialogues.length) result.push(`对局“${node.title}”的“步数对话”触发格式无效：${config.dialogues_text}（应形如 3:标签|落子5,5:标签|拿起:标签|AI拿起:标签）`);
                 (config.dialogues || []).forEach((item) => {
-                    if (!hasTarget(item.target)) result.push(`对局“${node.title}”的步数对话指向了不存在的标签：${item.target}`);
+                    if (item.type === 'cell' && (item.x == null || item.y == null)) result.push(`对局“${node.title}”的对话触发坐标无效：${item.cell_text || ''}（应形如 5,5，取值 1-9）`);
+                    if (!hasTarget(item.target)) result.push(`对局“${node.title}”的对话触发指向了不存在的标签：${item.target}`);
                 });
             } else if (node.type === 'mark') {
                 if (node.kind === 'arrow') {
@@ -406,8 +1516,10 @@ class StoryScript {
                     if (!anchor) result.push(`第 ${index + 1} 个标注的箭头缺少锚点。`);
                     else if (!anchor.startsWith('#') && !MARK_ANCHORS.includes(anchor)) result.push(`箭头锚点未知：${anchor}（可用 ${MARK_ANCHORS.join(' / ')} 或 #元素id）`);
                 } else if (node.kind === 'circle') {
-                    if (!node.cell) result.push(`第 ${index + 1} 个标注的圈坐标无效：${node.target}（应形如 4,4，取值 0-8）`);
+                    if (!node.cell) result.push(`第 ${index + 1} 个标注的圈坐标无效：${node.target}（应形如 5,5，取值 1-9，先横后竖）`);
                 }
+            } else if (node.type === 'setting') {
+                if (node.key === 'opacity' && parseDialogueOpacity(node.raw) === null) result.push(`第 ${index + 1} 个设置的对话框不透明度无效：${node.raw}（应为 0-100 的整数）`);
             }
         });
 
@@ -423,6 +1535,36 @@ class StoryScript {
             }
         });
         if (boxStack.length) result.push(`第 ${boxStack[boxStack.length - 1] + 1} 个「框」缺少「结束框」。`);
+
+        // 封装块与结构化菜单块：必须成对出现，「返回」只能在封装块内使用
+        const defStack = [];
+        const menuStack = [];
+        const defSeen = new Set();
+        let defDepth = 0;
+        nodes.forEach((node, index) => {
+            if (node.type === 'def') {
+                if (defStack.length) result.push(`第 ${index + 1} 个「定义」不能嵌套在另一个封装块内。`);
+                if (node.name) {
+                    if (defSeen.has(node.name)) result.push(`封装块名称重复：${node.name}`);
+                    defSeen.add(node.name);
+                }
+                defStack.push(index);
+                defDepth += 1;
+            } else if (node.type === 'def_end') {
+                if (!defStack.length) result.push(`第 ${index + 1} 个「结束定义」没有对应的「定义」。`);
+                else defStack.pop();
+                defDepth = Math.max(0, defDepth - 1);
+            } else if (node.type === 'choice' && node.block) {
+                menuStack.push(index);
+            } else if (node.type === 'choice_end') {
+                if (!menuStack.length) result.push(`第 ${index + 1} 个「结束选择」没有对应的菜单块。`);
+                else menuStack.pop();
+            } else if (node.type === 'return' && !defDepth) {
+                result.push(`第 ${index + 1} 个「返回」必须位于封装块内。`);
+            }
+        });
+        if (defStack.length) result.push(`第 ${defStack[defStack.length - 1] + 1} 个「定义」缺少「结束定义」。`);
+        if (menuStack.length) result.push(`第 ${menuStack[menuStack.length - 1] + 1} 个菜单块缺少「结束选择」。`);
 
         return result;
     }
@@ -454,15 +1596,44 @@ class StoryScript {
     static stringify(parsed) {
         const nodes = (parsed && parsed.nodes) || [];
         const lines = [];
-        const pad = (node) => '  '.repeat(Math.max(0, Math.min(10, Math.trunc(Number(node.indent) || 0))));
-        nodes.forEach((node) => {
+        const emitted = new Set();
+        let indentFloor = 0;
+        const pad = (node) => '  '.repeat(Math.max(indentFloor, 0, Math.min(10, Math.trunc(Number(node.indent) || 0))));
+        const faceText = (node) => (node.speaker ? (node.expression ? `[${node.speaker}|${node.expression}] ` : `[${node.speaker}] `) : '');
+        function emitList(list) { (list || []).forEach(emitNode); }
+        function emitNode(node) {
+            // 自动生成的标签/跳转与结构化选项内容由各自的容器负责输出，避免重复
+            if (!node || node.auto || emitted.has(node)) return;
+            emitted.add(node);
             const lead = pad(node);
             if (node.type === 'say') lines.push(lead + (node.expression ? `[${node.speaker}|${node.expression}] ${node.text}` : `[${node.speaker}] ${node.text}`));
             else if (node.type === 'choice') {
-                const face = node.speaker ? (node.expression ? `[${node.speaker}|${node.expression}] ` : `[${node.speaker}] `) : '';
+                const face = faceText(node);
                 lines.push(lead + `? ${face}${node.prompt}`);
-                (node.options || []).forEach((item) => lines.push(lead + `- ${item.text} -> ${item.target}`));
-            } else if (node.type === 'game') {
+                if (!node.block) {
+                    (node.options || []).forEach((item) => lines.push(lead + `- ${item.text} -> ${item.target}`));
+                    return;
+                }
+                const level = Math.max(indentFloor, 0, Math.min(10, Math.trunc(Number(node.indent) || 0)));
+                const optionLead = '  '.repeat(Math.min(10, level + 1));
+                (node.options || []).forEach((item) => {
+                    if (item.explicit) {
+                        lines.push(`${optionLead}- ${item.text} -> ${item.target}`);
+                        return;
+                    }
+                    lines.push(`${optionLead}- ${item.text}`);
+                    const prevFloor = indentFloor;
+                    indentFloor = Math.max(indentFloor, Math.min(10, level + 1));
+                    emitList(item.body_nodes);
+                    indentFloor = prevFloor;
+                });
+                lines.push(lead + '结束选择');
+            } else if (node.type === 'choice_end') return;
+            else if (node.type === 'def') lines.push(lead + `定义 ${node.name}`);
+            else if (node.type === 'def_end') lines.push(lead + '结束定义');
+            else if (node.type === 'call') lines.push(lead + `调用 ${node.target}`);
+            else if (node.type === 'return') lines.push(lead + '返回');
+            else if (node.type === 'game') {
                 const config = node.config || normalizeGameConfig(node.config_raw || {});
                 lines.push(lead + `* ${node.title}`);
                 const configLead = lead + '  ';
@@ -487,13 +1658,17 @@ class StoryScript {
             else if (node.type === 'game_end') lines.push(lead + '结束此对局');
             else if (node.type === 'box') lines.push(lead + `框${node.title ? ` ${node.title}` : ''}${node.color ? ` 色=${node.color}` : ''}`);
             else if (node.type === 'box_end') lines.push(lead + '结束框');
+            else if (node.type === 'setting') {
+                lines.push(lead + `${STORY_SETTING_KEYS[0]}=${node.value == null ? DEFAULT_DIALOGUE_OPACITY : node.value}`);
+            }
             else if (node.type === 'mark') {
                 const tail = node.color ? ` 色=${node.color}` : '';
                 if (node.kind === 'clear') lines.push(lead + '@ 清除');
                 else if (node.kind === 'arrow') lines.push(lead + `@ 箭头 ${node.target || ''}${tail}`.trimEnd());
-                else if (node.kind === 'circle') { const cell = node.cell || [0, 0]; lines.push(lead + `@ 圈 ${cell[0]},${cell[1]}${tail}`); }
+                else if (node.kind === 'circle') { const cell = node.cell || [4, 4]; const point = fromBoardPoint(cell[0], cell[1]); lines.push(lead + `@ 圈 ${point[0]},${point[1]}${tail}`); }
             }
-        });
+        }
+        emitList(nodes);
         return lines.join('\n');
     }
 }
@@ -511,7 +1686,116 @@ class StoryRuntime {
         this.index = 0;
         // 最近一次对局的结果（'win' | 'lose' | 'draw'），供条件分支判定
         this.last_outcome = null;
-        this.skip_labels();
+        // JQBJ 变量表：name -> {type, value}；类型由首次声明固定
+        this.vars = Object.create(null);
+        // 重复循环的运行状态：loop_id -> {i, count}
+        this.loop_state = Object.create(null);
+        // 封装块调用栈：保存每次「调用」之后的返回位置
+        this.call_stack = [];
+        this.defs = {};
+        this.def_ranges = {};
+        this.collect_defs();
+        this.settle();
+    }
+
+    /**
+     * @description: 收集封装块入口与结束位置，供调用/跳过使用
+     * @return {void}
+     */
+    collect_defs() {
+        const stack = [];
+        this.nodes.forEach((node, index) => {
+            if (!node) return;
+            if (node.type === 'def') stack.push({ 'name': node.name, 'start': index });
+            else if (node.type === 'def_end' && stack.length) {
+                const entry = stack.pop();
+                this.def_ranges[entry.start] = index;
+                if (!Object.prototype.hasOwnProperty.call(this.defs, entry.name)) this.defs[entry.name] = { 'start': entry.start, 'end': index };
+            }
+        });
+    }
+
+    /**
+     * @description: 跳过标签、未调用的封装块、调用/返回等无展示节点
+     * @return {object}
+     */
+    settle() {
+        let guard = 0;
+        while (this.index < this.nodes.length) {
+            if (guard++ > 200000) break;
+            const node = this.nodes[this.index];
+            if (!node) break;
+            if (node.type === 'label') { this.index++; continue; }
+            // 剧情级设置（如对话框不透明度）只在播放前读取，不参与剧情推进
+            if (node.type === 'setting') { this.index++; continue; }
+            if (node.type === 'declare') { this.declare_var(node); this.index++; continue; }
+            if (node.type === 'assign') { this.assign_var(node); this.index++; continue; }
+            if (node.type === 'if') {
+                if (this.eval_condition(node.cond) && Object.prototype.hasOwnProperty.call(this.labels, node.target)) {
+                    this.index = this.labels[node.target];
+                    continue;
+                }
+                this.index++;
+                continue;
+            }
+            if (node.type === 'while') {
+                this.index = this.labels[this.eval_condition(node.cond) ? node.body : node.end];
+                continue;
+            }
+            if (node.type === 'until') {
+                this.index = this.labels[this.eval_condition(node.cond) ? node.end : node.body];
+                continue;
+            }
+            if (node.type === 'repeat') {
+                const count = Math.max(0, Math.min(10000, Math.floor(Number(this.value_of(node.count_raw)) || 0)));
+                this.loop_state[node.loop_id] = { 'i': 0, 'count': count };
+                this.index = count <= 0 ? this.labels[node.end] : this.index + 1;
+                continue;
+            }
+            if (node.type === 'repeat_end') {
+                const state = this.loop_state[node.loop_id];
+                if (!state) { this.index++; continue; }
+                state.i += 1;
+                if (state.i < state.count) this.index = this.labels[node.body];
+                else { delete this.loop_state[node.loop_id]; this.index++; }
+                continue;
+            }
+            if (node.type === 'break' || node.type === 'continue') {
+                this.index = Object.prototype.hasOwnProperty.call(this.labels, node.target) ? this.labels[node.target] : this.index + 1;
+                continue;
+            }
+            if (node.type === 'def') {
+                const end = this.def_ranges[this.index];
+                this.index = typeof end === 'number' ? end + 1 : this.index + 1;
+                continue;
+            }
+            if (node.type === 'def_end') {
+                if (this.call_stack.length) { this.index = this.call_stack.pop(); continue; }
+                this.index++;
+                continue;
+            }
+            if (node.type === 'choice_end') { this.index++; continue; }
+            if (node.type === 'call') {
+                const def = this.defs[node.target];
+                if (!def || this.call_stack.length >= 64) { this.index++; continue; }
+                this.call_stack.push(this.index + 1);
+                this.index = def.start + 1;
+                continue;
+            }
+            if (node.type === 'return') {
+                if (this.call_stack.length) { this.index = this.call_stack.pop(); continue; }
+                this.index++;
+                continue;
+            }
+            // 结构化菜单自动生成的“跳到块尾”由状态机直接执行，不暴露给播放页
+            if (node.type === 'jump' && node.auto) {
+                if (Object.prototype.hasOwnProperty.call(this.labels, node.target)) { this.index = this.labels[node.target]; continue; }
+                this.index++;
+                continue;
+            }
+            break;
+        }
+        return this.current();
     }
 
     skip_labels() {
@@ -540,7 +1824,7 @@ class StoryRuntime {
      */
     advance() {
         this.index++;
-        this.skip_labels();
+        this.settle();
         return this.current();
     }
 
@@ -556,7 +1840,7 @@ class StoryRuntime {
         }
         if (Object.prototype.hasOwnProperty.call(this.labels, name)) {
             this.index = this.labels[name];
-            this.skip_labels();
+            this.settle();
         }
         return this.current();
     }
@@ -613,6 +1897,90 @@ class StoryRuntime {
         if (node.kind === 'else' || (node.kind === 'if' && this.last_outcome === node.condition)) return this.goto(node.target);
         return this.advance();
     }
+
+    /**
+     * @description: 变量插值：把台词/选项文案里的 ${变量名} 替换为当前值
+     * @param {string} text
+     * @return {string}
+     */
+    interpolate(text) {
+        return String(text == null ? '' : text).replace(/\$\{([^}]+)\}/g, (whole, name) => {
+            const key = String(name).trim();
+            return Object.prototype.hasOwnProperty.call(this.vars, key) ? this.format_value(this.vars[key].value) : whole;
+        });
+    }
+
+    format_value(value) {
+        if (typeof value === 'boolean') return value ? '真' : '假';
+        return String(value == null ? '' : value);
+    }
+
+    /** 解析 JQBJ 值：真/假、引号字符串、数字、已声明变量，其余按裸字符串处理 */
+    value_of(raw) {
+        const text = String(raw == null ? '' : raw).trim();
+        if (text === '真') return true;
+        if (text === '假') return false;
+        if (/^"(?:[^"\\]|\\.)*"$/.test(text) || /^'(?:[^'\\]|\\.)*'$/.test(text)) return this.interpolate(jqbjUnquote(text));
+        if (/^-?\d+(?:\.\d+)?$/.test(text)) return Number(text);
+        const name = text;
+        if (JQBJ_NAME_RE.test(name) && Object.prototype.hasOwnProperty.call(this.vars, name)) return this.vars[name].value;
+        return this.interpolate(text);
+    }
+
+    type_of_value(raw) {
+        const text = String(raw == null ? '' : raw).trim();
+        if (text === '真' || text === '假') return 'boolean';
+        if (/^"(?:[^"\\]|\\.)*"$/.test(text) || /^'(?:[^'\\]|\\.)*'$/.test(text)) return 'string';
+        if (/^-?\d+(?:\.\d+)?$/.test(text)) return 'number';
+        if (JQBJ_NAME_RE.test(text) && Object.prototype.hasOwnProperty.call(this.vars, text)) return this.vars[text].type;
+        return 'string';
+    }
+
+    declare_var(node) {
+        const value = this.value_of(node.value_raw);
+        const type = node.op === '=' ? this.type_of_value(node.value_raw) : (node.op === '&=' ? 'string' : 'number');
+        const initial = node.op === '=' ? value : (type === 'number' ? 0 : '');
+        this.vars[node.name] = { 'type': type, 'value': initial };
+        if (node.op !== '=') this.apply_op(node.name, node.op, value);
+    }
+
+    assign_var(node) {
+        if (!Object.prototype.hasOwnProperty.call(this.vars, node.name)) return;
+        if (node.op === '=') {
+            this.vars[node.name].value = this.value_of(node.value_raw);
+            return;
+        }
+        this.apply_op(node.name, node.op, this.value_of(node.value_raw));
+    }
+
+    apply_op(name, op, value) {
+        const entry = this.vars[name];
+        if (!entry) return;
+        if (op === '&=') { entry.value = String(entry.value) + String(value); return; }
+        const left = Number(entry.value);
+        const right = Number(value);
+        if (!Number.isFinite(left) || !Number.isFinite(right)) return;
+        if (op === '+=') entry.value = left + right;
+        else if (op === '-=') entry.value = left - right;
+        else if (op === '*=') entry.value = left * right;
+        else if (op === '/=') entry.value = right === 0 ? left : left / right;
+        else if (op === '%=') entry.value = right === 0 ? left : left % right;
+    }
+
+    eval_condition(cond) {
+        if (!cond || !Object.prototype.hasOwnProperty.call(this.vars, cond.name)) return false;
+        const left = this.vars[cond.name].value;
+        const right = this.value_of(cond.value);
+        if (cond.op === '==') return typeof left === typeof right ? left === right : String(left) === String(right);
+        if (cond.op === '!=') return typeof left === typeof right ? left !== right : String(left) !== String(right);
+        const a = typeof left === 'number' ? left : String(left);
+        const b = typeof right === 'number' ? right : String(right);
+        if (cond.op === '>') return a > b;
+        if (cond.op === '<') return a < b;
+        if (cond.op === '>=') return a >= b;
+        if (cond.op === '<=') return a <= b;
+        return false;
+    }
 }
 
 
@@ -645,14 +2013,14 @@ const TUTORIAL_BASIC = [
     '[导员ZERO] 名字下面，就是对应选手的生命值哦。',
     '[导员ZERO] 显而易见，当你的生命值不大于0，你就输了哦。',
     '[导员ZERO] 生命值很重要。当你的生命值慢慢减少到一定程度，你的名字也会逐渐变成红色哦。',
-    '@ 圈 4,4',
+    '@ 圈 5,5',
     '[导员ZERO] 来。试着在这洁白的棋盘上第一次落子吧？',
     '? 准备好后开始第一场实战',
     '- 开始 -> 实战',
     '- 再讲讲 -> 教程开始',
     ':实战',
     '* 对局 第一场实战',
-    '  刷草点=4,4;5,4;6,5;3,5;5,5',
+    '  刷草点=5,5;6,5;7,4;4,4;6,4',
     '  我方=黑',
     '  先手=黑',
     '  胜利=胜利',
@@ -684,10 +2052,10 @@ const TUTORIAL_ADVANCED = [
     '@ 箭头 生命值',
     '[导员ZERO] 足够强力的攻击可以在哪怕对手反击的情况下也能一击将其打倒，换句话说，它至少由7颗棋子构成。',
     '[导员ZERO] 我们将其称之为“重击”。',
-    '@ 圈 4,4',
+    '@ 圈 5,5',
     ':进阶实战',
     '* 对局 进阶实战',
-    '  刷草点=4,4;2,4;6,4;4,2;4,6',
+    '  刷草点=5,5;3,5;7,5;5,7;5,3',
     '  我方=黑',
     '  先手=黑',
     '  胜利=进阶胜利',
@@ -708,6 +2076,6 @@ const DEFAULT_CATALOG = {
     ],
 };
 
-globalThis.StoryExports = { StoryScript, StoryRuntime, DEFAULT_CATALOG, BOARD_SIZE, MARK_ANCHORS, COND_TEXT, COND_MAP };
+globalThis.StoryExports = { StoryScript, StoryRuntime, DEFAULT_CATALOG, BOARD_SIZE, MARK_ANCHORS, COND_TEXT, COND_MAP, parseDialogues, dialoguesToText, toBoardPoint, fromBoardPoint };
 
-export { StoryScript, StoryRuntime, DEFAULT_CATALOG, MARK_ANCHORS, COND_TEXT, COND_MAP };
+export { StoryScript, StoryRuntime, DEFAULT_CATALOG, MARK_ANCHORS, COND_TEXT, COND_MAP, parseDialogues, dialoguesToText, toBoardPoint, fromBoardPoint };
