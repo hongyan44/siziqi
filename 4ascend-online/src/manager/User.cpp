@@ -57,13 +57,16 @@ sqlite3_stmt* p_claim_coin_match = nullptr;
 sqlite3_stmt* p_get_skins        = nullptr;
 sqlite3_stmt* p_buy_skin_piece   = nullptr;
 sqlite3_stmt* p_buy_skin_piece_rouge = nullptr;
+sqlite3_stmt* p_buy_skin_piece_atlantis = nullptr;
 sqlite3_stmt* p_buy_skin_grass   = nullptr;
 sqlite3_stmt* p_buy_skin_grass_gold = nullptr;
 sqlite3_stmt* p_buy_skin_grass_jade = nullptr;
 sqlite3_stmt* p_buy_skin_board      = nullptr;
 sqlite3_stmt* p_buy_skin_board_gold = nullptr;
+sqlite3_stmt* p_buy_skin_board_atlantis = nullptr;
 sqlite3_stmt* p_buy_skin_theme   = nullptr;
 sqlite3_stmt* p_buy_skin_theme_black = nullptr;
+sqlite3_stmt* p_buy_skin_theme_liuqing = nullptr;
 
 // 消耗品：单局投稿券（购买后存入背包，投稿时按张消耗）
 sqlite3_stmt* p_get_ticket     = nullptr;
@@ -86,6 +89,12 @@ sqlite3_stmt* p_get_gift_voucher = nullptr;
 sqlite3_stmt* p_buy_gift_voucher = nullptr;
 sqlite3_stmt* p_take_gift_voucher = nullptr;
 sqlite3_stmt* p_give_gift_voucher = nullptr;
+
+// 消耗品：3000 棋币好友赠礼（每周限购 1 个，赠送后对方获得 3000 棋币兑换券）
+sqlite3_stmt* p_get_gift_voucher_3000      = nullptr;
+sqlite3_stmt* p_buy_gift_voucher_3000      = nullptr;
+sqlite3_stmt* p_take_gift_voucher_3000     = nullptr;
+sqlite3_stmt* p_give_gift_voucher_3000     = nullptr;
 
 sqlite3_stmt* p_friend_id_user   = nullptr;
 sqlite3_stmt* p_friend_id_uuid   = nullptr;
@@ -256,6 +265,9 @@ void init() noexcept {
     // 背包消耗品：好友赠礼个数与最近购买自然日（商店每日限购 1 个）。
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN gift_coin_500 INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN gift_coin_500_day INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
+    // 背包消耗品：3000 棋币好友赠礼个数与最近购买自然周（周一 0 点刷新，每周限购 1 个）。
+    sqlite3_exec(db, "ALTER TABLE users ADD COLUMN gift_coin_3000 INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "ALTER TABLE users ADD COLUMN gift_coin_3000_week INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
     // 已购皮肤：棋子（黑白合并，沿用旧的黑白两列）/ 草 / 棋盘 / 风格 UI，仅影响本人客户端的渲染，不参与对局判定。
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN skin_stone_white INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN skin_stone_black INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
@@ -266,8 +278,12 @@ void init() noexcept {
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN skin_board_gold INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN skin_theme INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN skin_theme_black INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "ALTER TABLE users ADD COLUMN skin_theme_liuqing INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
     // 高级定制棋子（Le Rouge et Le Noir）：后加的独立棋子皮肤，与基础棋子皮肤互斥。
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN skin_piece_rouge INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
+    // 亚特兰蒂斯棋子（亚拉弥赛亚的遗留）/ 亚特兰蒂斯棋盘：后加的独立皮肤，与同组皮肤互斥。
+    sqlite3_exec(db, "ALTER TABLE users ADD COLUMN skin_piece_atlantis INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "ALTER TABLE users ADD COLUMN skin_board_atlantis INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
 
     // 没有索引则创建
     sqlite3_exec(db, "CREATE INDEX IF NOT EXISTS idx_users_mail ON users (mail)", nullptr, nullptr, nullptr);
@@ -407,11 +423,35 @@ void init() noexcept {
         &p_give_gift_voucher,
         nullptr
     );
+    // 好友赠礼 3000：读取个数与最近购买周 / 每周限购购买 / 赠送时条件扣减 / 给好友发 3000 棋币兑换券。
+    sqlite3_prepare_v2(db, "SELECT gift_coin_3000, gift_coin_3000_week FROM users WHERE uuid = ?;", -1, &p_get_gift_voucher_3000, nullptr);
+    sqlite3_prepare_v2(
+        db,
+        "UPDATE users SET coin = coin - ?, gift_coin_3000 = gift_coin_3000 + 1, gift_coin_3000_week = ? "
+        "WHERE uuid = ? AND coin >= ? AND gift_coin_3000_week <> ?;",
+        -1,
+        &p_buy_gift_voucher_3000,
+        nullptr
+    );
+    sqlite3_prepare_v2(
+        db,
+        "UPDATE users SET gift_coin_3000 = gift_coin_3000 - 1 WHERE uuid = ? AND gift_coin_3000 >= 1;",
+        -1,
+        &p_take_gift_voucher_3000,
+        nullptr
+    );
+    sqlite3_prepare_v2(
+        db,
+        "UPDATE users SET voucher_coin = voucher_coin + 1 WHERE uuid = ?;",
+        -1,
+        &p_give_gift_voucher_3000,
+        nullptr
+    );
 
     // 皮肤：读取已购状态；购买时用条件 UPDATE 原子扣币并置位，避免并发重复购买。
     sqlite3_prepare_v2(
         db,
-        "SELECT skin_stone_white, skin_stone_black, skin_grass, skin_board, skin_theme, skin_board_gold, skin_grass_gold, skin_piece_rouge, skin_theme_black, skin_grass_jade FROM users WHERE uuid = ?;",
+        "SELECT skin_stone_white, skin_stone_black, skin_grass, skin_board, skin_theme, skin_board_gold, skin_grass_gold, skin_piece_rouge, skin_theme_black, skin_grass_jade, skin_piece_atlantis, skin_board_atlantis, skin_theme_liuqing FROM users WHERE uuid = ?;",
         -1,
         &p_get_skins,
         nullptr
@@ -428,6 +468,13 @@ void init() noexcept {
         "UPDATE users SET coin = coin - ?, skin_piece_rouge = 1 WHERE uuid = ? AND coin >= ? AND skin_piece_rouge = 0;",
         -1,
         &p_buy_skin_piece_rouge,
+        nullptr
+    );
+    sqlite3_prepare_v2(
+        db,
+        "UPDATE users SET coin = coin - ?, skin_piece_atlantis = 1 WHERE uuid = ? AND coin >= ? AND skin_piece_atlantis = 0;",
+        -1,
+        &p_buy_skin_piece_atlantis,
         nullptr
     );
     sqlite3_prepare_v2(
@@ -467,6 +514,13 @@ void init() noexcept {
     );
     sqlite3_prepare_v2(
         db,
+        "UPDATE users SET coin = coin - ?, skin_board_atlantis = 1 WHERE uuid = ? AND coin >= ? AND skin_board_atlantis = 0;",
+        -1,
+        &p_buy_skin_board_atlantis,
+        nullptr
+    );
+    sqlite3_prepare_v2(
+        db,
         "UPDATE users SET coin = coin - ?, skin_theme = 1 WHERE uuid = ? AND coin >= ? AND skin_theme = 0;",
         -1,
         &p_buy_skin_theme,
@@ -477,6 +531,13 @@ void init() noexcept {
         "UPDATE users SET coin = coin - ?, skin_theme_black = 1 WHERE uuid = ? AND coin >= ? AND skin_theme_black = 0;",
         -1,
         &p_buy_skin_theme_black,
+        nullptr
+    );
+    sqlite3_prepare_v2(
+        db,
+        "UPDATE users SET coin = coin - ?, skin_theme_liuqing = 1 WHERE uuid = ? AND coin >= ? AND skin_theme_liuqing = 0;",
+        -1,
+        &p_buy_skin_theme_liuqing,
         nullptr
     );
     sqlite3_exec(
@@ -536,13 +597,16 @@ void close() noexcept {
     sqlite3_finalize(p_get_skins);
     sqlite3_finalize(p_buy_skin_piece);
     sqlite3_finalize(p_buy_skin_piece_rouge);
+    sqlite3_finalize(p_buy_skin_piece_atlantis);
     sqlite3_finalize(p_buy_skin_grass);
     sqlite3_finalize(p_buy_skin_grass_gold);
     sqlite3_finalize(p_buy_skin_grass_jade);
     sqlite3_finalize(p_buy_skin_board);
     sqlite3_finalize(p_buy_skin_board_gold);
+    sqlite3_finalize(p_buy_skin_board_atlantis);
     sqlite3_finalize(p_buy_skin_theme);
     sqlite3_finalize(p_buy_skin_theme_black);
+    sqlite3_finalize(p_buy_skin_theme_liuqing);
     sqlite3_finalize(p_get_ticket);
     sqlite3_finalize(p_add_ticket);
     sqlite3_finalize(p_buy_ticket);
@@ -557,6 +621,10 @@ void close() noexcept {
     sqlite3_finalize(p_buy_gift_voucher);
     sqlite3_finalize(p_take_gift_voucher);
     sqlite3_finalize(p_give_gift_voucher);
+    sqlite3_finalize(p_get_gift_voucher_3000);
+    sqlite3_finalize(p_buy_gift_voucher_3000);
+    sqlite3_finalize(p_take_gift_voucher_3000);
+    sqlite3_finalize(p_give_gift_voucher_3000);
     sqlite3_finalize(p_all_user);
     sqlite3_finalize(p_friend_id_user);
     sqlite3_finalize(p_friend_id_uuid);
@@ -1142,17 +1210,20 @@ int purchase_level(std::string_view uuid, int target_level, int64_t price, int& 
     return 0;
 };
 
-// 查询已购皮肤：棋子（黑白合并）/ 高级定制棋子 / 草 / 金菱草 / 白玉玲珑 / 棋盘 / 玄金棋盘 / 风格 UI / 黑派 UI
-bool get_skins(std::string_view uuid, bool& piece, bool& piece_rouge, bool& grass, bool& grass_gold, bool& grass_jade, bool& board, bool& board_gold, bool& theme, bool& theme_black) noexcept {
+// 查询已购皮肤：棋子（黑白合并）/ 高级定制棋子 / 亚特兰蒂斯棋子 / 草 / 金菱草 / 白玉玲珑 / 棋盘 / 玄金棋盘 / 亚特兰蒂斯棋盘 / 风格 UI / 黑派 UI / 留青 UI
+bool get_skins(std::string_view uuid, bool& piece, bool& piece_rouge, bool& piece_atlantis, bool& grass, bool& grass_gold, bool& grass_jade, bool& board, bool& board_gold, bool& board_atlantis, bool& theme, bool& theme_black, bool& theme_liuqing) noexcept {
     piece = false;
     piece_rouge = false;
+    piece_atlantis = false;
     grass = false;
     grass_gold = false;
     grass_jade = false;
     board = false;
     board_gold = false;
+    board_atlantis = false;
     theme = false;
     theme_black = false;
+    theme_liuqing = false;
     if (!db || !p_get_skins || uuid.empty()) return false;
 
     bind_text(p_get_skins, 1, uuid);
@@ -1168,6 +1239,9 @@ bool get_skins(std::string_view uuid, bool& piece, bool& piece_rouge, bool& gras
         piece_rouge = sqlite3_column_int(p_get_skins, 7) != 0;
         theme_black = sqlite3_column_int(p_get_skins, 8) != 0;
         grass_jade = sqlite3_column_int(p_get_skins, 9) != 0;
+        piece_atlantis = sqlite3_column_int(p_get_skins, 10) != 0;
+        board_atlantis = sqlite3_column_int(p_get_skins, 11) != 0;
+        theme_liuqing = sqlite3_column_int(p_get_skins, 12) != 0;
     }
     reset(p_get_skins);
     return rc == SQLITE_ROW;
@@ -1179,8 +1253,8 @@ int purchase_skin(std::string_view uuid, std::string_view item, int64_t price, b
     coin  = 0;
     if (!db || uuid.empty() || price < 0) return -1;
 
-    bool piece = false, piece_rouge = false, grass = false, grass_gold = false, grass_jade = false, board = false, board_gold = false, theme = false, theme_black = false;
-    if (!get_skins(uuid, piece, piece_rouge, grass, grass_gold, grass_jade, board, board_gold, theme, theme_black)) return -1;
+    bool piece = false, piece_rouge = false, piece_atlantis = false, grass = false, grass_gold = false, grass_jade = false, board = false, board_gold = false, board_atlantis = false, theme = false, theme_black = false, theme_liuqing = false;
+    if (!get_skins(uuid, piece, piece_rouge, piece_atlantis, grass, grass_gold, grass_jade, board, board_gold, board_atlantis, theme, theme_black, theme_liuqing)) return -1;
 
     sqlite3_stmt* statement = nullptr;
     bool current            = false;
@@ -1190,6 +1264,9 @@ int purchase_skin(std::string_view uuid, std::string_view item, int64_t price, b
     } else if (item == "piece_rouge") {
         statement = p_buy_skin_piece_rouge;
         current   = piece_rouge;
+    } else if (item == "piece_atlantis") {
+        statement = p_buy_skin_piece_atlantis;
+        current   = piece_atlantis;
     } else if (item == "grass") {
         statement = p_buy_skin_grass;
         current   = grass;
@@ -1205,12 +1282,18 @@ int purchase_skin(std::string_view uuid, std::string_view item, int64_t price, b
     } else if (item == "board_gold") {
         statement = p_buy_skin_board_gold;
         current   = board_gold;
+    } else if (item == "board_atlantis") {
+        statement = p_buy_skin_board_atlantis;
+        current   = board_atlantis;
     } else if (item == "theme") {
         statement = p_buy_skin_theme;
         current   = theme;
     } else if (item == "theme_black") {
         statement = p_buy_skin_theme_black;
         current   = theme_black;
+    } else if (item == "theme_liuqing") {
+        statement = p_buy_skin_theme_liuqing;
+        current   = theme_liuqing;
     } else {
         return -1;
     }
@@ -1415,6 +1498,11 @@ int64_t day_index(int64_t now_ms) noexcept {
     return (now_ms + 8LL * 60 * 60 * 1000) / DAY_MS;
 };
 
+// 东八区自然周序号（周一 0 点为换周分界）：1970-01-01 为周四，日序号 +3 后按 7 天取整
+int64_t week_index(int64_t now_ms) noexcept {
+    return (day_index(now_ms) + 3) / 7;
+};
+
 // 查询好友赠礼个数与最近购买日
 bool get_gift_vouchers(std::string_view uuid, int64_t& vouchers, int64_t& day) noexcept {
     vouchers = 0;
@@ -1488,6 +1576,91 @@ int send_gift_voucher(std::string_view from, std::string_view to) noexcept {
     const int give_rc      = sqlite3_step(p_give_gift_voucher);
     const int give_changed = sqlite3_changes(db);
     reset(p_give_gift_voucher);
+    if (give_rc != SQLITE_DONE || give_changed != 1) {
+        sqlite3_exec(db, "ROLLBACK", nullptr, nullptr, nullptr);
+        return -1;
+    }
+
+    if (sqlite3_exec(db, "COMMIT", nullptr, nullptr, nullptr) != SQLITE_OK) {
+        sqlite3_exec(db, "ROLLBACK", nullptr, nullptr, nullptr);
+        return -1;
+    }
+    return 0;
+};
+
+// 查询 3000 好友赠礼个数与最近购买周
+bool get_gift_vouchers_3000(std::string_view uuid, int64_t& vouchers, int64_t& week) noexcept {
+    vouchers = 0;
+    week     = 0;
+    if (!db || !p_get_gift_voucher_3000 || uuid.empty()) return false;
+
+    bind_text(p_get_gift_voucher_3000, 1, uuid);
+    const int rc = sqlite3_step(p_get_gift_voucher_3000);
+    if (rc == SQLITE_ROW) {
+        vouchers = sqlite3_column_int64(p_get_gift_voucher_3000, 0);
+        week     = sqlite3_column_int64(p_get_gift_voucher_3000, 1);
+    }
+    reset(p_get_gift_voucher_3000);
+    return rc == SQLITE_ROW;
+};
+
+// 棋币购买 3000 好友赠礼（每周限购 1 个）：返回 0 成功、2 棋币不足、3 本周已购、-1 失败
+int purchase_gift_voucher_3000(std::string_view uuid, int64_t price, int64_t week, int64_t& vouchers, int64_t& coin) noexcept {
+    vouchers = 0;
+    coin     = 0;
+    if (!db || !p_buy_gift_voucher_3000 || uuid.empty() || price <= 0) return -1;
+
+    int64_t exp          = 0;
+    int64_t stored_week  = 0;
+    if (!get_wallet(uuid, coin, exp) || !get_gift_vouchers_3000(uuid, vouchers, stored_week)) return -1;
+    if (stored_week == week) return 3;
+    if (coin < price) return 2;
+
+    sqlite3_bind_int64(p_buy_gift_voucher_3000, 1, price);
+    sqlite3_bind_int64(p_buy_gift_voucher_3000, 2, week);
+    bind_text(p_buy_gift_voucher_3000, 3, uuid);
+    sqlite3_bind_int64(p_buy_gift_voucher_3000, 4, price);
+    sqlite3_bind_int64(p_buy_gift_voucher_3000, 5, week);
+
+    const int rc      = sqlite3_step(p_buy_gift_voucher_3000);
+    const int changed = sqlite3_changes(db);
+    reset(p_buy_gift_voucher_3000);
+
+    if (rc != SQLITE_DONE || changed != 1) {
+        // 并发导致本周已购买时返回「本周已购」，余额不足返回「棋币不足」。
+        int64_t latest_week = 0;
+        if (get_gift_vouchers_3000(uuid, vouchers, latest_week) && latest_week == week) return 3;
+        if (get_wallet(uuid, coin, exp) && coin < price) return 2;
+        return -1;
+    }
+    if (!get_wallet(uuid, coin, exp) || !get_gift_vouchers_3000(uuid, vouchers, stored_week)) return -1;
+    return 0;
+};
+
+// 赠送好友：扣减自己 1 个 3000 赠礼并给对方背包增加 1 张 3000 棋币兑换券
+int send_gift_voucher_3000(std::string_view from, std::string_view to) noexcept {
+    if (!db || !p_take_gift_voucher_3000 || !p_give_gift_voucher_3000 || from.empty() || to.empty() || from == to) return -1;
+
+    int64_t vouchers = 0;
+    int64_t week     = 0;
+    if (!get_gift_vouchers_3000(from, vouchers, week)) return -1;
+    if (vouchers < 1) return 2;
+
+    if (sqlite3_exec(db, "BEGIN IMMEDIATE TRANSACTION", nullptr, nullptr, nullptr) != SQLITE_OK) return -1;
+
+    bind_text(p_take_gift_voucher_3000, 1, from);
+    const int take_rc      = sqlite3_step(p_take_gift_voucher_3000);
+    const int take_changed = sqlite3_changes(db);
+    reset(p_take_gift_voucher_3000);
+    if (take_rc != SQLITE_DONE || take_changed != 1) {
+        sqlite3_exec(db, "ROLLBACK", nullptr, nullptr, nullptr);
+        return 2;
+    }
+
+    bind_text(p_give_gift_voucher_3000, 1, to);
+    const int give_rc      = sqlite3_step(p_give_gift_voucher_3000);
+    const int give_changed = sqlite3_changes(db);
+    reset(p_give_gift_voucher_3000);
     if (give_rc != SQLITE_DONE || give_changed != 1) {
         sqlite3_exec(db, "ROLLBACK", nullptr, nullptr, nullptr);
         return -1;

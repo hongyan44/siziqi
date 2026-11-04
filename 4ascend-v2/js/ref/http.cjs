@@ -116,13 +116,14 @@ window.http_user_voucher_500_use = async (token) => {
 };
 
 /**
- * @description: 赠送好友赠礼（扣减自己 1 个，好友背包增加 1 张 500 棋币兑换券）
+ * @description: 赠送好友赠礼（扣减自己 1 个，好友背包增加对应面额的棋币兑换券）
  * @param {string} token
  * @param {string} uuid 好友标识
- * @return {Promise<{ok: boolean, reason: string, gift_vouchers: number} | void>}
+ * @param {string} kind gift500（默认，500 棋币）或 gift3000（3000 棋币）
+ * @return {Promise<{ok: boolean, reason: string, gift_vouchers?: number, gift3000_vouchers?: number} | void>}
  */
-window.http_user_voucher_gift_send = async (token, uuid) => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/voucher_gift_send`, { token, uuid });
+window.http_user_voucher_gift_send = async (token, uuid, kind = 'gift500') => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/voucher_gift_send`, { token, uuid, kind });
     if (!rjson || !rjson.status) return;
     return rjson.result;
 };
@@ -145,6 +146,27 @@ window.http_puzzle_daily_query = async () => {
     const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/puzzle/daily_query`, {});
     if (!rjson || !rjson.status || !rjson.result || !rjson.result.code) return null;
     return rjson.result;
+};
+
+/**
+ * @description: 查询残局 AI 战术矫正开关（公开接口，失败时按开启处理）
+ * @return {Promise<boolean>}
+ */
+window.http_puzzle_ai_tactics_query = async () => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/puzzle/ai_tactics_query`, {});
+    if (!rjson || !rjson.status || !rjson.result) return true;
+    return Boolean(rjson.result.enabled);
+};
+
+/**
+ * @description: 管理员更新残局 AI 战术矫正开关（仅 level=4 可写，全服生效）
+ * @param {string} token
+ * @param {boolean} enabled
+ * @return {Promise<boolean>}
+ */
+window.http_puzzle_ai_tactics_update = async (token, enabled) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/puzzle/ai_tactics_update`, { token, enabled });
+    return Boolean(rjson && rjson.status);
 };
 
 /**
@@ -367,7 +389,7 @@ window.http_user_unlock_level = async (token, secret) => {
 /**
  * @description: 商店购买（权限码 level2 / level3 与皮肤 piece / piece_rouge / grass / board）
  * @param {string} token
- * @param {'level2'|'level3'|'piece'|'piece_rouge'|'grass'|'grass_gold'|'grass_jade'|'board'|'board_gold'} item
+ * @param {'level2'|'level3'|'piece'|'piece_rouge'|'piece_atlantis'|'grass'|'grass_gold'|'grass_jade'|'board'|'board_gold'|'board_atlantis'} item
  * @return {Promise<{ok: boolean, reason: string, level: number, coin: number, exp_level: number, exp_cur: number, exp_need: number, skins: string[]} | void>}
  */
 window.http_shop_buy = async (token, item) => {

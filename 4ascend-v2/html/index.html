@@ -318,6 +318,15 @@
             z-index: 1200;
         }
 
+        /* 好友赠礼与二次确认弹窗需浮在背包之上，避免从背包内赠送时被面板遮挡 */
+        #dialog_gift_friend {
+            z-index: 1300;
+        }
+
+        #dialog_gift_confirm {
+            z-index: 1500;
+        }
+
         .backpack-body {
             display: flex;
             flex-direction: column;
@@ -487,6 +496,23 @@
 
         .bag-ticket-icon.is-gift i {
             color: #9f1239;
+        }
+
+        /* 3000 好友赠礼：紫金配色，与 500 赠礼区分 */
+        .bag-ticket-icon.is-gift-3000 {
+            border-color: #7c3aed;
+            background: repeating-linear-gradient(135deg, #faf5ff, #faf5ff 6px, #ede9fe 6px, #ede9fe 12px);
+            color: #6d28d9;
+            box-shadow: inset 0 1px 0 #fff;
+        }
+
+        .bag-ticket-icon.is-gift-3000 span {
+            font-size: 0.52rem;
+            letter-spacing: 0.02em;
+        }
+
+        .bag-ticket-icon.is-gift-3000 i {
+            color: #5b21b6;
         }
 
         .bag-item-main {
@@ -982,6 +1008,18 @@
         <div class='black-sun'></div>
         <div class='black-rays'><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
         <div class='black-dust'><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    </div>
+
+    <!-- 留青背景插画：开启留青主题时才显示 -->
+    <div class='liuqing-backdrop' aria-hidden='true'></div>
+
+    <!-- 留青动态装饰层：薄荷柔光 / 漂移纸带 / 飘落新叶 / 漂浮花粉 -->
+    <div class='liuqing-fx' aria-hidden='true'>
+        <div class='lqf-glow'></div>
+        <div class='lqf-ribbons'><i></i><i></i><i></i></div>
+        <div class='lqf-leaves'><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class='lqf-motes'><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class='lqf-vignette'></div>
     </div>
 
     <div id='button_music_wrap' class='position-fixed top-0 start-0 d-flex p-2' style='z-index: 1050;'>
@@ -1547,6 +1585,13 @@
                             <sl-switch id='switch_skin_piece_rouge' size='small' disabled></sl-switch>
                         </div>
 
+                        <div class='d-flex align-items-center justify-content-between gap-3 border rounded px-3 py-2 d-none' data-skin-row='piece_atlantis'>
+                            <div class='min-w-0'>
+                                <div class='fw-bold'>棋子皮肤：亚拉弥赛亚的遗留</div>
+                            </div>
+                            <sl-switch id='switch_skin_piece_atlantis' size='small' disabled></sl-switch>
+                        </div>
+
                         <div class='d-flex align-items-center justify-content-between gap-3 border rounded px-3 py-2 d-none' data-skin-row='grass'>
                             <div class='min-w-0'>
                                 <div class='fw-bold'>草皮肤：反曲点</div>
@@ -1582,6 +1627,13 @@
                             <sl-switch id='switch_skin_board_gold' size='small' disabled></sl-switch>
                         </div>
 
+                        <div class='d-flex align-items-center justify-content-between gap-3 border rounded px-3 py-2 d-none' data-skin-row='board_atlantis'>
+                            <div class='min-w-0'>
+                                <div class='fw-bold'>棋盘皮肤：亚特兰蒂斯</div>
+                            </div>
+                            <sl-switch id='switch_skin_board_atlantis' size='small' disabled></sl-switch>
+                        </div>
+
                         <div class='d-flex align-items-center justify-content-between gap-3 border rounded px-3 py-2 d-none' data-skin-row='theme'>
                             <div class='min-w-0'>
                                 <div class='fw-bold'>UI替换：幽蓝时空</div>
@@ -1594,6 +1646,13 @@
                                 <div class='fw-bold'>UI替换：保存神域</div>
                             </div>
                             <sl-switch id='switch_skin_theme_black' size='small' disabled></sl-switch>
+                        </div>
+
+                        <div class='d-flex align-items-center justify-content-between gap-3 border rounded px-3 py-2 d-none' data-skin-row='theme_liuqing'>
+                            <div class='min-w-0'>
+                                <div class='fw-bold'>UI替换：留青</div>
+                            </div>
+                            <sl-switch id='switch_skin_theme_liuqing' size='small' disabled></sl-switch>
                         </div>
                     </div>
                     <small class='text-secondary'>未拥有的皮肤可在棋币商店购买；开关只影响本机显示。</small>
@@ -1839,7 +1898,7 @@
     <!-- 好友赠礼：从背包选择一位好友赠送 -->
     <sl-dialog id='dialog_gift_friend' label='赠送好友赠礼' class='d-none'>
         <div class='d-flex flex-column gap-2'>
-            <div class='text-secondary small'>选择一位好友，赠送 1 个「好友赠礼：500棋币」，对方背包将获得 1 张 500 棋币兑换券。</div>
+            <div id='span_gift_friend_tip' class='text-secondary small'>选择一位好友，赠送 1 个「好友赠礼：500棋币」，对方背包将获得 1 张 500 棋币兑换券。</div>
             <div id='div_gift_friend_list' class='d-flex flex-column gap-2' style='max-height: 20rem; overflow-y: auto;'></div>
         </div>
         <sl-button slot='footer' id='button_gift_friend_close' variant='neutral'>取消</sl-button>

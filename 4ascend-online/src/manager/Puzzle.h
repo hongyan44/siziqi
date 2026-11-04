@@ -62,6 +62,10 @@ bool list_submissions(std::string_view creator, int status_filter, std::vector<S
 // 审核投稿：通过时发布到目标位置并返回投稿人 uuid，供上层发放投稿奖励
 bool review_submission(uint64_t id, bool approve, std::string_view reviewer, uint64_t now, bool allow_overwrite, bool& slot_occupied, std::string& creator) noexcept;
 
+// 残局 AI 战术矫正开关（全局单行设置）：true 表示启用斩杀 / 防自杀矫正
+bool query_ai_tactics(bool& enabled) noexcept;
+bool update_ai_tactics(bool enabled, uint64_t updated_at) noexcept;
+
 // 记录首次通关：ref 为关卡号或每日残局版本，首次写入返回 true，重复通关返回 false
 bool claim_clear(std::string_view uuid, std::string_view target, int64_t ref, uint64_t cleared_at) noexcept;
 

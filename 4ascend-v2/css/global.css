@@ -2245,3 +2245,821 @@ html.theme-black.black-scene-on body.bg-light {
         animation: none !important;
     }
 }
+
+/* ==========================================
+   留青 · 风格 UI（白纸青晕，清爽干净）
+   由 skin.cjs 在已购且本地开关打开时挂到 html.theme-liuqing
+   三套主题互斥：留青 > 黑派 > 幽蓝时空
+   ========================================== */
+
+html.theme-liuqing {
+    color-scheme: light;
+
+    /* Shoelace：中性色压成纸白与青灰，主色替换为留青绿 */
+    --sl-color-neutral-0: #ffffff;
+    --sl-color-neutral-50: #f7fbf6;
+    --sl-color-neutral-100: #eef7ef;
+    --sl-color-neutral-200: #e1efe3;
+    --sl-color-neutral-300: #cde2d2;
+    --sl-color-neutral-400: #adc7b6;
+    --sl-color-neutral-500: #83a291;
+    --sl-color-neutral-600: #628372;
+    --sl-color-neutral-700: #486757;
+    --sl-color-neutral-800: #325244;
+    --sl-color-neutral-900: #1f3d32;
+    --sl-color-neutral-950: #112a21;
+
+    --sl-color-primary-50: #eefaf1;
+    --sl-color-primary-100: #dcf4e3;
+    --sl-color-primary-200: #bce8cb;
+    --sl-color-primary-300: #93d8ad;
+    --sl-color-primary-400: #67c08c;
+    --sl-color-primary-500: #3f9b6d;
+    --sl-color-primary-600: #2f855a;
+    --sl-color-primary-700: #24694a;
+    --sl-color-primary-800: #1d543c;
+    --sl-color-primary-900: #174532;
+    --sl-color-primary-950: #0d2a1f;
+
+    --sl-panel-background-color: #fbfdf9;
+    --sl-panel-border-color: rgba(47, 107, 77, 0.18);
+    --sl-overlay-background-color: rgba(244, 250, 245, 0.74);
+}
+
+html.theme-liuqing,
+html.theme-liuqing body {
+    background-color: #f7fbf7;
+    color: #214434;
+}
+
+/* 全站底纹：暖白纸面 + 左上青晕 + 右下薄荷光，保持明亮通透 */
+html.theme-liuqing body {
+    background-image:
+        radial-gradient(1100px 700px at 8% -6%, rgba(158, 210, 175, 0.14), transparent 60%),
+        radial-gradient(900px 620px at 96% 104%, rgba(182, 226, 197, 0.16), transparent 62%),
+        linear-gradient(180deg, #fbfdf9, #f2f9f2 46%, #eaf5ec);
+    background-attachment: fixed;
+}
+
+html.theme-liuqing body.bg-light,
+html.theme-liuqing .bg-light {
+    background-color: transparent !important;
+}
+
+html.theme-liuqing .bg-white,
+html.theme-liuqing .card,
+html.theme-liuqing .list-group-item {
+    background-color: rgba(255, 255, 255, 0.84) !important;
+    color: #214434;
+    backdrop-filter: blur(6px);
+}
+
+html.theme-liuqing .text-secondary,
+html.theme-liuqing .text-muted {
+    color: #64836f !important;
+}
+
+html.theme-liuqing .text-dark,
+html.theme-liuqing .text-black,
+html.theme-liuqing .text-body {
+    color: #1f3d32 !important;
+}
+
+html.theme-liuqing .text-primary {
+    color: #2f855a !important;
+}
+
+html.theme-liuqing .text-success {
+    color: #2e8c5f !important;
+}
+
+html.theme-liuqing .border,
+html.theme-liuqing .border-top,
+html.theme-liuqing .border-bottom,
+html.theme-liuqing .border-start,
+html.theme-liuqing .border-end {
+    border-color: rgba(47, 107, 77, 0.18) !important;
+}
+
+html.theme-liuqing .border.rounded,
+html.theme-liuqing .border-top.rounded {
+    background-color: rgba(255, 255, 255, 0.66) !important;
+}
+
+html.theme-liuqing a {
+    color: #2b7d57;
+}
+
+html.theme-liuqing hr {
+    border-color: rgba(47, 107, 77, 0.16);
+}
+
+/* 经济面板跟随留青：白纸卡片 + 淡青描边 */
+html.theme-liuqing .wallet-card {
+    border-color: rgba(47, 107, 77, 0.24);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(238, 248, 239, 0.9));
+    box-shadow: inset 0 1px 0 #ffffff, 0 6px 18px rgba(47, 107, 77, 0.08);
+}
+
+html.theme-liuqing .wallet-card-exp-title {
+    color: #52725f;
+}
+
+html.theme-liuqing .wallet-card-exp-title b {
+    color: #2f855a;
+}
+
+html.theme-liuqing .wallet-bar {
+    background: #e4f0e6;
+}
+
+html.theme-liuqing .wallet-card-exp-sub {
+    color: #7a9484;
+}
+
+html.theme-liuqing .wallet-card-coin {
+    border-color: rgba(47, 107, 77, 0.28);
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 2px 8px rgba(47, 107, 77, 0.1);
+}
+
+html.theme-liuqing .wallet-card-coin-label {
+    color: #567a63;
+}
+
+html.theme-liuqing .wallet-card-coin-value,
+html.theme-liuqing .wallet-inline {
+    color: #2f855a;
+}
+
+/* 滚动条换成青绿 */
+html.theme-liuqing * {
+    scrollbar-color: rgba(63, 155, 109, 0.4) transparent;
+}
+
+html.theme-liuqing ::-webkit-scrollbar-thumb {
+    background-color: rgba(63, 155, 109, 0.4);
+}
+
+/* 加载遮罩同步换肤，避免开启主题后首屏闪黑 */
+html.theme-liuqing .loading-a {
+    background: #f7fbf7;
+}
+
+html.theme-liuqing .loading-t {
+    color: #6d8b77;
+}
+
+/* 纸白按钮：淡青描边 + 极轻扫光，按下保持干净 */
+html.theme-liuqing sl-button:not([variant])::part(base),
+html.theme-liuqing sl-button[variant='default']::part(base) {
+    background-color: #fbfdf9 !important;
+    background-image:
+        linear-gradient(115deg,
+            rgba(163, 216, 182, 0) 34%,
+            rgba(163, 216, 182, 0.16) 50%,
+            rgba(163, 216, 182, 0) 66%),
+        linear-gradient(180deg, #ffffff 0%, #f4faf5 62%, #e9f4ea 100%) !important;
+    background-size: 240% 100%, 100% 100% !important;
+    background-repeat: no-repeat !important;
+    background-position: 135% 0, 0 0 !important;
+    border: 1px solid rgba(47, 107, 77, 0.34) !important;
+    color: #214434 !important;
+    box-shadow:
+        inset 0 1px 0 #ffffff,
+        0 2px 8px rgba(47, 107, 77, 0.08) !important;
+    animation: lq-energy-sweep 7.2s ease-in-out infinite;
+    transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+html.theme-liuqing sl-button:not([variant])::part(label),
+html.theme-liuqing sl-button[variant='default']::part(label) {
+    color: #214434 !important;
+}
+
+html.theme-liuqing sl-button:not([variant]):not([disabled]):hover::part(base),
+html.theme-liuqing sl-button[variant='default']:not([disabled]):hover::part(base) {
+    border-color: rgba(47, 133, 90, 0.68) !important;
+    box-shadow:
+        inset 0 1px 0 #ffffff,
+        0 4px 14px rgba(47, 133, 90, 0.18) !important;
+}
+
+@keyframes lq-energy-sweep {
+
+    0%,
+    62%,
+    100% {
+        background-position: 135% 0, 0 0;
+    }
+
+    24% {
+        background-position: -30% 0, 0 0;
+    }
+}
+
+/* 圆形按钮：纸白圆盘 + 细青环 + 中心淡青 */
+html.theme-liuqing sl-button[circle]::part(base) {
+    background-color: #ffffff !important;
+    background-image:
+        radial-gradient(circle at 50% 50%, rgba(163, 216, 182, 0.2) 0%, rgba(163, 216, 182, 0) 58%),
+        linear-gradient(180deg, #ffffff, #f1f9f2) !important;
+    background-size: 100% 100% !important;
+    background-position: 0 0 !important;
+    border: 1px solid rgba(47, 107, 77, 0.36) !important;
+    color: #214434 !important;
+    box-shadow:
+        inset 0 0 0 3px rgba(255, 255, 255, 0.8),
+        0 3px 10px rgba(47, 107, 77, 0.12) !important;
+    animation: none !important;
+}
+
+html.theme-liuqing sl-button[circle]::part(label) {
+    color: #214434 !important;
+}
+
+html.theme-liuqing sl-button[circle]:not([disabled]):hover::part(base) {
+    border-color: rgba(47, 133, 90, 0.7) !important;
+    box-shadow:
+        inset 0 0 0 3px rgba(255, 255, 255, 0.9),
+        0 4px 16px rgba(47, 133, 90, 0.2) !important;
+}
+
+/* ==========================================
+   留青 · 主页动态插画（分页面背景 + 漂移纸带 + 飘落新叶）
+   仅主页挂载 .liuqing-backdrop / .liuqing-fx
+   ========================================== */
+
+.liuqing-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.6s ease;
+    background: #f7fbf7 url('/image/theme/liuqing-home.jpg?v=20261105') center 58%/cover no-repeat;
+    transform-origin: 50% 48%;
+    filter: saturate(1.02) brightness(1.02);
+    animation: lq-backdrop-drift 72s ease-in-out infinite alternate;
+    will-change: transform;
+}
+
+html.theme-liuqing .liuqing-backdrop {
+    opacity: 1;
+}
+
+@keyframes lq-backdrop-drift {
+    from {
+        transform: scale(1.02) translate3d(0, 0, 0);
+    }
+
+    to {
+        transform: scale(1.07) translate3d(1%, -0.8%, 0);
+    }
+}
+
+.liuqing-fx {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.8s ease;
+}
+
+html.theme-liuqing .liuqing-fx {
+    opacity: 1;
+}
+
+/* 主页柔光：左上大面积薄荷晕染，缓慢呼吸 */
+.liuqing-fx .lqf-glow {
+    position: absolute;
+    top: -22vmax;
+    left: -16vmax;
+    width: 70vmax;
+    height: 70vmax;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(169, 222, 187, 0.24) 0%, rgba(169, 222, 187, 0.08) 42%, transparent 70%);
+    filter: blur(10px);
+    animation: lq-glow-breathe 16s ease-in-out infinite;
+}
+
+/* 主页纸带：三条极淡的绿色飘带，慢速横移 */
+.liuqing-fx .lqf-ribbons i {
+    position: absolute;
+    display: block;
+    height: 22vmin;
+    border-radius: 50%;
+    background: linear-gradient(90deg, transparent, rgba(126, 196, 152, 0.16) 46%, rgba(190, 230, 201, 0.1) 64%, transparent);
+    filter: blur(6px);
+    animation: lq-ribbon-drift 42s ease-in-out infinite alternate;
+}
+
+.liuqing-fx .lqf-ribbons i:nth-child(1) {
+    top: 58%;
+    left: -12%;
+    width: 64vw;
+    transform: rotate(-6deg);
+}
+
+.liuqing-fx .lqf-ribbons i:nth-child(2) {
+    top: 72%;
+    right: -16%;
+    width: 58vw;
+    transform: rotate(5deg);
+    animation-delay: -12s;
+    animation-duration: 50s;
+}
+
+.liuqing-fx .lqf-ribbons i:nth-child(3) {
+    top: 44%;
+    right: 6%;
+    width: 34vw;
+    height: 14vmin;
+    transform: rotate(-13deg);
+    animation-delay: -24s;
+    animation-duration: 36s;
+}
+
+@keyframes lq-ribbon-drift {
+    from {
+        transform: translate3d(-2%, 0, 0) rotate(-6deg);
+    }
+
+    to {
+        transform: translate3d(3%, -2%, 0) rotate(-3deg);
+    }
+}
+
+/* 飘落新叶：叶形渐变块，缓慢下落并摆头 */
+.liuqing-fx .lqf-leaves i {
+    position: absolute;
+    top: -10vh;
+    display: block;
+    width: 2.4vmin;
+    height: 4.2vmin;
+    border-radius: 0 100% 0 100%;
+    background: linear-gradient(135deg, rgba(131, 198, 153, 0.6), rgba(79, 155, 109, 0.35));
+    opacity: 0;
+    animation: lq-leaf-fall 24s linear infinite;
+}
+
+.liuqing-fx .lqf-leaves i:nth-child(1) {
+    left: 8%;
+    animation-delay: -3s;
+    animation-duration: 26s;
+}
+
+.liuqing-fx .lqf-leaves i:nth-child(2) {
+    left: 24%;
+    animation-delay: -12s;
+    animation-duration: 32s;
+    transform: scale(0.8);
+}
+
+.liuqing-fx .lqf-leaves i:nth-child(3) {
+    left: 46%;
+    animation-delay: -6s;
+    animation-duration: 28s;
+    transform: scale(1.1);
+}
+
+.liuqing-fx .lqf-leaves i:nth-child(4) {
+    left: 68%;
+    animation-delay: -19s;
+    animation-duration: 34s;
+    transform: scale(0.9);
+}
+
+.liuqing-fx .lqf-leaves i:nth-child(5) {
+    left: 84%;
+    animation-delay: -9s;
+    animation-duration: 30s;
+}
+
+.liuqing-fx .lqf-leaves i:nth-child(6) {
+    left: 93%;
+    animation-delay: -22s;
+    animation-duration: 36s;
+    transform: scale(0.72);
+}
+
+@keyframes lq-leaf-fall {
+    0% {
+        transform: translate3d(0, 0, 0) rotate(0deg);
+        opacity: 0;
+    }
+
+    8% {
+        opacity: 0.7;
+    }
+
+    50% {
+        transform: translate3d(3vw, 52vh, 0) rotate(140deg);
+    }
+
+    88% {
+        opacity: 0.55;
+    }
+
+    100% {
+        transform: translate3d(-2vw, 112vh, 0) rotate(300deg);
+        opacity: 0;
+    }
+}
+
+/* 漂浮花粉：细小的青白光源 */
+.liuqing-fx .lqf-motes i,
+.lq-scene .lq-motes i {
+    position: absolute;
+    display: block;
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: rgba(226, 250, 234, 0.92);
+    box-shadow: 0 0 6px rgba(163, 221, 184, 0.85);
+    opacity: 0;
+    animation: lq-mote-rise 20s linear infinite;
+}
+
+.liuqing-fx .lqf-motes i:nth-child(1),
+.lq-scene .lq-motes i:nth-child(1) {
+    left: 9%;
+    top: 78%;
+    animation-delay: -2s;
+}
+
+.liuqing-fx .lqf-motes i:nth-child(2),
+.lq-scene .lq-motes i:nth-child(2) {
+    left: 21%;
+    top: 62%;
+    animation-delay: -8s;
+}
+
+.liuqing-fx .lqf-motes i:nth-child(3),
+.lq-scene .lq-motes i:nth-child(3) {
+    left: 34%;
+    top: 84%;
+    animation-delay: -14s;
+}
+
+.liuqing-fx .lqf-motes i:nth-child(4),
+.lq-scene .lq-motes i:nth-child(4) {
+    left: 48%;
+    top: 70%;
+    animation-delay: -5s;
+}
+
+.liuqing-fx .lqf-motes i:nth-child(5),
+.lq-scene .lq-motes i:nth-child(5) {
+    left: 61%;
+    top: 88%;
+    animation-delay: -17s;
+}
+
+.liuqing-fx .lqf-motes i:nth-child(6),
+.lq-scene .lq-motes i:nth-child(6) {
+    left: 73%;
+    top: 64%;
+    animation-delay: -11s;
+}
+
+.liuqing-fx .lqf-motes i:nth-child(7),
+.lq-scene .lq-motes i:nth-child(7) {
+    left: 84%;
+    top: 82%;
+    animation-delay: -3s;
+}
+
+.liuqing-fx .lqf-motes i:nth-child(8),
+.lq-scene .lq-motes i:nth-child(8) {
+    left: 94%;
+    top: 58%;
+    animation-delay: -19s;
+}
+
+@keyframes lq-mote-rise {
+    0% {
+        transform: translate3d(0, 0, 0);
+        opacity: 0;
+    }
+
+    12% {
+        opacity: 0.9;
+    }
+
+    70% {
+        opacity: 0.6;
+    }
+
+    100% {
+        transform: translate3d(2vw, -44vh, 0);
+        opacity: 0;
+    }
+}
+
+.liuqing-fx .lqf-vignette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 42%, transparent 54%, rgba(236, 247, 238, 0.42) 100%);
+}
+
+@keyframes lq-glow-breathe {
+
+    0%,
+    100% {
+        opacity: 0.6;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0.95;
+        transform: scale(1.06);
+    }
+}
+
+/* ==========================================
+   留青 · 分页面动态纸景
+   主题开启且当前页命中场景时由 voidscene.cjs 挂载
+   ========================================== */
+
+.lq-scene {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 1.1s ease;
+    background: #f7fbf7;
+    transform: translateZ(0);
+}
+
+html.theme-liuqing.lq-scene-on .lq-scene {
+    opacity: 1;
+}
+
+/* 场景页把 body 的静态渐变让位，避免遮住动态纸景 */
+html.theme-liuqing.lq-scene-on body,
+html.theme-liuqing.lq-scene-on body.bg-light {
+    background-image: none !important;
+    background-color: transparent !important;
+}
+
+/* ---------- 纸面：分页面插画缓慢推拉 ---------- */
+.lq-scene .lq-paper {
+    position: absolute;
+    inset: -6%;
+    background: #f7fbf7 url('/image/theme/liuqing-play.jpg?v=20261105') center 54%/cover no-repeat;
+    transform-origin: 50% 54%;
+    animation: lq-paper-drift 68s ease-in-out infinite alternate;
+    will-change: transform;
+}
+
+@keyframes lq-paper-drift {
+    from {
+        transform: scale(1.02) translate3d(0, 0, 0);
+    }
+
+    to {
+        transform: scale(1.09) translate3d(-1.2%, -1%, 0);
+    }
+}
+
+/* 压亮画面并柔化边缘，保证深绿文字的可读性 */
+.lq-scene .lq-paper::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg,
+            rgba(252, 255, 251, 0.3) 0%,
+            rgba(252, 255, 251, 0.08) 32%,
+            rgba(252, 255, 251, 0.24) 72%,
+            rgba(250, 254, 250, 0.52) 100%);
+}
+
+.lq-scene .lq-paper::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--lq-tint, radial-gradient(ellipse at 50% 30%, rgba(126, 196, 152, 0.08), transparent 66%));
+    mix-blend-mode: multiply;
+}
+
+/* ---------- 青晕：大面积慢速呼吸的水洗光 ---------- */
+.lq-scene .lq-wash {
+    position: absolute;
+    top: -20vmax;
+    right: -18vmax;
+    width: 66vmax;
+    height: 66vmax;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(150, 210, 172, 0.18) 0%, rgba(150, 210, 172, 0.05) 44%, transparent 72%);
+    filter: blur(12px);
+    animation: lq-wash-breathe 18s ease-in-out infinite;
+}
+
+@keyframes lq-wash-breathe {
+
+    0%,
+    100% {
+        opacity: 0.55;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0.9;
+        transform: scale(1.08);
+    }
+}
+
+/* ---------- 漂移纸带：四条很淡的青绿绸带 ---------- */
+.lq-scene .lq-ribbons i {
+    position: absolute;
+    display: block;
+    height: 18vmin;
+    border-radius: 50%;
+    background: linear-gradient(90deg, transparent, rgba(126, 196, 152, 0.13) 46%, rgba(190, 230, 201, 0.08) 68%, transparent);
+    filter: blur(7px);
+    animation: lq-scene-ribbon 38s ease-in-out infinite alternate;
+}
+
+.lq-scene .lq-ribbons i:nth-child(1) {
+    top: 64%;
+    left: -14%;
+    width: 62vw;
+    transform: rotate(-7deg);
+}
+
+.lq-scene .lq-ribbons i:nth-child(2) {
+    top: 82%;
+    right: -18%;
+    width: 56vw;
+    transform: rotate(6deg);
+    animation-delay: -12s;
+    animation-duration: 46s;
+}
+
+.lq-scene .lq-ribbons i:nth-child(3) {
+    top: 36%;
+    right: 2%;
+    width: 30vw;
+    height: 12vmin;
+    transform: rotate(-16deg);
+    animation-delay: -22s;
+    animation-duration: 34s;
+}
+
+.lq-scene .lq-ribbons i:nth-child(4) {
+    top: 12%;
+    left: 10%;
+    width: 26vw;
+    height: 10vmin;
+    transform: rotate(12deg);
+    animation-delay: -30s;
+    animation-duration: 42s;
+}
+
+@keyframes lq-scene-ribbon {
+    from {
+        transform: translate3d(-2%, 0, 0) rotate(-7deg);
+    }
+
+    to {
+        transform: translate3d(3%, -1.6%, 0) rotate(-4deg);
+    }
+}
+
+/* ---------- 飘落新叶 ---------- */
+.lq-scene .lq-leaves i {
+    position: absolute;
+    top: -8vh;
+    display: block;
+    width: 2vmin;
+    height: 3.6vmin;
+    border-radius: 0 100% 0 100%;
+    background: linear-gradient(135deg, rgba(131, 198, 153, 0.5), rgba(79, 155, 109, 0.28));
+    opacity: 0;
+    animation: lq-scene-leaf 26s linear infinite;
+}
+
+.lq-scene .lq-leaves i:nth-child(1) {
+    left: 6%;
+    animation-delay: -4s;
+    animation-duration: 30s;
+}
+
+.lq-scene .lq-leaves i:nth-child(2) {
+    left: 28%;
+    animation-delay: -15s;
+    animation-duration: 34s;
+    transform: scale(0.82);
+}
+
+.lq-scene .lq-leaves i:nth-child(3) {
+    left: 52%;
+    animation-delay: -8s;
+    animation-duration: 28s;
+    transform: scale(1.06);
+}
+
+.lq-scene .lq-leaves i:nth-child(4) {
+    left: 74%;
+    animation-delay: -20s;
+    animation-duration: 36s;
+    transform: scale(0.9);
+}
+
+.lq-scene .lq-leaves i:nth-child(5) {
+    left: 88%;
+    animation-delay: -11s;
+    animation-duration: 32s;
+}
+
+.lq-scene .lq-leaves i:nth-child(6) {
+    left: 96%;
+    animation-delay: -26s;
+    animation-duration: 38s;
+    transform: scale(0.7);
+}
+
+@keyframes lq-scene-leaf {
+    0% {
+        transform: translate3d(0, 0, 0) rotate(0deg);
+        opacity: 0;
+    }
+
+    9% {
+        opacity: 0.6;
+    }
+
+    52% {
+        transform: translate3d(2.4vw, 54vh, 0) rotate(130deg);
+    }
+
+    86% {
+        opacity: 0.45;
+    }
+
+    100% {
+        transform: translate3d(-1.6vw, 110vh, 0) rotate(280deg);
+        opacity: 0;
+    }
+}
+
+.lq-scene .lq-vignette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 44%, transparent 58%, rgba(236, 247, 238, 0.34) 100%);
+}
+
+/* ---------- 分页插画与轻色调 ---------- */
+.lq-scene-play .lq-paper {
+    background-image: url('/image/theme/liuqing-play.jpg?v=20261105');
+    animation-duration: 70s;
+    --lq-tint: radial-gradient(ellipse at 50% 32%, rgba(126, 196, 152, 0.1), transparent 66%);
+}
+
+.lq-scene-event .lq-paper {
+    background-image: url('/image/theme/liuqing-event.jpg?v=20261105');
+    background-position: center 46%;
+    animation-duration: 62s;
+    --lq-tint: radial-gradient(ellipse at 78% 56%, rgba(186, 226, 198, 0.16), transparent 60%);
+}
+
+.lq-scene-lore .lq-paper {
+    background-image: url('/image/theme/liuqing-lore.jpg?v=20261105');
+    background-position: center 52%;
+    animation-duration: 66s;
+    --lq-tint: radial-gradient(ellipse at 50% 36%, rgba(163, 210, 177, 0.1), transparent 66%);
+}
+
+.lq-scene-honor .lq-paper {
+    background-image: url('/image/theme/liuqing-honor.jpg?v=20261105');
+    background-position: center 44%;
+    animation-duration: 56s;
+    --lq-tint: radial-gradient(ellipse at 50% 30%, rgba(196, 232, 206, 0.18), transparent 58%);
+}
+
+@media (max-width: 720px) {
+
+    .liuqing-fx .lqf-ribbons i,
+    .lq-scene .lq-ribbons i {
+        filter: blur(5px);
+    }
+}
+
+/* 系统开启“减弱动态效果”时停掉留青全部背景动画 */
+@media (prefers-reduced-motion: reduce) {
+
+    .liuqing-backdrop,
+    .liuqing-fx,
+    .liuqing-fx *,
+    .lq-scene,
+    .lq-scene *,
+    html.theme-liuqing sl-button[variant='default']::part(base),
+    html.theme-liuqing sl-button:not([variant])::part(base) {
+        animation: none !important;
+    }
+}

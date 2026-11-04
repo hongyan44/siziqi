@@ -212,11 +212,13 @@
             dialogCanvas.width = size * dpr; dialogCanvas.height = size * dpr;
             dialogContext.setTransform(dpr, 0, 0, dpr, 0, 0);
             const skins = previewSkins ? previewSkins.read() : { piece: false, grass: false, board: false, board_gold: false };
-            const goldTheme = Boolean(previewSkins && skins.board_gold);
-            const jadeTheme = Boolean(previewSkins && !goldTheme && skins.board);
-            const blackTheme = Boolean(previewSkins && !goldTheme && !jadeTheme && skins.theme_black);
-            const voidTheme = Boolean(previewSkins && !goldTheme && !jadeTheme && !blackTheme && skins.theme);
-            if (blackTheme) previewSkins.draw_board_black(dialogContext, size);
+            const atlantisTheme = Boolean(previewSkins && skins.board_atlantis);
+            const goldTheme = Boolean(previewSkins && !atlantisTheme && skins.board_gold);
+            const jadeTheme = Boolean(previewSkins && !atlantisTheme && !goldTheme && skins.board);
+            const blackTheme = Boolean(previewSkins && !atlantisTheme && !goldTheme && !jadeTheme && skins.theme_black);
+            const voidTheme = Boolean(previewSkins && !atlantisTheme && !goldTheme && !jadeTheme && !blackTheme && skins.theme);
+            if (atlantisTheme) previewSkins.draw_board_atlantis(dialogContext, size);
+            else if (blackTheme) previewSkins.draw_board_black(dialogContext, size);
             else if (voidTheme) previewSkins.draw_board_void(dialogContext, size);
             else if (goldTheme) previewSkins.draw_board_gold(dialogContext, size);
             else if (jadeTheme) previewSkins.draw_board_jade(dialogContext, size);
@@ -224,7 +226,7 @@
             const pad = size * 0.1; const spacing = (size - pad * 2) / 8;
             dialogContext.strokeStyle = voidTheme
                 ? 'rgba(255, 255, 255, 0.62)'
-                : (blackTheme ? 'rgba(180, 144, 74, 0.52)' : (goldTheme ? 'rgba(245, 205, 110, 0.86)' : (jadeTheme ? 'rgba(31, 74, 55, 0.42)' : '#d0d0d0')));
+                : (atlantisTheme ? 'rgba(241, 203, 124, 0.9)' : (blackTheme ? 'rgba(180, 144, 74, 0.52)' : (goldTheme ? 'rgba(245, 205, 110, 0.86)' : (jadeTheme ? 'rgba(31, 74, 55, 0.42)' : '#d0d0d0'))));
             dialogContext.lineWidth = 1;
             for (let i = 0; i < 9; i++) { const point = pad + i * spacing; dialogContext.beginPath(); dialogContext.moveTo(point, pad); dialogContext.lineTo(point, size - pad); dialogContext.stroke(); dialogContext.beginPath(); dialogContext.moveTo(pad, point); dialogContext.lineTo(size - pad, point); dialogContext.stroke(); }
             // 残局码的盘面坐标以左下角为原点，绘制时需上下翻转，才能与挑战页的棋盘方向一致。

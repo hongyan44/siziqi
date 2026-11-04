@@ -321,16 +321,26 @@ class Canvas {
     draw_board() {
         const ctx = this.canvas_board.getContext('2d');
 
-        // 棋盘风格优先级：棋盘皮肤（青玉 / 玄金）> 风格 UI（黑派 / 虚空舰队）> 默认白底
-        // 两套棋盘皮肤互斥，Skins.read() 已保证同一时间最多只有一套生效
+        // 棋盘风格优先级：棋盘皮肤（亚特兰蒂斯 / 玄金 / 青玉）> 风格 UI（留青 / 黑派 / 虚空舰队）> 默认白底
+        // 三套棋盘皮肤互斥，Skins.read() 已保证同一时间最多只有一套生效
+        const atlantis_board = this.skins.board_atlantis;
         const gold_board = this.skins.board_gold;
         const jade_board = this.skins.board;
-        const black_theme = !gold_board && !jade_board && Boolean(this.skins.theme_black);
-        const void_theme = !gold_board && !jade_board && !black_theme && Skins.theme_active();
+        const liuqing_board = !atlantis_board && !gold_board && !jade_board && Boolean(this.skins.theme_liuqing);
+        const black_theme = !atlantis_board && !gold_board && !jade_board && !liuqing_board && Boolean(this.skins.theme_black);
+        const void_theme = !atlantis_board && !gold_board && !jade_board && !liuqing_board && !black_theme && Skins.theme_active();
         // 黑派棋盘的网格、坐标与描边沿用玄金棋盘的镌刻金线规则
         const gold_style = gold_board || black_theme;
+        // 亚特兰蒂斯棋盘同样使用镌刻金线，但坐标改为宋体阿拉伯数字
+        const engraved = gold_style || atlantis_board;
 
-        if (black_theme) {
+        if (atlantis_board) {
+            // 已购亚特兰蒂斯棋盘：深海蓝渐变 + 金色星点与圆弧暗纹（仅本机可见）
+            Skins.draw_board_atlantis(ctx, this.size);
+        } else if (liuqing_board) {
+            // 风格 UI 留青：白纸青晕盘面 + 深青细网格（仅本机可见）
+            Skins.draw_board_liuqing(ctx, this.size);
+        } else if (black_theme) {
             // 风格 UI 黑派：黑石盘面 + 亮金网格（仅本机可见）
             Skins.draw_board_black(ctx, this.size);
         } else if (void_theme) {
@@ -351,11 +361,12 @@ class Canvas {
         // 黑派主题的画面整体偏暗，金线相应收敛，避免抢过棋子与坐标
         ctx.strokeStyle = void_theme
             ? 'rgba(255, 255, 255, 0.9)'
-            : (gold_board ? '#e6c16a' : (black_theme ? 'rgba(190, 152, 76, 0.62)' : (jade_board ? '#1f4a37' : '#333333')));
+            : (atlantis_board ? '#e9c67c' : (gold_board ? '#e6c16a' : (black_theme ? 'rgba(190, 152, 76, 0.62)' : (jade_board ? '#1f4a37' : (liuqing_board ? '#2f6b4d' : '#333333')))));
         ctx.lineWidth = 4;
         ctx.strokeRect(0, 0, this.size, this.size);
-        if (gold_style) {
-            ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
+        if (engraved) {
+            // 亚特兰蒂斯用深海色暗缝，玄金 / 黑派保持纯黑暗缝
+            ctx.strokeStyle = atlantis_board ? 'rgba(2, 9, 20, 0.8)' : 'rgba(0, 0, 0, 0.55)';
             ctx.lineWidth = 1;
             ctx.strokeRect(2, 2, this.size - 4, this.size - 4);
         }
@@ -374,12 +385,14 @@ class Canvas {
         const spacing_h = draw_size / cell_h;
 
 
-        // 网格金芯：玄金保持亮金，黑派用低饱和暗金，避免盘面线条过亮
-        const gold_core = gold_board ? '#f1cb72' : 'rgba(180, 144, 74, 0.52)';
-        // 绘制内部封闭网格线（玄金 / 黑派棋盘为“暗缝 + 亮金芯”的镌刻双线）
+        // 网格金芯：亚特兰蒂斯 / 玄金保持亮金，黑派用低饱和暗金，避免盘面线条过亮
+        const gold_core = atlantis_board
+            ? 'rgba(241, 203, 124, 0.92)'
+            : (gold_board ? '#f1cb72' : 'rgba(180, 144, 74, 0.52)');
+        // 绘制内部封闭网格线（亚特兰蒂斯 / 玄金 / 黑派棋盘为“暗缝 + 亮金芯”的镌刻双线）
         ctx.strokeStyle = void_theme
             ? 'rgba(255, 255, 255, 0.62)'
-            : (gold_style ? gold_core : (jade_board ? 'rgba(31, 74, 55, 0.42)' : '#cccccc'));
+            : (engraved ? gold_core : (jade_board ? 'rgba(31, 74, 55, 0.42)' : (liuqing_board ? 'rgba(47, 107, 77, 0.36)' : '#cccccc')));
         ctx.lineWidth = 1;
 
         ctx.beginPath();
@@ -397,14 +410,22 @@ class Canvas {
             ctx.lineTo(padding + draw_size, y);
         }
 
-        if (gold_style) {
+        if (engraved) {
             // 底衬暗缝：先压一道深色粗线，再叠金细芯，形成凹陷的金线
-            ctx.lineWidth = 2.6;
-            ctx.strokeStyle = black_theme ? 'rgba(8, 10, 13, 0.62)' : 'rgba(8, 10, 13, 0.5)';
+            ctx.lineWidth = atlantis_board ? 2.4 : 2.6;
+            ctx.strokeStyle = atlantis_board
+                ? 'rgba(2, 9, 20, 0.72)'
+                : (black_theme ? 'rgba(8, 10, 13, 0.62)' : 'rgba(8, 10, 13, 0.5)');
             ctx.stroke();
-            ctx.lineWidth = 1.1;
+            ctx.lineWidth = atlantis_board ? 1 : 1.1;
             ctx.strokeStyle = gold_core;
+            if (atlantis_board) {
+                // 金色细线带一点柔光，像从水下透出的金边
+                ctx.shadowColor = 'rgba(255, 206, 120, 0.28)';
+                ctx.shadowBlur = 4;
+            }
             ctx.stroke();
+            ctx.shadowBlur = 0;
         } else {
             ctx.stroke();
         }
@@ -423,22 +444,27 @@ class Canvas {
         
         // 1. 动态计算字号：让字体大小完美契合安全留白区域（留白的 80%，确保不压边）
         //    玄金 / 黑派棋盘的罗马数字更宽，字号单独收小，避免贴边或溢出
-        const font_size = Math.floor(padding * (gold_style ? 0.48 : 0.8));
+        //    亚特兰蒂斯用阿拉伯数字 + 宋体，字形更窄，字号可以稍大，保住留白的饱满感
+        const font_size = Math.floor(padding * (atlantis_board ? 0.6 : (gold_style ? 0.48 : 0.8)));
 
-        // 玄金 / 黑派棋盘使用衬线字体 + 金色坐标；黑派降低亮度与辉光
+        // 亚特兰蒂斯 / 玄金 / 黑派棋盘使用衬线字体 + 金色坐标；黑派降低亮度与辉光
         ctx.save();
-        if (gold_style) {
-            ctx.shadowColor = black_theme ? 'rgba(255, 196, 82, 0.28)' : 'rgba(255, 196, 82, 0.55)';
-            ctx.shadowBlur = Math.max(1, font_size * (black_theme ? 0.1 : 0.2));
+        if (engraved) {
+            ctx.shadowColor = atlantis_board
+                ? 'rgba(255, 208, 120, 0.7)'
+                : (black_theme ? 'rgba(255, 196, 82, 0.28)' : 'rgba(255, 196, 82, 0.55)');
+            ctx.shadowBlur = Math.max(1, font_size * (black_theme ? 0.1 : 0.22));
         }
-        ctx.font = gold_style
-            ? `bold ${font_size}px "Times New Roman", "Songti SC", Georgia, serif`
-            : `bold ${font_size}px sans-serif`;
+        ctx.font = atlantis_board
+            ? `bold ${font_size}px "Songti SC", "STSong", "SimSun", "Noto Serif SC", "Times New Roman", serif`
+            : (gold_style
+                ? `bold ${font_size}px "Times New Roman", "Songti SC", Georgia, serif`
+                : `bold ${font_size}px sans-serif`);
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = void_theme
             ? 'rgba(226, 238, 255, 0.72)'
-            : (gold_board ? '#ffd77a' : (black_theme ? 'rgba(226, 186, 110, 0.78)' : (jade_board ? 'rgba(24, 58, 43, 0.62)' : 'rgba(0, 0, 0, 0.55)')));
+            : (atlantis_board ? '#ffd77a' : (gold_board ? '#ffd77a' : (black_theme ? 'rgba(226, 186, 110, 0.78)' : (jade_board ? 'rgba(24, 58, 43, 0.62)' : (liuqing_board ? 'rgba(31, 74, 55, 0.7)' : 'rgba(0, 0, 0, 0.55)')))));
 
         // 2. 动态计算文字居中的轴线位置
         // 左侧文字中轴线：死死居中在最外框 (0) 到 棋盘线起点 (padding) 的中间
@@ -457,8 +483,8 @@ class Canvas {
         for (let i = 0; i < this.w; i++) {
             // --- A. 左侧数字绘制（从下到上递增，去掉最下方的 1 以防与底部重叠） ---
             const display_num = this.h - i;
-            // 玄金 / 黑派棋盘改用罗马数字（I、II、…、IX）
-            const display_label = gold_style ? Skins.to_roman(display_num) : display_num;
+            // 玄金 / 黑派棋盘改用罗马数字（I、II、…、IX），亚特兰蒂斯保留阿拉伯数字（宋体）
+            const display_label = (gold_style && !atlantis_board) ? Skins.to_roman(display_num) : display_num;
             if (display_num !== 1) {
                 const left_y = left_start_y + i * left_spacing;
                 ctx.fillText(display_label, text_left_x, left_y);
@@ -466,7 +492,7 @@ class Canvas {
 
             // --- B. 底部数字绘制（1 到 N 严格对齐纵线坐标） ---
             const line_pos = padding + i * spacing_w;
-            const bottom_label = gold_style ? Skins.to_roman(i + 1) : i + 1;
+            const bottom_label = (gold_style && !atlantis_board) ? Skins.to_roman(i + 1) : i + 1;
             if (i === 0) {
                 // 第一个数字“1”应用安全位移
                 ctx.fillText(bottom_label, line_pos - first_num_offset, text_bottom_y);
@@ -914,7 +940,15 @@ class Canvas {
         const radius = this.spacing * this.plant_radius;
 
         // 草生成特效：草皮肤启用时同步使用对应光晕（白玉玲珑为玉青，金菱草为金色，反曲点为蓝色）
-        this.effect.plant(x, y, radius, count, this.skins.grass_jade ? 'jade' : (this.skins.grass_gold ? 'gold' : this.skins.grass));
+        this.effect.plant(
+            x,
+            y,
+            radius,
+            count,
+            this.skins.grass_jade
+                ? 'jade'
+                : (this.skins.grass_gold ? 'gold' : (this.skins.grass || (this.skins.theme_liuqing ? 'qing' : false)))
+        );
     };
 
     /**

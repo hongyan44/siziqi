@@ -60,8 +60,8 @@ bool claim_coin_match(std::string_view uuid_a, std::string_view uuid_b, int64_t 
 // 棋币购买权限等级：返回 0 成功、1 已拥有更高等级、2 棋币不足、-1 失败
 int purchase_level(std::string_view uuid, int target_level, int64_t price, int& level, int64_t& coin) noexcept;
 
-// 查询已购皮肤：棋子（黑白合并）/ 高级定制棋子 / 草 / 金菱草 / 白玉玲珑 / 棋盘 / 玄金棋盘 / 风格 UI（仅自己可见的外观光效）
-bool get_skins(std::string_view uuid, bool& piece, bool& piece_rouge, bool& grass, bool& grass_gold, bool& grass_jade, bool& board, bool& board_gold, bool& theme, bool& theme_black) noexcept;
+// 查询已购皮肤：棋子（黑白合并）/ 高级定制棋子 / 草 / 金菱草 / 白玉玲珑 / 棋盘 / 玄金棋盘 / 风格 UI / 留青 UI（仅自己可见的外观光效）
+bool get_skins(std::string_view uuid, bool& piece, bool& piece_rouge, bool& piece_atlantis, bool& grass, bool& grass_gold, bool& grass_jade, bool& board, bool& board_gold, bool& board_atlantis, bool& theme, bool& theme_black, bool& theme_liuqing) noexcept;
 // 棋币购买皮肤：返回 0 成功、1 已拥有、2 棋币不足、-1 失败
 int purchase_skin(std::string_view uuid, std::string_view item, int64_t price, bool& owned, int64_t& coin) noexcept;
 
@@ -100,6 +100,15 @@ int purchase_gift_voucher(std::string_view uuid, int64_t price, int64_t day, int
 int send_gift_voucher(std::string_view from, std::string_view to) noexcept;
 // 东八区自然日序号（毫秒时间戳 → 天），用于每日限购判定
 int64_t day_index(int64_t now_ms) noexcept;
+// 东八区自然周序号（周一 0 点为换周分界），用于每周限购判定
+int64_t week_index(int64_t now_ms) noexcept;
+
+// 好友赠礼 3000：3000 棋币赠礼个数与最近购买自然周（周一 0 点刷新，仅 3 级及以上可购买）
+bool get_gift_vouchers_3000(std::string_view uuid, int64_t& vouchers, int64_t& week) noexcept;
+// 棋币购买 3000 好友赠礼（每周限购 1 个）：返回 0 成功、2 棋币不足、3 本周已购、-1 失败
+int purchase_gift_voucher_3000(std::string_view uuid, int64_t price, int64_t week, int64_t& vouchers, int64_t& coin) noexcept;
+// 赠送好友：扣减自己 1 个 3000 赠礼并给对方背包增加 1 张 3000 棋币兑换券；返回 0 成功、2 数量不足、-1 失败
+int send_gift_voucher_3000(std::string_view from, std::string_view to) noexcept;
 
 // 经验曲线：1→2 级 100，2→3 级 120，此后每级按上一级 1.2 倍向下取整
 int exp_level(int64_t exp) noexcept;

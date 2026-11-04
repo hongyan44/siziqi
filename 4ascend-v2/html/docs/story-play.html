@@ -75,12 +75,6 @@
         .dialogue-option:hover { background: rgba(52, 152, 219, .34); border-color: #8fd0ff; }
         .dialogue-next { text-align: right; font-size: .82rem; color: #9fb0c0; margin-top: .5rem; animation: dialogue-blink 1.4s ease-in-out infinite; }
         @keyframes dialogue-blink { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
-        .result-overlay { position: fixed; inset: 0; z-index: 1150; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(12, 14, 18, .66); color: #fff; }
-        .result-overlay-icon { font-size: 4.4rem; color: #ffd166; }
-        .result-overlay.is-win .result-overlay-icon { color: #62d84e; }
-        .result-overlay.is-lose .result-overlay-icon { color: #ff6b6b; }
-        .result-overlay.is-draw .result-overlay-icon { color: #8fd0ff; }
-        .result-overlay-text { font-size: 2rem; font-weight: 800; margin-top: .6rem; letter-spacing: .06em; }
         .ending-panel { position: fixed; inset: 0; z-index: 1200; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(12, 14, 18, .9); color: #fff; gap: 1rem; }
         .ending-title { font-size: 2.6rem; font-weight: 800; letter-spacing: .3em; }
         .story-subtitle { font-size: .82rem; }
@@ -181,11 +175,6 @@
         </div>
     </div>
 
-    <div id='result_overlay' class='result-overlay d-none'>
-        <sl-icon id='result_overlay_icon' class='result-overlay-icon' name='trophy'></sl-icon>
-        <div id='result_overlay_text' class='result-overlay-text'>胜利！</div>
-    </div>
-
     <div id='ending' class='ending-panel d-none'>
         <sl-icon name='journals' style='font-size: 3.6rem; color: #8fd0ff;'></sl-icon>
         <div class='ending-title'>剧 终</div>
@@ -244,8 +233,14 @@
         let aiReady = false;
         let branch = null;
         let bookedWhite = null;
+        // 残局码里的 AI 预设：作者定义的无条件落子队列，优先级高于正着应手与 MCTS
+        let aiPreset = null;
+        // AI 执黑时，作者定义的黑方正着同样作为 AI 的无条件预设队列
+        let bookPreset = null;
         let moves = [];
         let endLimit = 0;
+        // 结束对局=步数:0：不要求落子，点击屏幕即可结束本局
+        let endByClick = false;
         // 步数对话：支持 步数 / 位置落子 / 拿起棋子 / AI拿起棋子 四类触发，按条目索引去重，每条只触发一次
         let triggeredEvents = new Set();
         // 本次落子是否形成了「打」（ASCEND），用于区分「拿起棋子」与「AI拿起棋子」
@@ -971,7 +966,16 @@
                 $('game_p1_ascend').textContent = 'PR：0+0';
                 $('game_p2_ascend').textContent = 'PR：0+0';
                 await fxDone;
-                pendingAscend.flat().forEach((pos) => { ui.clear_stone_ascend(pos.x, pos.y); ui.clear_plant(pos.x, pos.y); });
+                // 被反击/卖血占据的升变点已换成占方普通子，其草仍然存在，
+                // 清层后必须按当前盘面重绘，否则占点上的草会被一并擦掉。
+                pendingAscend.flat().forEach((pos) => {
+                    ui.clear_stone_ascend(pos.x, pos.y);
+                    ui.clear_plant(pos.x, pos.y);
+                    const current = game.board.get_pos(pos.x, pos.y);
+                    if (!current) return;
+                    if (current.plant === PLANT_ENUM.ONE) ui.draw_plant(pos.x, pos.y);
+                    else if (current.plant === PLANT_ENUM.TWO) ui.draw_2plant(pos.x, pos.y);
+                });
                 pendingAscend[0].length = 0; pendingAscend[1].length = 0;
             }
             game.ed_tr_2();
@@ -1033,12 +1037,32 @@
 
         const runAiTurns = async (generation) => {
             while (!gameOver && generation === gameGeneration && state.turn_player === aiPlayer) {
-                setStatus('对手 AI（4zero MCTS）正在计算...', 'info');
                 const response = bookedWhite;
                 bookedWhite = null;
-                let move = response && response.white_move ? response.white_move : null;
-                if (move && !legal(move[0], move[1])) move = null;
-                if (!move) move = await aiThink();
+                let move = null;
+                // 作者在残局码里定义的 AI 预设优先级最高：与玩家是否命中正着无关，
+                // 每次 AI 回合依序消费一步；预设点不可落子时仅该步改由 AI 思考，其余步继续按预设。
+                if (aiPreset && aiPreset.active()) {
+                    const preset = aiPreset.next();
+                    aiPreset.advance();
+                    if (preset && legal(preset[0], preset[1])) { move = preset; setStatus('对手按 AI 预设落子。', 'info'); }
+                    else setStatus('AI 预设点不可落子，本步改由 AI 思考，其余步仍按预设。', 'warning');
+                }
+                // AI 执黑时，作者的黑方正着就是黑方的预设队列
+                if (!move && bookPreset && bookPreset.active()) {
+                    const preset = bookPreset.next();
+                    bookPreset.advance();
+                    if (preset && legal(preset[0], preset[1])) { move = preset; setStatus('对手按黑方正着预设落子。', 'info'); }
+                }
+                // 玩家命中正着时，白方严格按作者预案应手（与残局挑战一致）
+                if (!move && response && response.white_move && legal(response.white_move[0], response.white_move[1])) {
+                    move = response.white_move;
+                    setStatus('白方按残局预案应手。', 'info');
+                }
+                if (!move) {
+                    setStatus('对手 AI（4zero MCTS）正在计算...', 'info');
+                    move = await aiThink();
+                }
                 if (!move || !legal(move[0], move[1])) { setStatus('对手 AI 未找到合法落点。', 'danger'); return; }
                 const ended = await applyMove(move, 'ai', generation);
                 if (ended || gameOver) return;
@@ -1102,6 +1126,7 @@
             return [Math.round((drawX - ui.offset) / ui.spacing), Math.round((drawY - ui.offset) / ui.spacing)];
         };
         const handleBoardPress = (x, y) => {
+            if (endByClick) return;
             if (mode !== 'game' || running || gameOver || !state || state.turn_player !== selfPlayer) return;
             if (!aiReady || !legal(x, y)) { clearPendingConfirm(); playerTurn(x, y); return; }
             // 等级 1 仅保护会触发 ASCEND「打」的落子；等级 2 所有落子都需二次确认。
@@ -1118,6 +1143,7 @@
         boardCanvas.addEventListener('pointerdown', (event) => {
             event.preventDefault();
             if (mode !== 'game') return;
+            if (endByClick) { clearPendingConfirm(); concludeGame(null); return; }
             const [x, y] = pointFromEvent(event);
             if (x >= 0 && x < 9 && y >= 0 && y < 9) handleBoardPress(x, y);
         });
@@ -1211,20 +1237,9 @@
         const concludeGame = async (winner) => {
             if (gameOver) return;
             gameOver = true;
-            // winner 为 null 表示残局达到结束步数而中止，按平局处理
+            // winner 为 null 表示未分出胜负即中止（达到结束步数或点击结束），按平局处理
             const outcome = winner === null || winner === undefined ? 'draw' : winner === selfPlayer ? 'win' : 'lose';
-            // 结束后=继续：不显示胜负，显示「继续」并直接进入下一段剧情
-            const continuing = Boolean(currentConfig && currentConfig.post === 'continue');
-            const icon = continuing ? 'arrow-right-circle' : outcome === 'win' ? 'trophy' : outcome === 'lose' ? 'x-octagon' : 'hourglass-split';
-            const text = continuing ? '继续' : outcome === 'win' ? '胜利！' : outcome === 'lose' ? '失败…' : '平局';
             renderInfo();
-            const overlay = $('result_overlay');
-            overlay.className = `result-overlay is-${continuing ? 'continue' : outcome}`;
-            $('result_overlay_icon').name = icon;
-            $('result_overlay_text').textContent = text;
-            overlay.classList.remove('d-none');
-            await sleep(1500);
-            overlay.classList.add('d-none');
             if (aiWorkerThread) aiWorkerThread.terminate();
             aiWorkerThread = null; aiWorker = null; aiReady = false;
             runtime.finish_game(outcome);
@@ -1232,6 +1247,13 @@
             setDialogueVisible(true);
             renderNode();
         };
+
+        // 结束对局=步数:0 时无需落子，点击屏幕任意位置直接结束本局
+        document.addEventListener('click', () => {
+            if (mode !== 'game' || gameOver || !endByClick) return;
+            clearPendingConfirm();
+            concludeGame(null);
+        });
 
         const startGame = async (node) => {
             const config = node.config || {};
@@ -1244,8 +1266,9 @@
             const generation = ++gameGeneration;
             running = true; gameOver = false; moves = []; bookedWhite = null;
             triggeredEvents = new Set(); lastMovePicked = false; gameNodeIndex = runtime.index; pendingResume = null;
-            // 结束残局=步数:N -> 本局第 N 手落子后结束；胜负 或未配置 -> 分出胜负才结束
+            // 结束残局=步数:N -> 本局第 N 手落子后结束；步数:0 -> 不落子，点击屏幕结束；胜负 或未配置 -> 分出胜负才结束
             endLimit = config.end_kind === 'steps' ? Math.max(0, Math.trunc(Number(config.end_steps) || 0)) : 0;
+            endByClick = config.end_kind === 'steps' && endLimit === 0;
             pendingAscend[0].length = 0; pendingAscend[1].length = 0;
             if (aiWorkerThread) aiWorkerThread.terminate();
             aiWorkerThread = null; aiWorker = null; aiReady = false;
@@ -1253,12 +1276,20 @@
             branch = selfPlayer === PLAYER_ENUM.BLACK && archiveData && (archiveData.black_book || []).length
                 ? window.EndgameExports.create_branch(archiveData.black_book.map(archiveMoveToBoard), archiveData.white_turns.map(archiveMoveToBoard), async () => aiThink())
                 : null;
+            // 残局码里的 AI 预设（作者定义的无条件队列）：无论玩家执哪一方、是否命中正着都优先执行。
+            const makePreset = (moves) => typeof window.EndgameExports.create_ai_preset === 'function'
+                ? window.EndgameExports.create_ai_preset((moves || []).map(archiveMoveToBoard))
+                : null;
+            aiPreset = archiveData ? makePreset(archiveData.ai_preset) : null;
+            // AI 执黑时，黑方正着即黑方 AI 的预设队列；玩家执黑时由正着分支负责白方预案应手。
+            bookPreset = archiveData && selfPlayer === PLAYER_ENUM.WHITE ? makePreset(archiveData.black_book) : null;
             setStatus('正在加载对手 AI...', 'primary');
             showAlertText(node.title || '剧情对局');
             await initAi();
             if (generation !== gameGeneration) return;
             running = false;
             renderInfo();
+            if (endByClick) { setStatus('点击屏幕结束本局。', 'primary'); return; }
             setStatus(state.turn_player === selfPlayer ? '轮到你落子。' : '对手 AI 先手...', 'primary');
             await runAiTurns(generation);
             if (!gameOver && generation === gameGeneration) setStatus(state.turn_player === selfPlayer ? '轮到你落子。' : '对手 AI 回合。', 'primary');

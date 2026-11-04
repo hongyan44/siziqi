@@ -429,6 +429,9 @@ const TYPES = ['say', 'choice', 'label', 'say', 'game', 'label', 'say', 'end', '
     assert.equal(gameOf('[A] x\n* 对局\n  结束对局=步数:12\n结束').config.end_steps, 12);
     assert.equal(gameOf('[A] x\n* 对局\n  结束对局=步数:12\n结束').config.end_text, '步数:12');
     assert.equal(gameOf('[A] x\n* 对局\n  结束对局=步数：8\n结束').config.end_steps, 8, '全角冒号也接受');
+    assert.equal(gameOf('[A] x\n* 对局\n  结束对局=步数:0\n结束').config.end_kind, 'steps', '步数:0 仍是步数模式');
+    assert.equal(gameOf('[A] x\n* 对局\n  结束对局=步数:0\n结束').config.end_steps, 0, '步数允许为 0（点击屏幕结束本局）');
+    assert.equal(gameOf('[A] x\n* 对局\n  结束对局=步数:0\n结束').config.end_text, '步数:0');
 
     assert.equal(gameOf('[A] x\n* 对局\n  结束对局=胜负\n结束').config.end_kind, 'outcome');
     assert.equal(gameOf('[A] x\n* 对局\n  结束对局=胜负\n结束').config.end_steps, 0);
@@ -441,6 +444,7 @@ const TYPES = ['say', 'choice', 'label', 'say', 'game', 'label', 'say', 'end', '
 {
     assert.deepEqual(StoryScript.validate('[A] x\n* 对局\n  结束对局=胜负\n结束'), []);
     assert.deepEqual(StoryScript.validate('[A] x\n* 对局\n  结束对局=步数:12\n结束'), []);
+    assert.deepEqual(StoryScript.validate('[A] x\n* 对局\n  结束对局=步数:0\n结束'), [], '步数:0 应通过校验');
     assert.ok(
         StoryScript.validate('[A] x\n* 对局\n  结束对局=随便\n结束').some((e) => e.includes('结束对局')),
         '非法结束对局应报错'
@@ -616,9 +620,9 @@ const TYPES = ['say', 'choice', 'label', 'say', 'game', 'label', 'say', 'end', '
 
     // stringify 保留标题、颜色与缩进
     const out = StoryScript.stringify(parsed);
-    assert.ok(out.includes('框 开场 色=#6f42c1'), `框应还原：${out}`);
-    assert.ok(out.includes('  框 分支 色=#dc3545'), `嵌套框应带缩进还原：${out}`);
-    assert.ok(out.includes('  结束框'), `结束框应带缩进还原：${out}`);
+    assert.ok(out.includes('{ 开场 色=#6f42c1'), `框应还原：${out}`);
+    assert.ok(out.includes('  { 分支 色=#dc3545'), `嵌套框应带缩进还原：${out}`);
+    assert.ok(out.includes('  }'), `结束框应带缩进还原：${out}`);
     assert.deepEqual(StoryScript.validate(out), [], '还原后应校验通过');
     console.log('PASS: 分组框解析/缩进/还原');
 }
@@ -1006,6 +1010,51 @@ const TYPES = ['say', 'choice', 'label', 'say', 'game', 'label', 'say', 'end', '
     assert.equal(rt.advance().type, 'game', '设置节点应被跳过');
     assert.deepEqual(StoryScript.validate('对话框不透明度=999\n结束').some((e) => e.includes('对话框不透明度')), true, '越界应报错');
     console.log('PASS: 对话框不透明度解析/校验/还原/运行时');
+}
+
+// 47) JQBJ v0.4：变量定义、与/或/非、括号、四则运算与数值比较
+{
+    const src = [
+        '设 分数 = 5',
+        '设 目标 = 8',
+        '设 已解锁 = 假',
+        '赋值 分数 += 1',
+        '如果 分数 + 5 > 目标 与 非 已解锁',
+        '[A] 进入高分',
+        '结束如果',
+        '如果 分数 >= 3 或 目标 < 0',
+        '[A] 进入兜底',
+        '结束如果',
+        '[A] 结束',
+        '结束',
+    ].join('\n');
+    assert.deepEqual(StoryScript.validate(src), [], 'v0.4 条件应校验通过');
+    const rt = new StoryRuntime(StoryScript.parse(src));
+    assert.equal(rt.current().text, '进入高分', '与 / 非 / 算术比较应生效');
+    assert.equal(rt.vars['分数'].value, 6, '变量赋值后应参与运算');
+    assert.equal(rt.advance().text, '进入兜底', '或 条件应生效');
+    assert.equal(rt.advance().text, '结束', '分支结束后应汇合');
+
+    // 运算符别名、括号与优先级
+    assert.deepEqual(StoryScript.validate('如果 (2 + 3 * 4 == 14) && !(1 > 2) || 假\n[A] x\n结束如果\n结束'), [], '别名运算符应校验通过');
+    assert.deepEqual(StoryScript.validate('如果 3 >= 3 与 "a" != "b"\n[A] x\n结束如果\n结束'), [], '字面量数值/字符串比较应校验通过');
+    assert.deepEqual(StoryScript.validate('设 名字 = "小明"\n如果 名字 == 小明\n[A] x\n结束如果\n结束'), [], '裸词应兼容为字符串常量');
+
+    // 非法条件
+    const bad = [
+        ['如果 1 < 2 < 3\n[A] x\n结束如果\n结束', '连续比较'],
+        ['如果 (1 > 2\n[A] x\n结束如果\n结束', '括号没有闭合'],
+        ['如果 1 >\n[A] x\n结束如果\n结束', '条件不完整'],
+        ['设 分数 = 1\n如果 分数\n[A] x\n结束如果\n结束', '结果必须是布尔值'],
+        ['设 分数 = 1\n如果 分数 + "x" > 3\n[A] x\n结束如果\n结束', '两侧必须是数字'],
+        ['设 分数 = 1\n如果 非 分数\n[A] x\n结束如果\n结束', '需要布尔值'],
+        ['设 分数 = 1\n如果 分数 > 1 与 分数\n[A] x\n结束如果\n结束', '两侧必须是布尔条件'],
+        ['如果 未声明 > 1\n[A] x\n结束如果\n结束', '未声明的变量'],
+    ];
+    bad.forEach(([script, keyword]) => {
+        assert.ok(StoryScript.validate(script).some((e) => e.includes(keyword)), `${keyword} 应报错：${StoryScript.validate(script)}`);
+    });
+    console.log('PASS: JQBJ v0.4 变量/逻辑/数值比较');
 }
 
 console.log('story-script: ALL PASS');

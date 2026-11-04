@@ -30,6 +30,59 @@ const FriendList = require('./friend-list.cjs');
     const token = () => window.get_token();
     const byId = (id) => document.getElementById(id);
 
+    // ---------- 赠送二次确认 ----------
+    // 背包与聊天两处赠送共用；弹窗独立创建并置于背包/聊天弹窗之上，避免被遮挡。
+    let gift_confirm_dialog = null;
+    const gift_confirm_node = () => {
+        if (gift_confirm_dialog) return gift_confirm_dialog;
+        const node = document.createElement('sl-dialog');
+        node.id = 'dialog_gift_confirm';
+        node.setAttribute('label', '赠送确认');
+        // 置于背包 / 聊天弹窗之上，任何页面打开都不会被遮挡
+        node.style.zIndex = '1500';
+        node.innerHTML = `
+<div class='d-flex flex-column gap-2'>
+    <div id='div_gift_confirm_text' class='text-secondary small'></div>
+</div>
+<div slot='footer' class='d-flex align-items-center gap-2'>
+    <sl-button id='button_gift_confirm_cancel' variant='neutral' size='small'>再想想</sl-button>
+    <sl-button id='button_gift_confirm_ok' variant='primary' size='small'>确认赠送</sl-button>
+</div>`;
+        document.body.append(node);
+        gift_confirm_dialog = node;
+        return node;
+    };
+    window.gift_confirm = (options = {}) => new Promise((resolve) => {
+        const node = gift_confirm_node();
+        const text = node.querySelector('#div_gift_confirm_text');
+        if (text) text.textContent = String(options.message || '确定要送出这份赠礼吗？送出后无法撤回。');
+        const ok = node.querySelector('#button_gift_confirm_ok');
+        const cancel = node.querySelector('#button_gift_confirm_cancel');
+
+        let settled = false;
+        const finish = (value) => {
+            if (settled) return;
+            settled = true;
+            if (ok) ok.removeEventListener('click', on_ok);
+            if (cancel) cancel.removeEventListener('click', on_cancel);
+            node.removeEventListener('sl-request-close', on_close);
+            if (typeof node.hide === 'function') node.hide();
+            else node.classList.add('d-none');
+            resolve(value);
+        };
+        const on_ok = () => finish(true);
+        const on_cancel = () => finish(false);
+        const on_close = () => finish(false);
+
+        if (ok) ok.addEventListener('click', on_ok);
+        if (cancel) cancel.addEventListener('click', on_cancel);
+        node.addEventListener('sl-request-close', on_close);
+
+        node.classList.remove('d-none');
+        if (typeof node.show === 'function') node.show();
+        else customElements.whenDefined('sl-dialog').then(() => { if (!settled) node.show(); });
+    });
+
     // ---------- DOM 工具 ----------
     const h = (tag, attrs, children) => {
         const node = document.createElement(tag);
@@ -994,10 +1047,17 @@ const FriendList = require('./friend-list.cjs');
         const chat = state.chat;
         const button = byId('button_friend_chat_gift');
         if (!chat || !window.http_user_voucher_gift_send) return;
+        const friend_name = FriendList.display_name(chat.friend && chat.friend.name) || '该好友';
+        if (typeof window.gift_confirm === 'function') {
+            const confirmed = await window.gift_confirm({
+                message: `确定要把「好友赠礼：500棋币」送给 ${friend_name} 吗？送出后无法撤回。`
+            });
+            if (!confirmed) return;
+        }
         if (button) button.disabled = true;
         let result = null;
         try {
-            result = await window.http_user_voucher_gift_send(token(), chat.friend.uuid);
+            result = await window.http_user_voucher_gift_send(token(), chat.friend.uuid, 'gift500');
         } catch (_) {
             result = null;
         } finally {

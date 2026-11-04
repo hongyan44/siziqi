@@ -62,13 +62,16 @@ const range_click_level = document.getElementById('range_click_level');
 
 const switch_skin_piece = document.getElementById('switch_skin_piece');
 const switch_skin_piece_rouge = document.getElementById('switch_skin_piece_rouge');
+const switch_skin_piece_atlantis = document.getElementById('switch_skin_piece_atlantis');
 const switch_skin_grass = document.getElementById('switch_skin_grass');
 const switch_skin_grass_gold = document.getElementById('switch_skin_grass_gold');
 const switch_skin_grass_jade = document.getElementById('switch_skin_grass_jade');
 const switch_skin_board = document.getElementById('switch_skin_board');
 const switch_skin_board_gold = document.getElementById('switch_skin_board_gold');
+const switch_skin_board_atlantis = document.getElementById('switch_skin_board_atlantis');
 const switch_skin_theme = document.getElementById('switch_skin_theme');
 const switch_skin_theme_black = document.getElementById('switch_skin_theme_black');
+const switch_skin_theme_liuqing = document.getElementById('switch_skin_theme_liuqing');
 
 
 
@@ -495,13 +498,16 @@ const sync_owned_skins = (skins) => {
         localStorage.setItem('4a_skins', JSON.stringify({
             piece: skins.includes('piece'),
             piece_rouge: skins.includes('piece_rouge'),
+            piece_atlantis: skins.includes('piece_atlantis'),
             grass: skins.includes('grass'),
             grass_gold: skins.includes('grass_gold'),
             grass_jade: skins.includes('grass_jade'),
             board: skins.includes('board'),
             board_gold: skins.includes('board_gold'),
+            board_atlantis: skins.includes('board_atlantis'),
             theme: skins.includes('theme'),
             theme_black: skins.includes('theme_black'),
+            theme_liuqing: skins.includes('theme_liuqing'),
         }));
     } catch (_) {
         // 隐私模式下 localStorage 可能不可用，忽略即可
@@ -934,20 +940,23 @@ button_clear_submit.addEventListener('pointerdown', async (event) => {
 const SKIN_ROWS = [
     { id: 'piece', switch_el: switch_skin_piece },
     { id: 'piece_rouge', switch_el: switch_skin_piece_rouge },
+    { id: 'piece_atlantis', switch_el: switch_skin_piece_atlantis },
     { id: 'grass', switch_el: switch_skin_grass },
     { id: 'grass_gold', switch_el: switch_skin_grass_gold },
     { id: 'grass_jade', switch_el: switch_skin_grass_jade },
     { id: 'board', switch_el: switch_skin_board },
     { id: 'board_gold', switch_el: switch_skin_board_gold },
+    { id: 'board_atlantis', switch_el: switch_skin_board_atlantis },
     { id: 'theme', switch_el: switch_skin_theme },
     { id: 'theme_black', switch_el: switch_skin_theme_black },
+    { id: 'theme_liuqing', switch_el: switch_skin_theme_liuqing },
 ];
 
 const render_skin_settings = () => {
     if (!Skins) return;
 
     const owned = Skins.owned();
-    // 以实际生效状态回显：两套棋盘皮肤互斥，避免同时显示为开启
+    // 以实际生效状态回显：同组皮肤互斥，避免同时显示为开启
     const active = Skins.read();
 
     SKIN_ROWS.forEach((row) => {
@@ -962,10 +971,10 @@ const render_skin_settings = () => {
 };
 
 // 同组皮肤互斥：开启组内任一皮肤时自动关闭同组其余皮肤
-[[switch_skin_piece, switch_skin_piece_rouge],
+[[switch_skin_piece, switch_skin_piece_rouge, switch_skin_piece_atlantis],
     [switch_skin_grass, switch_skin_grass_gold, switch_skin_grass_jade],
-    [switch_skin_board, switch_skin_board_gold],
-    [switch_skin_theme, switch_skin_theme_black]]
+    [switch_skin_board, switch_skin_board_gold, switch_skin_board_atlantis],
+    [switch_skin_theme, switch_skin_theme_black, switch_skin_theme_liuqing]]
     .forEach((group) => {
         group.forEach((self_el) => {
             if (!self_el) return;
@@ -987,19 +996,30 @@ const backpack_pane = document.getElementById('backpack_pane');
 const backpack_tabs = Array.from(document.querySelectorAll('.backpack-tab'));
 const button_backpack_close = document.getElementById('button_backpack_close');
 const dialog_gift_friend = document.getElementById('dialog_gift_friend');
+const span_gift_friend_tip = document.getElementById('span_gift_friend_tip');
 const div_gift_friend_list = document.getElementById('div_gift_friend_list');
 const button_gift_friend_close = document.getElementById('button_gift_friend_close');
+
+// 好友赠礼种类：500 棋币（每日限购）与 3000 棋币（每周限购，Lv.3+ 可购买）
+const GIFT_KINDS = {
+    gift500: { label: '500棋币', value: 500 },
+    gift3000: { label: '3000棋币', value: 3000 },
+};
+let gift_friend_kind = 'gift500';
 
 const BAG_SKIN_NAMES = {
     piece: '棋子皮肤：止变',
     piece_rouge: '棋子皮肤：Le Rouge et Le Noir',
+    piece_atlantis: '棋子皮肤：亚拉弥赛亚的遗留',
     grass: '草皮肤：反曲点',
     grass_gold: '草皮肤：黄金',
     grass_jade: '草皮肤：白玉玲珑',
     board: '棋盘皮肤：玉中乾坤',
     board_gold: '棋盘皮肤：黑派',
+    board_atlantis: '棋盘皮肤：亚特兰蒂斯',
     theme: 'UI替换：幽蓝时空',
     theme_black: 'UI替换：保存神域',
+    theme_liuqing: 'UI替换：留青',
 };
 
 let backpack_tab = 'consume';
@@ -1017,6 +1037,9 @@ const backpack_skin_icon = (id) => {
     if (id === 'piece_rouge') {
         return `<svg viewBox='0 0 32 32' aria-hidden='true'><defs><linearGradient id='bag-rouge-red' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#e15a64'/><stop offset='1' stop-color='#6a1220'/></linearGradient><linearGradient id='bag-rouge-noir' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#33383f'/><stop offset='1' stop-color='#05070a'/></linearGradient></defs><circle cx='11' cy='16' r='8' fill='url(#bag-rouge-red)' stroke='#ffd9a0' stroke-width='0.9'/><path d='M6 12l10 4M5 17l12 4' stroke='rgba(255,230,200,.5)' stroke-width='1.2'/><circle cx='21' cy='16' r='8' fill='url(#bag-rouge-noir)' stroke='#c9a24f' stroke-width='0.9'/><path d='M21 9v14M21 13l5.5-3M21 13l-5.5-3M21 19l5.5 3M21 19l-5.5 3' stroke='#f0c86a' stroke-width='1.3'/></svg>`;
     }
+    if (id === 'piece_atlantis') {
+        return `<svg viewBox='0 0 32 32' aria-hidden='true'><defs><radialGradient id='bag-atl-tomato' cx='36%' cy='30%' r='70%'><stop offset='0' stop-color='#ff9a70'/><stop offset='0.5' stop-color='#d63c25'/><stop offset='1' stop-color='#6b0c07'/></radialGradient><radialGradient id='bag-atl-onion' cx='36%' cy='30%' r='72%'><stop offset='0' stop-color='#fffdf3'/><stop offset='0.62' stop-color='#ecdcb8'/><stop offset='1' stop-color='#a98f5e'/></radialGradient></defs><circle cx='11' cy='16' r='8' fill='url(#bag-atl-tomato)' stroke='#4d0805' stroke-width='0.9'/><path d='M8 9.5l1.5-2 1.5 2 1.5-2 1.5 2' fill='none' stroke='#4d8a45' stroke-width='1.4'/><ellipse cx='7.6' cy='15.4' rx='2.4' ry='1.4' fill='#f3e9dd'/><ellipse cx='13.4' cy='15.4' rx='2.4' ry='1.4' fill='#f3e9dd'/><circle cx='7.2' cy='15.4' r='0.9' fill='#17120f'/><circle cx='13.8' cy='15.4' r='0.9' fill='#17120f'/><circle cx='21' cy='16' r='8' fill='url(#bag-atl-onion)' stroke='#8a7048' stroke-width='0.9'/><path d='M18.5 8.5l1.8-2.6M21 8.2l.6-2.4' stroke='#6f955f' stroke-width='1.3'/><ellipse cx='17.6' cy='15.4' rx='2.4' ry='1.4' fill='#f7f0e4'/><ellipse cx='23.4' cy='15.4' rx='2.4' ry='1.4' fill='#f7f0e4'/><circle cx='17.2' cy='15.4' r='0.9' fill='#17120f'/><circle cx='23.8' cy='15.4' r='0.9' fill='#17120f'/></svg>`;
+    }
     if (id === 'grass') {
         return `<svg viewBox='0 0 32 32' aria-hidden='true'><circle cx='16' cy='16' r='12' fill='none' stroke='#c92b3e' stroke-width='3'/><circle cx='16' cy='16' r='6' fill='#3fa8f5'/></svg>`;
     }
@@ -1032,8 +1055,14 @@ const backpack_skin_icon = (id) => {
     if (id === 'board_gold') {
         return `<svg viewBox='0 0 32 32' aria-hidden='true'><rect x='4' y='4' width='24' height='24' rx='3' fill='#121418' stroke='#c9a24f'/><path d='M12 4v24M20 4v24M4 12h24M4 20h24' stroke='rgba(245,205,110,.85)'/></svg>`;
     }
+    if (id === 'board_atlantis') {
+        return `<svg viewBox='0 0 32 32' aria-hidden='true'><defs><linearGradient id='bag-atl-board' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#0b2a4d'/><stop offset='0.5' stop-color='#072038'/><stop offset='1' stop-color='#020b18'/></linearGradient></defs><rect x='4' y='4' width='24' height='24' rx='3' fill='url(#bag-atl-board)' stroke='#c9a24f'/><path d='M12 4v24M20 4v24M4 12h24M4 20h24' stroke='rgba(241,203,124,.85)'/><circle cx='16' cy='16' r='9' fill='none' stroke='rgba(233,198,124,.55)' stroke-width='1' stroke-dasharray='5 6'/><circle cx='9' cy='9' r='1' fill='#ffd77a'/><circle cx='23' cy='23' r='1' fill='#ffd77a'/></svg>`;
+    }
     if (id === 'theme_black') {
         return `<svg viewBox='0 0 32 32' aria-hidden='true'><rect x='3' y='3' width='26' height='26' rx='4' fill='#0c0c0f' stroke='#c9a24f'/><path d='M16 6v20M6 16h20M9.5 9.5l13 13M22.5 9.5l-13 13' stroke='rgba(230,191,110,.7)'/><circle cx='16' cy='16' r='3.4' fill='#f6e2ad'/><circle cx='16' cy='16' r='4.6' fill='none' stroke='#e6bf6e'/></svg>`;
+    }
+    if (id === 'theme_liuqing') {
+        return `<svg viewBox='0 0 32 32' aria-hidden='true'><rect x='3' y='3' width='26' height='26' rx='4' fill='#fbfdf9' stroke='#2f6b4d'/><path d='M7 22c4-1 7-4 11-4 3 0 4 2 7 4' fill='none' stroke='rgba(79,155,109,.55)' stroke-width='1.4'/><path d='M7 10h10M7 14h6' stroke='#2f6b4d' stroke-width='1.6'/><path d='M23 8c2 2 3 5 1 8-2-2-3-4-1-8z' fill='#7fc79b'/></svg>`;
     }
     return `<svg viewBox='0 0 32 32' aria-hidden='true'><rect x='3' y='3' width='26' height='26' rx='4' fill='#0a1526' stroke='#4a9dff'/><circle cx='9' cy='9' r='2' fill='#f04056'/><path d='M9 17h14M9 22h9' stroke='#5eaaff' stroke-width='2'/></svg>`;
 };
@@ -1066,6 +1095,10 @@ const backpack_render_consume = () => {
     const vouchers = Math.max(0, Math.trunc(Number(backpack_info && backpack_info.vouchers) || 0));
     const vouchers_500 = Math.max(0, Math.trunc(Number(backpack_info && backpack_info.vouchers_500) || 0));
     const gift_vouchers = Math.max(0, Math.trunc(Number(backpack_info && backpack_info.gift_vouchers) || 0));
+    const gift_3000_vouchers = Math.max(0, Math.trunc(Number(backpack_info && backpack_info.gift3000_vouchers) || 0));
+    const level = Math.max(1, Math.trunc(Number(backpack_info && backpack_info.level) || 1));
+    // 3000 赠礼仅 Lv.3+ 可见；已持有的情况下始终展示，避免等级变动导致道具消失。
+    const show_gift_3000 = level >= 3 || gift_3000_vouchers > 0;
     backpack_pane.innerHTML = `
 <div class='bag-item'>
     <div class='bag-ticket-icon is-voucher'><span>3000</span><i>棋币</i></div>
@@ -1089,8 +1122,16 @@ const backpack_render_consume = () => {
         <div class='bag-item-name'>好友赠礼：500棋币<span class='bag-count'>×${gift_vouchers}</span></div>
         <div class='bag-item-desc'>消耗品：每天限购 1 个。选择好友赠送后，对方背包获得 1 张 500 棋币兑换券。</div>
     </div>
-    ${gift_vouchers > 0 ? `<sl-button size='small' variant='primary' data-bag-gift-send>赠送好友</sl-button>` : `<sl-button size='small' variant='primary' outline disabled>赠送好友</sl-button>`}
+    ${gift_vouchers > 0 ? `<sl-button size='small' variant='primary' data-bag-gift-send='gift500'>赠送好友</sl-button>` : `<sl-button size='small' variant='primary' outline disabled>赠送好友</sl-button>`}
 </div>
+${show_gift_3000 ? `<div class='bag-item'>
+    <div class='bag-ticket-icon is-gift-3000'><span>3000</span><i>赠礼</i></div>
+    <div class='bag-item-main'>
+        <div class='bag-item-name'>好友赠礼：3000棋币<span class='bag-count'>×${gift_3000_vouchers}</span></div>
+        <div class='bag-item-desc'>消耗品：每周限购 1 个（周一 0 点刷新）。选择好友赠送后，对方背包获得 1 张 3000 棋币兑换券。</div>
+    </div>
+    ${gift_3000_vouchers > 0 ? `<sl-button size='small' variant='primary' data-bag-gift-send='gift3000'>赠送好友</sl-button>` : `<sl-button size='small' variant='primary' outline disabled>赠送好友</sl-button>`}
+</div>` : ''}
 <div class='bag-item'>
     <div class='bag-ticket-icon'><span>投稿</span><i>单局</i></div>
     <div class='bag-item-main'>
@@ -1104,8 +1145,9 @@ const backpack_render_consume = () => {
     if (use_button) use_button.addEventListener('click', () => backpack_voucher_use(use_button));
     const use_500_button = backpack_pane.querySelector('[data-bag-voucher-500-use]');
     if (use_500_button) use_500_button.addEventListener('click', () => backpack_voucher_500_use(use_500_button));
-    const gift_button = backpack_pane.querySelector('[data-bag-gift-send]');
-    if (gift_button) gift_button.addEventListener('click', gift_friend_open);
+    backpack_pane.querySelectorAll('[data-bag-gift-send]').forEach((button) => {
+        button.addEventListener('click', () => gift_friend_open(button.dataset.bagGiftSend || 'gift500'));
+    });
 };
 
 /**
@@ -1183,20 +1225,46 @@ const gift_friend_hide = () => {
 };
 
 /**
+ * @description: 赠送前二次确认（背包与聊天赠礼共用同一套确认弹窗）
+ * @param {string} message
+ * @return {Promise<boolean>}
+ */
+const gift_friend_confirm = async (message) => {
+    if (typeof window.gift_confirm === 'function') return Boolean(await window.gift_confirm({ message }));
+    return window.confirm(message);
+};
+
+/**
+ * @description: 当前持有的某种赠礼数量
+ * @param {string} kind
+ * @return {number}
+ */
+const gift_friend_count = (kind) => Math.max(
+    0,
+    Math.trunc(Number(backpack_info && (kind === 'gift3000' ? backpack_info.gift3000_vouchers : backpack_info.gift_vouchers)) || 0)
+);
+
+/**
  * @description: 赠送 1 个好友赠礼给指定好友
  * @param {string} uuid
+ * @param {string} name
  * @param {HTMLElement} button
  * @return {Promise<void>}
  */
-const gift_friend_send = async (uuid, button) => {
+const gift_friend_send = async (uuid, name, button) => {
     if (!uuid || !button || button.disabled) return;
     const token = typeof window.get_token === 'function' ? window.get_token() : null;
     if (!token || typeof window.http_user_voucher_gift_send !== 'function') return;
 
+    const kind = gift_friend_kind;
+    const detail = GIFT_KINDS[kind] || GIFT_KINDS.gift500;
+    if (!(await gift_friend_confirm(`确定要把「好友赠礼：${detail.label}」送给 ${name || '该好友'} 吗？送出后无法撤回。`))) return;
+    if (gift_friend_count(kind) < 1) return toast.info(`背包里没有「好友赠礼：${detail.label}」了`);
+
     button.disabled = true;
     let result = null;
     try {
-        result = await window.http_user_voucher_gift_send(token, uuid);
+        result = await window.http_user_voucher_gift_send(token, uuid, kind);
     } catch (_) {
         result = null;
     } finally {
@@ -1205,24 +1273,32 @@ const gift_friend_send = async (uuid, button) => {
 
     if (!result) return toast.error('赠送失败，请稍后重试');
     if (!result.ok) {
-        if (result.reason === 'none') return toast.info('背包里没有好友赠礼了');
+        if (result.reason === 'none') return toast.info(`背包里没有「好友赠礼：${detail.label}」了`);
         return toast.error('赠送失败，请稍后重试');
     }
 
-    if (backpack_info) backpack_info.gift_vouchers = Math.max(0, Math.trunc(Number(result.gift_vouchers) || 0));
-    toast.success('已送出好友赠礼，对方背包获得 1 张 500 棋币兑换券');
+    if (backpack_info) {
+        if (kind === 'gift3000') backpack_info.gift3000_vouchers = Math.max(0, Math.trunc(Number(result.gift3000_vouchers) || 0));
+        else backpack_info.gift_vouchers = Math.max(0, Math.trunc(Number(result.gift_vouchers) || 0));
+    }
+    toast.success(`已送出好友赠礼，对方背包获得 1 张 ${detail.value} 棋币兑换券`);
     gift_friend_hide();
     await backpack_render();
 };
 
 /**
  * @description: 打开赠送好友弹窗并列出好友
+ * @param {string} kind gift500（默认）或 gift3000
  * @return {Promise<void>}
  */
-const gift_friend_open = async () => {
+const gift_friend_open = async (kind = 'gift500') => {
     if (!dialog_gift_friend || !div_gift_friend_list) return;
-    const count = Math.max(0, Math.trunc(Number(backpack_info && backpack_info.gift_vouchers) || 0));
-    if (count < 1) return toast.info('背包里没有好友赠礼，去商店购买一个吧');
+    gift_friend_kind = kind === 'gift3000' ? 'gift3000' : 'gift500';
+    const detail = GIFT_KINDS[gift_friend_kind];
+    if (gift_friend_count(gift_friend_kind) < 1) return toast.info(`背包里没有「好友赠礼：${detail.label}」，去商店购买一个吧`);
+    if (span_gift_friend_tip) {
+        span_gift_friend_tip.textContent = `选择一位好友，赠送 1 个「好友赠礼：${detail.label}」，对方背包将获得 1 张 ${detail.value} 棋币兑换券。`;
+    }
 
     div_gift_friend_list.innerHTML = `<div class='text-secondary small py-2'>正在加载好友…</div>`;
     dialog_gift_friend.classList.remove('d-none');
@@ -1258,7 +1334,7 @@ const gift_friend_open = async () => {
         button.setAttribute('size', 'small');
         button.setAttribute('variant', 'primary');
         button.textContent = '赠送';
-        button.addEventListener('click', () => gift_friend_send(friend.uuid, button));
+        button.addEventListener('click', () => gift_friend_send(friend.uuid, friend.name || '无名氏', button));
         row.append(main, button);
         div_gift_friend_list.append(row);
     });
@@ -1336,10 +1412,10 @@ const backpack_render_skins = () => {
             next[id] = Boolean(node.checked);
             // 同组皮肤互斥：切换一套时关闭同组其余皮肤
             const SKIN_GROUPS = [
-                ['piece', 'piece_rouge'],
+                ['piece', 'piece_rouge', 'piece_atlantis'],
                 ['grass', 'grass_gold', 'grass_jade'],
-                ['board', 'board_gold'],
-                ['theme', 'theme_black'],
+                ['board', 'board_gold', 'board_atlantis'],
+                ['theme', 'theme_black', 'theme_liuqing'],
             ];
             const group = SKIN_GROUPS.find((ids) => ids.includes(id));
             if (group) {
@@ -1496,35 +1572,20 @@ button_local_submit.addEventListener('click', () => {
         SKIN_ROWS.forEach((row) => {
             if (owned[row.id] && row.switch_el) prefs[row.id] = !!row.switch_el.checked;
         });
-        // 两套棋子皮肤互斥：都拥有时只保留当前开启的那一套
-        if (owned.piece && owned.piece_rouge) {
-            const rouge_on = !!switch_skin_piece_rouge.checked;
-            prefs.piece_rouge = rouge_on;
-            prefs.piece = !rouge_on && !!switch_skin_piece.checked;
-        }
-        // 三套草皮肤互斥：只保留当前开启的那一套
-        const grass_ids = ['grass', 'grass_gold', 'grass_jade'];
-        const grass_switch = {
-            grass: switch_skin_grass,
-            grass_gold: switch_skin_grass_gold,
-            grass_jade: switch_skin_grass_jade,
-        };
-        const grass_on = grass_ids.filter((id) => owned[id] && grass_switch[id] && grass_switch[id].checked).pop();
-        grass_ids.forEach((id) => {
-            if (owned[id]) prefs[id] = id === grass_on;
+        // 同组皮肤互斥：按优先级（数组靠前者优先）只保留当前开启的那一套
+        const exclusive_groups = [
+            [['piece_atlantis', switch_skin_piece_atlantis], ['piece_rouge', switch_skin_piece_rouge], ['piece', switch_skin_piece]],
+            [['grass', switch_skin_grass], ['grass_gold', switch_skin_grass_gold], ['grass_jade', switch_skin_grass_jade]],
+            [['board_atlantis', switch_skin_board_atlantis], ['board_gold', switch_skin_board_gold], ['board', switch_skin_board]],
+            [['theme_liuqing', switch_skin_theme_liuqing], ['theme_black', switch_skin_theme_black], ['theme', switch_skin_theme]],
+        ];
+        exclusive_groups.forEach((group) => {
+            const enabled = group.find(([id, el]) => owned[id] && el && el.checked);
+            const enabled_id = enabled ? enabled[0] : null;
+            group.forEach(([id]) => {
+                if (owned[id]) prefs[id] = id === enabled_id;
+            });
         });
-        // 两套棋盘皮肤互斥：都拥有时只保留当前开启的那一套
-        if (owned.board && owned.board_gold) {
-            const gold_on = !!switch_skin_board_gold.checked;
-            prefs.board_gold = gold_on;
-            prefs.board = !gold_on && !!switch_skin_board.checked;
-        }
-        // 两套 UI 主题互斥：黑派优先，都开启时只保留黑派
-        if (owned.theme && owned.theme_black) {
-            const black_on = !!switch_skin_theme_black.checked;
-            prefs.theme_black = black_on;
-            prefs.theme = !black_on && !!switch_skin_theme.checked;
-        }
         Skins.write_prefs(prefs);
         // 主题开关变化立即反映到当前页面
         Skins.apply_theme();

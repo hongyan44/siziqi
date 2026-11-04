@@ -125,6 +125,38 @@ void puzzle_daily_update(cinatra::coro_http_request& request, cinatra::coro_http
     response.set_status_and_content(cinatra::status_type::ok, buffer);
 }
 
+// 查询残局 AI 战术矫正开关。公开接口，挑战页所有玩家都需要读取当前配置。
+void puzzle_ai_tactics_query(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
+    auto body = api_body(request.get_body());
+    if (!body) return api_http_error("puzzle_ai_tactics_query", response);
+
+    bool enabled = true;
+    if (!Manager::Puzzle::query_ai_tactics(enabled)) return api_http_error("puzzle_ai_tactics_query", response);
+
+    jsoncons::json result = jsoncons::json::object();
+    result["enabled"] = enabled;
+    std::string buffer;
+    api_end("puzzle_ai_tactics_query", true, result, buffer);
+    response.set_status_and_content(cinatra::status_type::ok, buffer);
+}
+
+// 更新残局 AI 战术矫正开关。仅管理员（level = 4）可写，写入后全服生效。
+void puzzle_ai_tactics_update(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
+    auto body = api_body(request.get_body());
+    if (!body) return api_http_error("puzzle_ai_tactics_update", response);
+    auto value = body.value();
+    std::string uuid;
+    if (!is_admin(value, uuid)) return api_http_error("puzzle_ai_tactics_update", response);
+
+    bool enabled = true;
+    try { enabled = value.at("enabled").as<bool>(); } catch (...) { return api_http_error("puzzle_ai_tactics_update", response); }
+
+    const bool status = Manager::Puzzle::update_ai_tactics(enabled, static_cast<uint64_t>(Libs::Only::Time::timestamp_ms()));
+    std::string buffer;
+    api_end("puzzle_ai_tactics_update", status, jsoncons::json::null(), buffer);
+    response.set_status_and_content(cinatra::status_type::ok, buffer);
+}
+
 void puzzle_add(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
     auto body = api_body(request.get_body());
     if (!body) return api_http_error("puzzle_add", response);
@@ -406,6 +438,8 @@ void load(cinatra::coro_http_server& server) noexcept {
     server.set_http_handler<cinatra::POST>("/puzzle/query", puzzle_query);
     server.set_http_handler<cinatra::POST>("/puzzle/daily_query", puzzle_daily_query);
     server.set_http_handler<cinatra::POST>("/puzzle/daily_update", puzzle_daily_update);
+    server.set_http_handler<cinatra::POST>("/puzzle/ai_tactics_query", puzzle_ai_tactics_query);
+    server.set_http_handler<cinatra::POST>("/puzzle/ai_tactics_update", puzzle_ai_tactics_update);
     server.set_http_handler<cinatra::POST>("/puzzle/add", puzzle_add);
     server.set_http_handler<cinatra::POST>("/puzzle/update", puzzle_update);
     server.set_http_handler<cinatra::POST>("/puzzle/delete", puzzle_delete);

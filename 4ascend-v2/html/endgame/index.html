@@ -319,6 +319,13 @@
                             <sl-textarea id='input_puzzle_code' size='small' label='残局码' placeholder='粘贴编辑器生成的残局码' rows='2' resize='auto'></sl-textarea>
                             <sl-button id='button_puzzle_add' size='small' variant='primary'><sl-icon slot='prefix' name='plus-lg'></sl-icon>添加残局</sl-button>
                         </div>
+                        <div class='d-flex align-items-center justify-content-between gap-2 border-top pt-2 mt-2'>
+                            <div>
+                                <div class='fw-bold small'>残局 AI 战术矫正</div>
+                                <div class='text-secondary small'>关闭后白方 AI 只使用 4zero 搜索，不再叠加斩杀 / 防自杀矫正，全服立即生效。</div>
+                            </div>
+                            <sl-switch id='switch_ai_tactics' size='small'>已开启</sl-switch>
+                        </div>
                     </div>
                 </section>
             </div>
@@ -449,6 +456,37 @@
             });
         });
         applyClickLevel(readClickLevel());
+
+        // 残局 AI 战术矫正（全服）：仅管理员可切换，保存成功后所有玩家的挑战 AI 立即按新设置执行。
+        const aiTacticsSwitch = document.getElementById('switch_ai_tactics');
+        let aiTacticsSaving = false;
+        const applyAiTacticsSwitch = (enabled) => {
+            aiTacticsSwitch.checked = Boolean(enabled);
+            aiTacticsSwitch.textContent = enabled ? '已开启' : '已关闭';
+        };
+        const loadAiTactics = async () => {
+            if (typeof window.http_puzzle_ai_tactics_query !== 'function') return;
+            try { applyAiTacticsSwitch(await window.http_puzzle_ai_tactics_query()); } catch (_) { /* 读取失败按默认开启 */ }
+        };
+        aiTacticsSwitch.addEventListener('sl-change', async () => {
+            if (aiTacticsSaving) return;
+            const next = Boolean(aiTacticsSwitch.checked);
+            if (!endgameUserInfo || safeLevel(endgameUserInfo.level) !== 4) { applyAiTacticsSwitch(!next); return; }
+            aiTacticsSaving = true;
+            aiTacticsSwitch.disabled = true;
+            try {
+                if (!await window.http_puzzle_ai_tactics_update(window.get_token(), next)) throw new Error('保存失败，服务暂不可用，请稍后重试。');
+                applyAiTacticsSwitch(next);
+                new window.UiExports.ShToast().success(`残局 AI 战术矫正已${next ? '开启' : '关闭'}，全服立即生效。`);
+            } catch (error) {
+                applyAiTacticsSwitch(!next);
+                new window.UiExports.ShToast().error(error.message || '保存失败，服务暂不可用，请稍后重试。');
+            } finally {
+                aiTacticsSaving = false;
+                aiTacticsSwitch.disabled = false;
+            }
+        });
+        loadAiTactics();
 
         // 残局任务奖励：复用棋币 / 经验图标，直观展示奖励额度。
         const renderTaskRewards = () => {
@@ -684,12 +722,14 @@
             canvas.width = size * dpr; canvas.height = size * dpr;
             context.setTransform(dpr, 0, 0, dpr, 0, 0);
             const skins = previewSkins ? previewSkins.read() : { piece: false, grass: false, board: false, board_gold: false };
-            // 棋盘风格：棋盘皮肤（青玉 / 玄金）> 风格 UI（黑派 / 虚空舰队）> 默认白底
-            const goldTheme = Boolean(previewSkins && skins.board_gold);
-            const jadeTheme = Boolean(previewSkins && !goldTheme && skins.board);
-            const blackTheme = Boolean(previewSkins && !goldTheme && !jadeTheme && skins.theme_black);
-            const voidTheme = Boolean(previewSkins && !goldTheme && !jadeTheme && !blackTheme && skins.theme);
-            if (blackTheme) previewSkins.draw_board_black(context, size);
+            // 棋盘风格：棋盘皮肤（亚特兰蒂斯 / 青玉 / 玄金）> 风格 UI（黑派 / 虚空舰队）> 默认白底
+            const atlantisTheme = Boolean(previewSkins && skins.board_atlantis);
+            const goldTheme = Boolean(previewSkins && !atlantisTheme && skins.board_gold);
+            const jadeTheme = Boolean(previewSkins && !atlantisTheme && !goldTheme && skins.board);
+            const blackTheme = Boolean(previewSkins && !atlantisTheme && !goldTheme && !jadeTheme && skins.theme_black);
+            const voidTheme = Boolean(previewSkins && !atlantisTheme && !goldTheme && !jadeTheme && !blackTheme && skins.theme);
+            if (atlantisTheme) previewSkins.draw_board_atlantis(context, size);
+            else if (blackTheme) previewSkins.draw_board_black(context, size);
             else if (voidTheme) previewSkins.draw_board_void(context, size);
             else if (goldTheme) previewSkins.draw_board_gold(context, size);
             else if (jadeTheme) previewSkins.draw_board_jade(context, size);
@@ -697,7 +737,7 @@
             const pad = size * 0.1; const spacing = (size - pad * 2) / 8;
             context.strokeStyle = voidTheme
                 ? 'rgba(255, 255, 255, 0.62)'
-                : (blackTheme ? 'rgba(180, 144, 74, 0.52)' : (goldTheme ? 'rgba(245, 205, 110, 0.86)' : (jadeTheme ? 'rgba(31, 74, 55, 0.42)' : '#d0d0d0')));
+                : (atlantisTheme ? 'rgba(241, 203, 124, 0.9)' : (blackTheme ? 'rgba(180, 144, 74, 0.52)' : (goldTheme ? 'rgba(245, 205, 110, 0.86)' : (jadeTheme ? 'rgba(31, 74, 55, 0.42)' : '#d0d0d0'))));
             context.lineWidth = 1;
             for (let i = 0; i < 9; i++) { const point = pad + i * spacing; context.beginPath(); context.moveTo(point, pad); context.lineTo(point, size - pad); context.stroke(); context.beginPath(); context.moveTo(pad, point); context.lineTo(size - pad, point); context.stroke(); }
             cells.forEach((item, index) => { if (item.stone === 'none') return; const x = index % 9; const y = Math.floor(index / 9); const px = pad + x * spacing; const py = pad + y * spacing; const color = item.stone === 'black' ? '#2c3e50' : '#ecf0f1'; if (previewSkins && previewSkins.draw_stone(context, px, py, spacing * 0.31, color, { skins })) return; context.beginPath(); context.arc(px, py, spacing * 0.31, 0, Math.PI * 2); context.fillStyle = color; context.fill(); if (item.stone === 'white') { context.strokeStyle = '#8b949e'; context.stroke(); } });

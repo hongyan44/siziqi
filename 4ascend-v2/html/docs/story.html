@@ -47,6 +47,9 @@
         .story-click-option.is-active { border-color: rgba(13, 110, 253, .7); background: rgba(13, 110, 253, .06); box-shadow: 0 0 0 .12rem rgba(13, 110, 253, .12); }
         .story-click-option-head { display: block; font-size: .88rem; font-weight: 700; color: #1e293b; }
         .story-click-option-desc { display: block; margin-top: .15rem; font-size: .75rem; color: #64748b; }
+        .story-settings-panel { position: fixed; top: 3.4rem; right: .8rem; z-index: 1061; width: min(340px, calc(100vw - 1.6rem)); max-height: calc(100vh - 4rem); overflow-y: auto; padding: .85rem 1rem 1rem; border: 1px solid rgba(13, 110, 253, .22); border-radius: .8rem; background: #fff; box-shadow: 0 .8rem 2rem rgba(31, 36, 48, .2); }
+        .level-pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: .35rem; margin-top: 1rem; }
+        .level-pager-info { font-size: .78rem; color: var(--sl-color-neutral-600); margin-right: .25rem; }
         .editor-rows { display: flex; flex-direction: column; gap: .45rem; }
         .editor-game-box { display: flex; flex-direction: column; gap: .45rem; padding: .5rem; border: 2px solid var(--sl-color-primary-600, #2563eb); border-radius: .75rem; background: rgba(59, 130, 246, .06); }
         .editor-game-box > .editor-row:first-child { border-color: var(--sl-color-primary-300, #93c5fd); }
@@ -96,8 +99,13 @@
         .editor-hint { font-size: .78rem; color: var(--sl-color-neutral-500); align-self: center; max-width: 100%; overflow-wrap: anywhere; line-height: 1.4; }
         .editor-opacity-range { flex: 1 1 120px; min-width: 88px; max-width: 220px; }
         .editor-empty { padding: .75rem; text-align: center; border: 1px dashed var(--sl-color-neutral-300); border-radius: .5rem; }
-        .editor-jqbj-text { width: 100%; min-height: 58vh; padding: .85rem; border: 1px solid rgba(111, 66, 193, .35); border-radius: .6rem; background: #fffdfd; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; font-size: .86rem; line-height: 1.6; tab-size: 2; resize: vertical; }
-        .editor-jqbj-text:focus { outline: 2px dashed #3b82f6; outline-offset: 2px; box-shadow: 0 0 0 3px rgba(59, 130, 246, .14); }
+        .jqbj-editor { display: flex; align-items: stretch; overflow: hidden; border: 1px solid rgba(111, 66, 193, .35); border-radius: .6rem; background: #fffdfd; }
+        .jqbj-editor:focus-within { outline: 2px dashed #3b82f6; outline-offset: 2px; box-shadow: 0 0 0 3px rgba(59, 130, 246, .14); }
+        .jqbj-gutter { flex: 0 0 auto; min-width: 2.6rem; padding: .85rem .5rem .85rem .35rem; overflow: hidden; border-right: 1px solid rgba(111, 66, 193, .16); background: rgba(111, 66, 193, .05); color: #9aa0b3; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; font-size: .86rem; line-height: 1.6; text-align: right; user-select: none; -webkit-user-select: none; }
+        .jqbj-gutter-inner { will-change: transform; }
+        .jqbj-gutter-line { height: 1.6em; }
+        .editor-jqbj-text { flex: 1 1 auto; width: auto; min-width: 0; min-height: 58vh; padding: .85rem; border: 0; border-radius: 0; background: transparent; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; font-size: .86rem; line-height: 1.6; tab-size: 2; resize: vertical; }
+        .editor-jqbj-text:focus { outline: none; box-shadow: none; }
         .jqbj-completion { position: fixed; z-index: 1200; min-width: 180px; max-width: 320px; max-height: 240px; overflow-y: auto; padding: .25rem; border: 1px solid rgba(111, 66, 193, .38); border-radius: .55rem; background: #fff; box-shadow: 0 .7rem 1.6rem rgba(31, 36, 48, .18); }
         .jqbj-completion-item { display: flex; align-items: center; justify-content: space-between; gap: .7rem; padding: .3rem .5rem; border-radius: .35rem; font-size: .82rem; line-height: 1.5; cursor: pointer; white-space: nowrap; }
         .jqbj-completion-item .kind { color: var(--sl-color-neutral-500, #94a3b8); font-size: .68rem; }
@@ -124,6 +132,7 @@
             .editor-fields .form-control-sm, .editor-fields .form-select-sm { width: auto !important; flex: 1 1 120px; }
             .editor-kind { width: 88px; flex: 0 0 auto; }
             .editor-jqbj-text { min-height: 62vh; font-size: .82rem; }
+            .jqbj-gutter { font-size: .82rem; }
             .editor-box, .editor-game-box, .editor-menu-box, .editor-def-box { padding: .35rem; gap: .35rem; }
             .editor-option-box { padding: .35rem .4rem; }
             .level-grid { grid-template-columns: repeat(1, minmax(0, 1fr)); gap: .55rem; }
@@ -149,6 +158,30 @@
         <sl-button variant='default' href='/' circle aria-label='返回主页' title='返回主页'><sl-icon name='house'></sl-icon></sl-button>
         <sl-button id='button_music_toggle' variant='default' circle title='单击切换下一首；1 秒内双击开始/停止播放' aria-label='单击切换下一首'><sl-icon id='icon_music_toggle' name='volume-up'></sl-icon></sl-button>
     </div>
+    <div class='position-fixed top-0 end-0 p-2' style='z-index: 1060;'>
+        <sl-button id='button_story_settings' variant='default' circle aria-label='剧情设置' title='剧情设置' aria-expanded='false'><sl-icon name='gear'></sl-icon></sl-button>
+    </div>
+    <div id='story_settings_panel' class='story-settings-panel d-none' role='dialog' aria-label='剧情设置'>
+        <div class='d-flex justify-content-between align-items-center mb-2'>
+            <span class='fw-bold small'>防误触等级</span>
+            <sl-badge id='story_click_level_badge' variant='primary' pill>等级 2</sl-badge>
+        </div>
+        <div class='story-click-options' role='radiogroup' aria-label='防误触等级'>
+            <button type='button' class='story-click-option' data-level='0' role='radio'>
+                <span class='story-click-option-head'>等级 0 · 关闭确认</span>
+                <span class='story-click-option-desc'>所有落子都是单次点击确认</span>
+            </button>
+            <button type='button' class='story-click-option' data-level='1' role='radio'>
+                <span class='story-click-option-head'>等级 1 · 保护「打」</span>
+                <span class='story-click-option-desc'>发动「打」的落子需要双击确认</span>
+            </button>
+            <button type='button' class='story-click-option' data-level='2' role='radio'>
+                <span class='story-click-option-head'>等级 2 · 全部确认</span>
+                <span class='story-click-option-desc'>所有落子都需要双击确认</span>
+            </button>
+        </div>
+        <div class='text-secondary small mt-2'>设置仅作用于剧情对局，选择后立即生效。</div>
+    </div>
     <div class='d-flex flex-column w-100 h-100'>
         <header class='d-flex align-items-center justify-content-center px-3 pt-2'>
             <span class='text-secondary small'>剧情系统</span>
@@ -165,7 +198,7 @@
                     <div class='d-flex flex-wrap align-items-center gap-2 mb-1'><sl-icon name='shield-lock' class='text-primary'></sl-icon><span class='fw-bold'>管理员剧情编辑器</span><sl-badge variant='warning' pill>权限等级 4</sl-badge></div>
                     <p class='text-secondary small mb-3'>每行一个命令，拖动左侧手柄可调整顺序；点击某一行即成为当前行（蓝色荧光虚线边框），下方或右侧新增的命令会插入到该行之后。保存后所有玩家都会看到最新内容。</p>
                     <div class='row g-2 align-items-end'>
-                        <div class='col-12 col-sm-3 col-md-2'><sl-input id='input_level' type='number' min='1' max='99' value='1' label='关卡序号' help-text='1 - 99'></sl-input></div>
+                        <div class='col-12 col-sm-3 col-md-2'><sl-input id='input_level' type='number' min='1' max='9999' value='1' label='关卡序号' help-text='1 - 9999'></sl-input></div>
                         <div class='col-12 col-sm-9 col-md-4'><sl-input id='input_title' maxlength='20' label='关卡标题' placeholder='最多20个字符'></sl-input></div>
                         <div class='col-12 col-md-6 d-flex flex-wrap gap-2 justify-content-md-end mt-2 mt-md-0'>
                             <sl-button id='button_new' variant='default' outline><sl-icon slot='prefix' name='plus-lg'></sl-icon>新建关卡</sl-button>
@@ -182,10 +215,13 @@
                     <div id='editor_rows' class='editor-rows mt-3'></div>
                     <div id='editor_empty' class='editor-empty text-secondary small mt-3'>还没有任何命令，点击下方或右侧的按钮开始编排。</div>
                     <div id='editor_jqbj' class='mt-3 d-none'>
-                        <textarea id='jqbj_text' class='form-control editor-jqbj-text' spellcheck='false' placeholder='说 [角色|表情] 台词&#10;菜单 [角色|表情] 提示&#10;  选项 文字&#10;    说 台词&#10;结束菜单&#10;如果 变量 >= 3&#10;  说 条件满足&#10;结束如果'></textarea>
+                        <div id='jqbj_editor' class='jqbj-editor'>
+                            <div id='jqbj_gutter' class='jqbj-gutter' aria-hidden='true'><div id='jqbj_gutter_inner' class='jqbj-gutter-inner'></div></div>
+                            <textarea id='jqbj_text' class='form-control editor-jqbj-text' spellcheck='false' wrap='off' placeholder='说 [角色|表情] 台词&#10;菜单 [角色|表情] 提示&#10;  选项 文字&#10;    说 台词&#10;结束菜单&#10;如果 变量 >= 3 与 非 已锁定&#10;  说 条件满足&#10;结束如果'></textarea>
+                        </div>
                         <div id='jqbj_completion' class='jqbj-completion' hidden></div>
                         <div class='d-flex flex-wrap justify-content-between gap-2 mt-1'>
-                            <span class='small text-secondary'>支持 说 / 菜单 / 如果 / 重复 / 当 / 直到 / 设 / 赋值 / 对局 等完整语法；按 <b>Tab</b> 可补全角色、表情、关键词、标签与变量（↑↓ 选择，Enter 确认，Esc 关闭）；切回拖动框模式时，高级语句会以只读代码行原样保留。</span>
+                            <span class='small text-secondary'>支持 说 / 菜单 / 如果 / 重复 / 当 / 直到 / 设 / 赋值 / 对局 等完整语法，条件可用 与 / 或 / 非 和四则运算；按 <b>Tab</b> 可补全角色、表情、关键词、标签与变量（↑↓ 选择，Enter 确认，Esc 关闭）；切回拖动框模式时，高级语句会以只读代码行原样保留。</span>
                             <span id='jqbj_count' class='small text-secondary'></span>
                         </div>
                     </div>
@@ -213,12 +249,13 @@
                         <div class='small text-secondary mt-2'>
                             <div><code>[角色|表情] 台词</code> 对话框：角色名取自「角色管理」，表情名取自该角色的表情；省略表情则使用代表图，如 <code>[导员ZERO] 你好</code>。新增台词会自动沿用上一次的角色/表情，首次使用取角色列表第一个并选中代表图。</div>
                             <div>台词支持 <code>&lt;玩家名称&gt;</code> 占位符。</div>
-                            <div class='mt-2'><strong>JQBJ 语言模式</strong>（编辑区上方切换）支持完整 JQBJ v0.3 语法，可直接写在大文本框里；切回拖动框模式后，条件 / 循环 / 变量等高级语句会以只读代码行保留，仍可在 JQBJ 模式中修改。</div>
+                            <div class='mt-2'><strong>JQBJ 语言模式</strong>（编辑区上方切换）支持完整 JQBJ v0.4 语法，可直接写在大文本框里；切回拖动框模式后，条件 / 循环 / 变量等高级语句会以只读代码行保留，仍可在 JQBJ 模式中修改。</div>
                             <div><code>说 [角色|表情] 台词</code> / <code>菜单 ... 结束菜单</code> / <code>选项 文字</code> / <code>标签</code> / <code>跳转</code></div>
                             <div><code>设 变量 = 值</code> / <code>赋值 变量 += 数字</code> / <code>如果 变量 >= 值 ... 结束如果</code></div>
+                            <div>条件表达式支持 <code>与 / 或 / 非</code>（别名 <code>&amp;&amp; / || / !</code>）、括号和 <code>+ - * / %</code> 四则运算，例如 <code>如果 (分数 + 5) * 2 &gt; 目标 与 非 已锁定</code>；中文运算符需用空格或括号分隔；优先级为 括号 &gt; 算术 &gt; 比较 &gt; 非 &gt; 与 &gt; 或。</div>
                             <div><code>重复 N 次 ... 结束重复</code> / <code>当 条件 ... 结束当</code> / <code>直到 条件 ... 结束直到</code> / <code>跳出</code> / <code>继续</code></div>
                             <div><code>对局 标题 ... 结束对局</code>，块内可用 <code>如果胜利</code> / <code>如果失败</code> / <code>如果平局</code> 编写结果分支；台词中的 <code>${变量名}</code> 会在播放时替换为变量值。</div>
-                            <div><code>框 标题 色=#6f42c1</code> 分组框开始，<code>结束框</code> 关闭：把成段命令收进同一个彩色框，可嵌套、颜色可自定义；分组框只用于编辑器编排，播放时自动跳过。</div>
+                            <div><code>{ 标题 色=#6f42c1</code> 分组框开始，<code>}</code> 关闭：把成段命令收进同一个彩色框，可嵌套、颜色可自定义；分组框只用于编辑器编排，播放时自动跳过。</div>
                             <div>行首缩进 2 空格 = 1 级（Tab 按 2 空格计），可在每行左侧的 ⇤ / ⇥ 按钮调整；拖动框模式下缩进只影响排版，JQBJ 语言模式下缩进同时决定块结构（菜单 / 条件 / 循环 / 对局）。</div>
                             <div><code>? [角色|表情] 提示</code> 选择节点，紧跟若干 <code>- 选项 -&gt; 标签</code>；角色与表情可选（写法则同台词），留空时对话框显示「请选择」。</div>
                             <div><code>:标签</code> 标签定义；<code>-&gt; 标签</code> 跳转；<code>结束</code> 或 <code>剧终</code> 收尾。</div>
@@ -227,8 +264,8 @@
                             -->
                             <div><code>* 对局 标题</code> 对局块开始：其后的配置、代码与对话都归入该对局，直到 <code>结束此对局</code> 为止（编辑器会把整块包进同一个蓝色圆角对局框）。</div>
                             <div><code>残局码=...</code> 初始盘面：粘贴残局页导出的残局码，棋盘将以该局面开局（同时继承其血量/回合数；可选，空则空盘 6/6 血）。残局码内若含作者定义的「引导落子点」，进入该对局后按序以红圈提示玩家落点。</div>
-                            <div><code>结束对局=胜负|步数:12</code> 结束对局条件：<code>胜负</code> 表示分出胜负即结束（默认）；<code>步数:12</code> 表示进入本对局后第 12 手落子即结束，结果按平局处理（跳“平局”标签，未配置则继续往下）。（旧剧本的 <code>结束残局=...</code> 仍兼容。）</div>
-                            <div><code>结束后=结果|继续</code> 对局结束表现：<code>结果</code>（默认）显示胜利/失败/平局；<code>继续</code> 不显示胜负，改为显示「继续」并直接进入下一段剧情（不跳胜利/失败/平局标签）。常与 <code>结束对局=步数:12</code> 搭配，用打满步数来收束剧情战斗。</div>
+                            <div><code>结束对局=胜负|步数:12</code> 结束对局条件：<code>胜负</code> 表示分出胜负即结束（默认）；<code>步数:12</code> 表示进入本对局后第 12 手落子即结束，结果按平局处理（跳“平局”标签，未配置则继续往下）；<code>步数:0</code> 表示不要求落子，点击屏幕即结束本局（同样按平局处理）。（旧剧本的 <code>结束残局=...</code> 仍兼容。）</div>
+                            <div><code>结束后=结果|继续</code> 对局结束表现：对局结束不显示结算页；<code>结果</code>（默认）按胜负跳转对应标签；<code>继续</code> 不跳胜负标签，直接进入下一段剧情。常与 <code>结束对局=步数:12</code> 搭配，用打满步数来收束剧情战斗。</div>
                             <div><code>结束此对局</code> 对局块结束标记：与上一个 <code>* 对局</code> 之间的所有行同属一个对局框，本身不参与播放（运行时直接跳过）。</div>
                             <div><code>步数对话=3:标签A|落子5,5:标签B|拿起:标签C|AI拿起:标签D</code> 对话触发条件：多条用 <code>|</code> 分隔，支持四类触发——第 N 手落子（如 <code>3:标签</code>）、棋盘指定位置落子（<code>落子5,5:标签</code>）、我方拿起棋子（<code>拿起:标签</code>）、AI 拿起棋子（<code>AI拿起:标签</code>）。触发后暂停本局并跳转到该标签播放对话。</div>
                             <div><code>刷草计划=3:5,5;6,5|9:3,3</code> 定时刷草：<code>回合:坐标;坐标</code> 表示“在第几回合、于哪些点刷几株草”，多条用 <code>|</code> 分隔；回合数即界面 Turns，坐标为 <code>横,竖</code>（1-9，左下原点，5,5 为正中心）。被占用或已是二草的点会自动跳过。</div>
@@ -256,46 +293,25 @@
             </section>
 
             <div class='row g-3 align-items-start'>
-                <section class='col-12 col-lg-8'>
+                <section class='col-12'>
                     <div class='d-flex align-items-center justify-content-between gap-2 mb-2'>
                         <div class='category-title fw-bold mb-0'>关卡列表</div>
                     </div>
                     <div id='level_grid' class='level-grid'></div>
+                    <div id='level_pager' class='level-pager'></div>
                     <div id='level_empty' class='text-secondary small py-4 text-center d-none'>尚未配置任何剧情关卡。</div>
-                </section>
-                <section class='col-12 col-lg-4'>
-                    <div class='category-title fw-bold mb-2'>剧情设置</div>
-                    <div class='border rounded p-3 bg-white'>
-                        <div class='d-flex justify-content-between align-items-center mb-2'>
-                            <span class='fw-bold small'>防误触等级</span>
-                            <sl-badge id='story_click_level_badge' variant='primary' pill>等级 2</sl-badge>
-                        </div>
-                        <div class='story-click-options' role='radiogroup' aria-label='防误触等级'>
-                            <button type='button' class='story-click-option' data-level='0' role='radio'>
-                                <span class='story-click-option-head'>等级 0 · 关闭确认</span>
-                                <span class='story-click-option-desc'>所有落子都是单次点击确认</span>
-                            </button>
-                            <button type='button' class='story-click-option' data-level='1' role='radio'>
-                                <span class='story-click-option-head'>等级 1 · 保护「打」</span>
-                                <span class='story-click-option-desc'>发动「打」的落子需要双击确认</span>
-                            </button>
-                            <button type='button' class='story-click-option' data-level='2' role='radio'>
-                                <span class='story-click-option-head'>等级 2 · 全部确认</span>
-                                <span class='story-click-option-desc'>所有落子都需要双击确认</span>
-                            </button>
-                        </div>
-                        <div class='text-secondary small mt-2'>设置仅作用于剧情对局，选择后立即生效。</div>
-                    </div>
                 </section>
             </div>
         </main>
         <aside id='command_dock' class='command-dock d-none' aria-label='添加命令快捷栏'>
             <div class='command-dock-title'>添加命令</div>
             <div id='command_dock_list' class='d-flex flex-column gap-1'></div>
-            <div class='command-dock-title mt-2'>复制 / 粘贴</div>
-            <sl-button id='button_copy_mode_dock' size='small' variant='default' outline title='开启复制模式'><sl-icon slot='prefix' name='clipboard-check'></sl-icon><span class='dock-label'>复制模式</span></sl-button>
-            <sl-button id='button_copy_selected_dock' size='small' variant='primary' outline disabled class='d-none' title='复制选中行'><sl-icon slot='prefix' name='clipboard-check'></sl-icon><span class='dock-label'>复制选中</span></sl-button>
-            <sl-button id='button_paste_dock' size='small' variant='default' outline disabled class='d-none' title='粘贴本地缓存'><sl-icon slot='prefix' name='clipboard-plus'></sl-icon><span class='dock-label'>粘贴</span></sl-button>
+            <div id='command_dock_copy' class='d-flex flex-column gap-1 mt-2'>
+                <div class='command-dock-title'>复制 / 粘贴</div>
+                <sl-button id='button_copy_mode_dock' size='small' variant='default' outline title='开启复制模式'><sl-icon slot='prefix' name='clipboard-check'></sl-icon><span class='dock-label'>复制模式</span></sl-button>
+                <sl-button id='button_copy_selected_dock' size='small' variant='primary' outline disabled class='d-none' title='复制选中行'><sl-icon slot='prefix' name='clipboard-check'></sl-icon><span class='dock-label'>复制选中</span></sl-button>
+                <sl-button id='button_paste_dock' size='small' variant='default' outline disabled class='d-none' title='粘贴本地缓存'><sl-icon slot='prefix' name='clipboard-plus'></sl-icon><span class='dock-label'>粘贴</span></sl-button>
+            </div>
         </aside>
         <footer class='text-center text-muted py-1' style='font-size: .74rem;'>剧情系统 · 对话框与 AI 对局</footer>
     </div>
@@ -361,6 +377,26 @@
             });
         });
         applyClickLevel(readClickLevel());
+
+        // 剧情设置收在右上角齿轮里：点击按钮展开，点面板外部或按 Esc 收起
+        const storySettingsPanel = $('story_settings_panel');
+        const storySettingsButton = $('button_story_settings');
+        const setStorySettingsOpen = (open) => {
+            storySettingsPanel.classList.toggle('d-none', !open);
+            storySettingsButton.setAttribute('aria-expanded', open ? 'true' : 'false');
+        };
+        storySettingsButton.addEventListener('click', (event) => {
+            event.stopPropagation();
+            setStorySettingsOpen(storySettingsPanel.classList.contains('d-none'));
+        });
+        document.addEventListener('click', (event) => {
+            if (storySettingsPanel.classList.contains('d-none')) return;
+            if (storySettingsPanel.contains(event.target) || storySettingsButton.contains(event.target)) return;
+            setStorySettingsOpen(false);
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && !storySettingsPanel.classList.contains('d-none')) setStorySettingsOpen(false);
+        });
 
         // 新增分组框的默认配色（按顺序循环，可在行内自定义）
         const BOX_COLORS = ['#6f42c1', '#0d6efd', '#198754', '#fd7e14', '#dc3545', '#0dcaf0'];
@@ -773,8 +809,8 @@
             if (row.kind === 'jump') return [`${lead}跳转 ${row.target}`];
             if (row.kind === 'game') return [`${lead}对局 ${row.title}`];
             if (row.kind === 'game_end') return [`${lead}结束对局`];
-            if (row.kind === 'box') return [`${lead}框${row.title ? ` ${row.title}` : ''}${row.color ? ` 色=${row.color}` : ''}`];
-            if (row.kind === 'box_end') return [`${lead}结束框`];
+            if (row.kind === 'box') return [`${lead}{${row.title ? ` ${row.title}` : ''}${row.color ? ` 色=${row.color}` : ''}`];
+            if (row.kind === 'box_end') return [`${lead}}`];
             if (row.kind === 'config') {
                 const value = row.key === '步数对话'
                     ? (window.StoryExports && window.StoryExports.dialoguesToText ? window.StoryExports.dialoguesToText(row.triggers || []) : row.value)
@@ -852,10 +888,15 @@
             return keys.map((key) => `<option value='${attr(key)}'${key === selected ? ' selected' : ''}>${escapeHtml(key)}</option>`).join('');
         };
 
-        // 结束残局：胜负（默认）或 步数:N
+        // 结束残局：胜负（默认）或 步数:N（N=0 表示不落子，点击屏幕结束本局）
         const END_STEPS = /^步数\s*[:：]\s*(\d+)$/;
-        const endStepsValue = (value) => { const match = END_STEPS.exec(String(value == null ? '' : value).trim()); return match ? Math.max(1, Number(match[1])) : 0; };
-        const endValue = (mode, count) => (mode === '步数' ? `步数:${Math.max(1, Math.trunc(Number(count) || 0) || 1)}` : '胜负');
+        const endStepsValue = (value) => { const match = END_STEPS.exec(String(value == null ? '' : value).trim()); return match ? Math.max(0, Number(match[1])) : null; };
+        const endValue = (mode, count) => {
+            if (mode !== '步数') return '胜负';
+            const raw = String(count == null ? '' : count).trim();
+            const n = raw === '' ? 1 : Math.trunc(Number(raw));
+            return `步数:${Number.isFinite(n) ? Math.max(0, n) : 1}`;
+        };
         const anchorOptionsHtml = (selected) => [`<option value=''>（自定义 / 元素 id）</option>`].concat(MARK_ANCHORS.map((name) => `<option value='${attr(name)}'${name === selected ? ' selected' : ''}>${escapeHtml(name)}</option>`)).join('');
 
         const fieldsHtml = (row) => {
@@ -902,24 +943,25 @@
             if (row.kind === 'config') {
                 if (row.key === '结束对局' || row.key === '结束残局') {
                     const steps = endStepsValue(row.value);
+                    const isSteps = steps !== null;
                     return `
                 <select class='form-select form-select-sm' data-role='key' style='width: 132px;'>${configKeyOptionsHtml(row.key)}</select>
                 <select class='form-select form-select-sm' data-role='endmode' style='width: 150px;'>
-                    <option value='胜负'${steps ? '' : ' selected'}>胜利/失败后结束</option>
-                    <option value='步数'${steps ? ' selected' : ''}>第几步落子后结束</option>
+                    <option value='胜负'${isSteps ? '' : ' selected'}>胜利/失败后结束</option>
+                    <option value='步数'${isSteps ? ' selected' : ''}>第几步落子后结束</option>
                 </select>
-                <input type='number' min='1' max='999' class='form-control form-control-sm' data-role='endsteps' style='width: 104px;' placeholder='步数' value='${steps ? steps : ''}'${steps ? '' : ' disabled'}>
-                <span class='editor-hint'>达到步数即结束本对局，默认按平局处理（跳“平局”标签）；配置「结束后=继续」时改为显示「继续」并直接继续剧情</span>`;
+                <input type='number' min='0' max='999' class='form-control form-control-sm' data-role='endsteps' style='width: 104px;' placeholder='步数' value='${isSteps ? steps : ''}'${isSteps ? '' : ' disabled'}>
+                <span class='editor-hint'>达到步数即结束本对局，默认按平局处理（跳“平局”标签）；填 0 表示不落子、点击屏幕结束本局；配置「结束后=继续」时直接继续剧情</span>`;
                 }
                 if (row.key === '结束后') {
                     const after = row.value === '继续' ? '继续' : '结果';
                     return `
                 <select class='form-select form-select-sm' data-role='key' style='width: 132px;'>${configKeyOptionsHtml(row.key)}</select>
                 <select class='form-select form-select-sm' data-role='aftermode' style='width: 190px;'>
-                    <option value='结果'${after === '结果' ? ' selected' : ''}>显示胜利/失败/平局</option>
-                    <option value='继续'${after === '继续' ? ' selected' : ''}>显示「继续」并继续剧情</option>
+                    <option value='结果'${after === '结果' ? ' selected' : ''}>按胜负跳转剧情</option>
+                    <option value='继续'${after === '继续' ? ' selected' : ''}>直接继续剧情</option>
                 </select>
-                <span class='editor-hint'>选「继续」时对局结束不显示胜负，直接进入下一段剧情；可与「结束对局=步数:N」搭配</span>`;
+                <span class='editor-hint'>选「继续」时对局结束不按胜负跳转，直接进入下一段剧情；可与「结束对局=步数:N」搭配</span>`;
                 }
                 if (row.key === '步数对话') {
                     const triggers = rowTriggers(row);
@@ -1077,6 +1119,7 @@
             textarea.value = rowsToJQBJ(rows);
             const count = $('jqbj_count');
             if (count) count.textContent = `${textarea.value.split('\n').filter((line) => line.trim()).length} 行`;
+            updateJQBJLineNumbers();
         };
 
         // 当前行判定：点击或聚焦某一行即选中，行边框以蓝色荧光虚线高亮
@@ -1478,7 +1521,10 @@
             button.title = command.label;
             const label = labelClass ? `<span class='${labelClass}'>${escapeHtml(command.label)}</span>` : escapeHtml(command.label);
             button.innerHTML = `<sl-icon slot='prefix' name='${command.icon}'></sl-icon>${label}`;
-            button.addEventListener('click', () => insertRow(command));
+            button.addEventListener('click', () => {
+                if (editorMode === 'jqbj') { jqbjInsertSnippet(command); return; }
+                insertRow(command);
+            });
             return button;
         };
 
@@ -1530,12 +1576,45 @@
             node.innerHTML = `<div class='alert alert-danger py-2 mb-0 small'><strong>校验未通过（${errors.length}）：</strong><ul class='mb-0 ps-3'>${errors.map((error) => `<li>${escapeHtml(error)}</li>`).join('')}</ul></div>`;
         };
 
+        // 关卡列表分页：每页 9 关（3 行 × 3 列）
+        const LEVEL_PAGE_SIZE = 9;
+        let levelPage = 1;
+
+        const renderLevelPager = (total) => {
+            const pager = $('level_pager');
+            pager.innerHTML = '';
+            if (!total) return;
+            const pages = Math.max(1, Math.ceil(total / LEVEL_PAGE_SIZE));
+            const info = document.createElement('span');
+            info.className = 'level-pager-info';
+            info.textContent = `第 ${levelPage} / ${pages} 页 · 共 ${total} 关`;
+            pager.append(info);
+            const makeButton = (label, page, disabled, active) => {
+                const button = document.createElement('sl-button');
+                button.size = 'small';
+                button.variant = active ? 'primary' : 'default';
+                button.outline = !active;
+                button.textContent = label;
+                button.disabled = disabled;
+                if (!disabled && !active) button.addEventListener('click', () => { levelPage = page; renderLevels(); });
+                return button;
+            };
+            pager.append(makeButton('上一页', levelPage - 1, levelPage <= 1, false));
+            for (let page = 1; page <= pages; page += 1) pager.append(makeButton(String(page), page, false, page === levelPage));
+            pager.append(makeButton('下一页', levelPage + 1, levelPage >= pages, false));
+        };
+
         const renderLevels = () => {
             const grid = $('level_grid');
             grid.innerHTML = '';
-            $('level_count').textContent = String(catalog.levels.length);
-            $('level_empty').classList.toggle('d-none', catalog.levels.length > 0);
-            catalog.levels.forEach((level) => {
+            const total = catalog.levels.length;
+            const pages = Math.max(1, Math.ceil(total / LEVEL_PAGE_SIZE));
+            levelPage = Math.min(Math.max(1, levelPage), pages);
+            $('level_count').textContent = String(total);
+            $('level_empty').classList.toggle('d-none', total > 0);
+            renderLevelPager(total);
+            const start = (levelPage - 1) * LEVEL_PAGE_SIZE;
+            catalog.levels.slice(start, start + LEVEL_PAGE_SIZE).forEach((level) => {
                 // 目录接口已带统计；旧数据没有统计且本地缓存了剧本时现场计算，否则只显示提示
                 const stats = level.stats || (level.script ? nodeStats(level.script) : null);
                 const card = document.createElement('sl-card');
@@ -1651,9 +1730,16 @@
             return cloneCatalog(window.StoryExports.DEFAULT_CATALOG);
         };
 
+        // 服务端按 UTF-8 字节数校验：story 文档上限 1MB（与后端 docs_update 一致），rule / tip 仍为 64KB
+        const STORY_LIMIT = 1024 * 1024;
+        const utf8Bytes = (text) => {
+            if (window.TextEncoder) return new TextEncoder().encode(text).length;
+            return unescape(encodeURIComponent(text)).length;
+        };
+
         const persistCatalog = async (full) => {
             const data = JSON.stringify({ 'version': 1, 'levels': full.levels });
-            if (data.length > 65536) { showFeedback('剧情目录过大，超过服务端单文档上限（64KB），请精简剧本。', 'danger'); return false; }
+            if (utf8Bytes(data) > STORY_LIMIT) { showFeedback('剧情目录过大，超过服务端单文档上限（1MB），请精简剧本。', 'danger'); return false; }
             try {
                 const ok = await window.http_docs_update(window.get_token(), STORY_KEY, data);
                 if (!ok) throw new Error('保存失败');
@@ -1665,7 +1751,7 @@
             }
         };
 
-        const safeLevelNo = (value) => Math.min(99, Math.max(1, Number.parseInt(value, 10) || 1));
+        const safeLevelNo = (value) => Math.min(9999, Math.max(1, Number.parseInt(value, 10) || 1));
 
         // 行级预检：对局配置行必须紧跟在“对局”行之后；分组框必须成对且颜色合法
         const rowErrors = () => {
@@ -1790,10 +1876,11 @@
             $('editor_commands').classList.toggle('d-none', !boxes);
             updateEmpty();
             updateCopyUi();
-            // 语言模式下隐藏右侧命令快捷栏与避让空间
+            // 快捷栏在两种模式下都保留：拖动框模式操作行，语言模式把语句插入到光标处
             const admin = isAdmin();
-            $('command_dock').classList.toggle('d-none', !admin || !boxes);
-            document.body.classList.toggle('dock-open', admin && boxes);
+            $('command_dock').classList.toggle('d-none', !admin);
+            $('command_dock_copy').classList.toggle('d-none', !admin || !boxes);
+            document.body.classList.toggle('dock-open', admin);
         };
 
         // 拖动框 ⇄ JQBJ 语言模式切换：进入时把行模型转成文本；离开时先校验文本再还原为行
@@ -1863,6 +1950,9 @@
                     catalog = full;
                     editingLevel = levelNo;
                     $('button_delete').disabled = false;
+                    // 保存后跳到该关所在页，避免新关卡在别的分页里看不见
+                    const savedIndex = catalog.levels.findIndex((item) => item.level === levelNo);
+                    if (savedIndex >= 0) levelPage = Math.floor(savedIndex / LEVEL_PAGE_SIZE) + 1;
                     renderLevels();
                 }
             } finally { button.disabled = false; }
@@ -1899,12 +1989,34 @@
             ['如果平局', '对局'], ['继续对局', '对局'], ['结束条件', '对局'], ['结束后', '对局'],
             ['我方', '对局'], ['先手', '对局'], ['残局码', '对局'], ['步数对话', '对局'], ['刷草计划', '对局'],
             ['不透明度', '表现'], ['标注', '表现'], ['箭头', '表现'], ['圈', '表现'],
-            ['清除', '表现'], ['框', '表现'], ['结束框', '表现'],
+            ['清除', '表现'],
             ['定义', '进阶'], ['结束定义', '进阶'], ['调用', '进阶'], ['返回', '进阶']
         ];
         const jqbjCompletion = { 'items': [], 'index': 0, 'start': 0, 'end': 0 };
         const jqbjPopup = $('jqbj_completion');
         const jqbjTextarea = $('jqbj_text');
+
+        // 行号栏：按逻辑行渲染，随文本框纵向滚动同步位移
+        var jqbjGutterLines = -1;
+        function updateJQBJLineNumbers() {
+            const area = $('jqbj_text');
+            const inner = $('jqbj_gutter_inner');
+            if (!area || !inner) return;
+            const total = area.value.split('\n').length;
+            if (total !== jqbjGutterLines) {
+                jqbjGutterLines = total;
+                const lines = [];
+                for (let i = 1; i <= total; i += 1) lines.push(`<div class='jqbj-gutter-line'>${i}</div>`);
+                inner.innerHTML = lines.join('');
+            }
+            syncJQBJLineNumbers();
+        }
+        function syncJQBJLineNumbers() {
+            const area = $('jqbj_text');
+            const inner = $('jqbj_gutter_inner');
+            if (!area || !inner) return;
+            inner.style.transform = `translateY(${-area.scrollTop}px)`;
+        }
 
         const jqbjCloseCompletion = () => {
             jqbjPopup.hidden = true;
@@ -2019,9 +2131,8 @@
             mirror.style.pointerEvents = 'none';
             mirror.style.boxSizing = 'border-box';
             mirror.style.width = `${area.getBoundingClientRect().width}px`;
-            mirror.style.whiteSpace = 'pre-wrap';
-            mirror.style.wordWrap = 'break-word';
-            mirror.style.overflowWrap = 'break-word';
+            // 文本框使用 wrap='off'（white-space: pre），镜像需保持一致才能算出正确光标横坐标
+            mirror.style.whiteSpace = style.whiteSpace || 'pre';
             mirror.style.tabSize = '2';
             ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing', 'lineHeight', 'textTransform', 'textIndent',
                 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
@@ -2049,6 +2160,13 @@
             jqbjPopup.innerHTML = items.length
                 ? `${items.map((item, index) => `<div class='jqbj-completion-item${index === active ? ' active' : ''}' data-index='${index}'><span>${escapeHtml(item.value)}</span><span class='kind'>${escapeHtml(item.kind)}</span></div>`).join('')}<div class='jqbj-completion-hint'>Tab / Enter 确认 · ↑↓ 选择 · Esc 关闭</div>`
                 : `<div class='jqbj-completion-empty'>${escapeHtml(message || '没有匹配项')}</div><div class='jqbj-completion-hint'>Esc 关闭</div>`;
+            const activeEl = jqbjPopup.querySelector('.jqbj-completion-item.active');
+            if (activeEl) {
+                if (activeEl.offsetTop < jqbjPopup.scrollTop) jqbjPopup.scrollTop = activeEl.offsetTop - 4;
+                else if (activeEl.offsetTop + activeEl.offsetHeight > jqbjPopup.scrollTop + jqbjPopup.clientHeight) {
+                    jqbjPopup.scrollTop = activeEl.offsetTop + activeEl.offsetHeight - jqbjPopup.clientHeight + 4;
+                }
+            }
         };
 
         const jqbjPositionCompletion = () => {
@@ -2174,7 +2292,9 @@
         jqbjTextarea.addEventListener('input', () => { if (!jqbjPopup.hidden) jqbjRefreshCompletion(); });
         jqbjTextarea.addEventListener('scroll', () => { if (!jqbjPopup.hidden) jqbjPositionCompletion(); });
         jqbjTextarea.addEventListener('blur', () => { window.setTimeout(jqbjCloseCompletion, 150); });
-        jqbjPopup.addEventListener('mousedown', (event) => event.preventDefault());
+        jqbjPopup.addEventListener('mousedown', (event) => {
+            if (event.target.closest('.jqbj-completion-item')) event.preventDefault();
+        });
         jqbjPopup.addEventListener('click', (event) => {
             const target = event.target.closest('.jqbj-completion-item');
             if (!target) return;
@@ -2187,6 +2307,83 @@
             jqbjCloseCompletion();
         });
 
+        // ==================== 快捷栏插入（JQBJ 语言模式）====================
+        // 语言模式下右侧快捷栏不再操作行模型，而是把对应语句插入到光标处
+        const JQBJ_SNIPPETS = {
+            'box': '{ 标题 色=#6f42c1\n  # 在这里写框内内容\n}',
+            'box_end': '}',
+            'say': '说 [角色|表情] 台词',
+            'choice': '? [角色|表情] 提示\n  - 选项文字 -> 标签',
+            'menu': '菜单 [角色|表情] 提示\n  选项 文字\n    说 [角色|表情] 台词\n结束菜单',
+            'option': '选项 文字',
+            'choice_end': '结束菜单',
+            'def': '定义 名称\n  # 在这里写封装内容\n结束定义',
+            'def_end': '结束定义',
+            'call': '调用 名称',
+            'return': '返回',
+            'label': '标签 名称',
+            'jump': '跳转 标签',
+            'opacity': '不透明度 60',
+            'game': '对局 标题\n  说 [角色|表情] 台词\n结束对局',
+            'game_end': '结束对局',
+            'resume': '继续对局',
+            'end': '结束',
+        };
+        const JQBJ_CONFIG_SNIPPETS = { '结束对局': '结束对局=胜负', '步数对话': '步数对话=3:标签' };
+        const JQBJ_SNIPPET_PLACEHOLDERS = ['[角色|表情]', '提示', '标题', '名称', '标签', '文字', '台词', '名字'];
+
+        const jqbjSnippetFor = (command) => {
+            if (!command) return '';
+            if (command.kind === 'config') return JQBJ_CONFIG_SNIPPETS[command.key] || '';
+            if (command.kind === 'mark') return command.type === 'circle' ? '标注 圈 5,5' : '标注 箭头 名字';
+            return JQBJ_SNIPPETS[command.kind] || '';
+        };
+
+        const jqbjInsertSnippet = (command) => {
+            const snippet = jqbjSnippetFor(command);
+            if (!snippet) return;
+            const area = jqbjTextarea;
+            area.focus();
+            const value = area.value;
+            const start = area.selectionStart;
+            const end = area.selectionEnd;
+            const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+            let lineEnd = value.indexOf('\n', start);
+            if (lineEnd < 0) lineEnd = value.length;
+            const currentLine = value.slice(lineStart, lineEnd);
+            const lead = (currentLine.match(/^[ \t]*/) || [''])[0];
+            // 「添加选项」落在菜单标题等非选项行时，自动多缩进一级
+            const isOptionLine = /^(?:选项|-)(?:\s|$)/.test(currentLine.trim());
+            const extra = command && command.kind === 'option' && !isOptionLine && currentLine.trim() ? '  ' : '';
+            const body = snippet.split('\n').map((line) => lead + extra + line).join('\n');
+            let bodyStart;
+            if (start !== end) {
+                // 有选区：直接替换选区内容
+                bodyStart = start;
+                area.value = value.slice(0, start) + body + value.slice(end);
+            } else if (!currentLine.trim()) {
+                // 空行：直接替换该行，沿用行首缩进
+                bodyStart = lineStart;
+                area.value = value.slice(0, lineStart) + body + value.slice(lineEnd);
+            } else {
+                // 非空行：在当前行之后另起一行，与拖动框模式“插入到当前行之后”一致
+                bodyStart = lineEnd + 1;
+                area.value = value.slice(0, lineEnd) + '\n' + body + value.slice(lineEnd);
+            }
+            const firstLine = body.split('\n')[0];
+            const placeholder = JQBJ_SNIPPET_PLACEHOLDERS.find((word) => firstLine.includes(word))
+                || JQBJ_SNIPPET_PLACEHOLDERS.find((word) => body.includes(word));
+            if (placeholder) {
+                const offset = bodyStart + body.indexOf(placeholder);
+                area.setSelectionRange(offset, offset + placeholder.length);
+            } else {
+                const caret = bodyStart + firstLine.length;
+                area.setSelectionRange(caret, caret);
+            }
+            area.dispatchEvent(new Event('input', { 'bubbles': true }));
+            if (!jqbjPopup.hidden) jqbjCloseCompletion();
+        };
+
         $('button_save').addEventListener('click', saveLevel);
         $('button_export_jqbj').addEventListener('click', exportJQBJ);
         $('button_mode_boxes').addEventListener('click', () => setEditorMode('boxes'));
@@ -2194,7 +2391,9 @@
         $('jqbj_text').addEventListener('input', () => {
             const count = $('jqbj_count');
             if (count) count.textContent = `${$('jqbj_text').value.split('\n').filter((line) => line.trim()).length} 行`;
+            updateJQBJLineNumbers();
         });
+        $('jqbj_text').addEventListener('scroll', syncJQBJLineNumbers);
         $('button_check').addEventListener('click', checkScript);
         $('button_new').addEventListener('click', () => { ensureCharacters(); resetEditor(); });
         $('button_reset_editor').addEventListener('click', () => { ensureCharacters(); resetEditor(); });

@@ -153,7 +153,7 @@ const normalizeGameConfig = (raw) => {
         'archive': String(source['残局码'] == null ? '' : source['残局码']).trim(),
         'end_text': endText,
         'end_kind': endSteps ? 'steps' : endText === '胜负' ? 'outcome' : '',
-        'end_steps': endSteps ? Math.max(1, Number(endSteps[1])) : 0,
+        'end_steps': endSteps ? Math.max(0, Number(endSteps[1])) : 0,
         'post': afterText === '继续' ? 'continue' : afterText === '结果' ? 'result' : '',
         'post_text': afterText,
         'dialogues': parseDialogues(dialogueText),
@@ -249,22 +249,23 @@ const dialoguesToText = (dialogues) => (dialogues || []).map((entry) => {
 }).join('|');
 
 
-// ==================== JQBJ 语言（v0.3）====================
+// ==================== JQBJ 语言（v0.4）====================
 // 文本、拖动框与运行时共用同一套节点；JQBJ 是旧剧本 DSL 的超集。
 // 新语法：说 / 菜单 / 如果 / 重复 / 当 / 直到 / 设 / 赋值 / 跳出 / 继续 / 对局 等。
-const JQBJ_DETECT = /^(?:说(?:\s|$)|菜单(?:\s|$)|选项(?:\s|$)|结束菜单$|如果(?:\s|$)|否则如果(?:\s|$)|否则$|结束如果$|重复(?:\s|$)|当(?:\s|$)|直到(?:\s|$)|结束重复$|结束当$|结束直到$|跳出$|继续$|设(?:\s|$)|赋值(?:\s|$)|对局(?:\s|$)|结束对局$|标签(?:\s|$)|跳转(?:\s|$)|标注(?:\s|$)|不透明度(?:\s|$)|如果胜利$|如果失败$|如果平局$)/;
+// v0.4：条件支持 与 / 或 / 非、括号、四则运算与数值比较。
+const JQBJ_VERSION = 'v0.4';
+const JQBJ_DETECT = /^(?:说(?:\s|$)|菜单(?:\s|$)|选项(?:\s|$)|结束菜单$|如果(?:\s|$)|否则如果(?:\s|$)|否则$|结束如果$|重复(?:\s|$)|当(?:\s|$)|直到(?:\s|$)|结束重复$|结束当$|结束直到$|跳出$|继续$|设(?:\s|$)|赋值(?:\s|$)|对局(?:\s|$)|结束对局$|标签(?:\s|$)|跳转(?:\s|$)|标注(?:\s|$)|不透明度(?:\s|$)|如果胜利$|如果失败$|如果平局$|\{|\})/;
 const JQBJ_NAME_RE = /^[A-Za-z_\u4e00-\u9fa5][A-Za-z0-9_\u4e00-\u9fa5]*$/;
 const JQBJ_OUTCOME_TEXT = { 'win': '胜利', 'lose': '失败', 'draw': '平局' };
 const JQBJ_OUTCOME_KEY = { '胜利': 'win', '失败': 'lose', '平局': 'draw' };
 const JQBJ_GAME_KEYS = [...GAME_KEYS, '结束条件'];
-const JQBJ_OP_RE = /^(.+?)\s*(==|!=|>=|<=|>|<)\s*(.+)$/;
 const JQBJ_ASSIGN_RE = /^(设|赋值)\s+([^\s=+\-*/%&]+)\s*(=|\+=|-=|\*=|\/=|%=|&=)\s*(\S[\s\S]*)$/;
 
 const jqbjIsClosing = (text) => (
     text === '结束如果' || text === '否则如果' || text === '否则'
     || text === '结束菜单' || text === '结束选择'
     || text === '结束重复' || text === '结束当' || text === '结束直到'
-    || text === '结束定义' || text === '结束框' || text === '框结束'
+    || text === '结束定义' || text === '}' || text === '结束框' || text === '框结束'
     || GAME_END_KEYWORDS.includes(text) || text === '结束对局'
 );
 
@@ -285,8 +286,177 @@ const jqbjUnquote = (raw) => {
     return body.replace(/\\(["'\\nrt])/g, (_, ch) => ({ '"': '"', "'": "'", '\\': '\\', 'n': '\n', 'r': '\r', 't': '\t' }[ch]));
 };
 
+// ---------- v0.4 条件表达式 ----------
+// 优先级：非 > 比较 > 与 > 或；算术沿用四则运算优先级。
+const JQBJ_EXPR_TWO_OPS = ['==', '!=', '>=', '<=', '&&', '||'];
+const JQBJ_EXPR_ONE_OPS = '<>+-*/%!()';
+const jqbjExprBoundary = (ch) => (!ch || /\s/.test(ch) || '<>+-*/%!&|=()'.includes(ch));
+
+const jqbjTokenize = (text) => {
+    const tokens = [];
+    const source = String(text == null ? '' : text);
+    let index = 0;
+    while (index < source.length) {
+        const ch = source[index];
+        if (/\s/.test(ch)) { index += 1; continue; }
+        if (ch === '"' || ch === "'") {
+            let cursor = index + 1;
+            let closed = false;
+            while (cursor < source.length) {
+                const current = source[cursor];
+                if (current === '\\') { cursor += 2; continue; }
+                if (current === ch) { closed = true; break; }
+                cursor += 1;
+            }
+            if (!closed) throw new Error('字符串缺少结束引号');
+            tokens.push({ 't': 'str', 'v': source.slice(index, cursor + 1) });
+            index = cursor + 1;
+            continue;
+        }
+        if (/[0-9]/.test(ch)) {
+            const matched = /^\d+(?:\.\d+)?/.exec(source.slice(index));
+            tokens.push({ 't': 'num', 'v': Number(matched[0]) });
+            index += matched[0].length;
+            continue;
+        }
+        const two = source.slice(index, index + 2);
+        if (JQBJ_EXPR_TWO_OPS.includes(two)) {
+            tokens.push({ 't': 'op', 'v': two });
+            index += 2;
+            continue;
+        }
+        if (JQBJ_EXPR_ONE_OPS.includes(ch)) {
+            tokens.push({ 't': 'op', 'v': ch });
+            index += 1;
+            continue;
+        }
+        if ('与或非'.includes(ch) && jqbjExprBoundary(source[index - 1]) && jqbjExprBoundary(source[index + 1])) {
+            tokens.push({ 't': 'op', 'v': ch });
+            index += 1;
+            continue;
+        }
+        const word = /^[A-Za-z_\u4e00-\u9fa5][A-Za-z0-9_\u4e00-\u9fa5]*/.exec(source.slice(index));
+        if (word) {
+            const value = word[0];
+            if (value === '真' || value === '假') tokens.push({ 't': 'bool', 'v': value === '真' });
+            else tokens.push({ 't': 'id', 'v': value });
+            index += value.length;
+            continue;
+        }
+        throw new Error(`无法识别的字符：${ch}`);
+    }
+    return tokens;
+};
+
+class JQBJExprParser {
+    constructor(tokens) {
+        this.tokens = tokens;
+        this.index = 0;
+    }
+
+    peek() { return this.tokens[this.index] || null; }
+    next() { const token = this.peek(); if (token) this.index += 1; return token; }
+    isOp(value) { const token = this.peek(); return Boolean(token && token.t === 'op' && token.v === value); }
+    tokenText(token) {
+        if (!token) return '结尾';
+        if (token.t === 'bool') return token.v ? '真' : '假';
+        return String(token.v);
+    }
+
+    parse() {
+        if (!this.tokens.length) throw new Error('条件不能为空');
+        const node = this.parseOr();
+        const rest = this.peek();
+        if (rest) throw new Error(`多余的内容：${this.tokenText(rest)}`);
+        return node;
+    }
+
+    parseOr() {
+        let left = this.parseAnd();
+        while (this.isOp('或') || this.isOp('||')) {
+            this.next();
+            left = { 'type': 'logic', 'op': '或', 'left': left, 'right': this.parseAnd() };
+        }
+        return left;
+    }
+
+    parseAnd() {
+        let left = this.parseNot();
+        while (this.isOp('与') || this.isOp('&&')) {
+            this.next();
+            left = { 'type': 'logic', 'op': '与', 'left': left, 'right': this.parseNot() };
+        }
+        return left;
+    }
+
+    parseNot() {
+        if (this.isOp('非') || this.isOp('!')) {
+            this.next();
+            return { 'type': 'not', 'expr': this.parseNot() };
+        }
+        return this.parseCompare();
+    }
+
+    parseCompare() {
+        const left = this.parseAdd();
+        const token = this.peek();
+        if (!token || token.t !== 'op' || !['==', '!=', '>=', '<=', '>', '<'].includes(token.v)) return left;
+        this.next();
+        const right = this.parseAdd();
+        const extra = this.peek();
+        if (extra && extra.t === 'op' && ['==', '!=', '>=', '<=', '>', '<'].includes(extra.v)) {
+            throw new Error('不支持连续比较，请用 与 / 或 连接多个条件');
+        }
+        return { 'type': 'compare', 'op': token.v, 'left': left, 'right': right };
+    }
+
+    parseAdd() {
+        let left = this.parseMul();
+        while (this.isOp('+') || this.isOp('-')) {
+            const op = this.next().v;
+            left = { 'type': 'binary', 'op': op, 'left': left, 'right': this.parseMul() };
+        }
+        return left;
+    }
+
+    parseMul() {
+        let left = this.parseUnary();
+        while (this.isOp('*') || this.isOp('/') || this.isOp('%')) {
+            const op = this.next().v;
+            left = { 'type': 'binary', 'op': op, 'left': left, 'right': this.parseUnary() };
+        }
+        return left;
+    }
+
+    parseUnary() {
+        if (this.isOp('-')) {
+            this.next();
+            return { 'type': 'unary', 'op': '-', 'expr': this.parseUnary() };
+        }
+        return this.parsePrimary();
+    }
+
+    parsePrimary() {
+        const token = this.next();
+        if (!token) throw new Error('条件不完整');
+        if (token.t === 'num') return { 'type': 'literal', 'valueType': 'number', 'value': token.v };
+        if (token.t === 'str') return { 'type': 'literal', 'valueType': 'string', 'value': token.v };
+        if (token.t === 'bool') return { 'type': 'literal', 'valueType': 'boolean', 'value': token.v };
+        if (token.t === 'id') return { 'type': 'var', 'name': token.v };
+        if (token.t === 'op' && token.v === '(') {
+            const node = this.parseOr();
+            if (!this.isOp(')')) throw new Error('括号没有闭合');
+            this.next();
+            return node;
+        }
+        throw new Error(`无法识别的内容：${this.tokenText(token)}`);
+    }
+}
+
+const parseJQBJExpr = (text) => new JQBJExprParser(jqbjTokenize(text)).parse();
+
 /**
- * @description: JQBJ v0.3 解析器：先构造语法树（供编辑器还原拖动框），再编译为运行时节点
+ * @description: JQBJ v0.4 解析器：先构造语法树（供编辑器还原拖动框），再编译为运行时节点
  */
 class JQBJParser {
     constructor(text) {
@@ -382,12 +552,18 @@ class JQBJParser {
         };
     }
 
-    parseCondition(raw) {
-        const matched = JQBJ_OP_RE.exec(raw.trim());
-        if (!matched) return null;
-        const name = matched[1].trim();
-        if (!JQBJ_NAME_RE.test(name)) return null;
-        return { 'name': name, 'op': matched[2], 'value': matched[3].trim(), 'raw': raw.trim() };
+    parseCondition(raw, lineIndex) {
+        const text = String(raw == null ? '' : raw).trim();
+        if (!text) {
+            this.error(lineIndex, '条件格式无效：条件不能为空。');
+            return null;
+        }
+        try {
+            return { 'ast': parseJQBJExpr(text), 'raw': text };
+        } catch (err) {
+            this.error(lineIndex, `条件格式无效：${text}（${err.message}）`);
+            return null;
+        }
     }
 
     parseStatement(start, end) {
@@ -452,8 +628,7 @@ class JQBJParser {
             const endIndex = this.findEnd(start + 1, end, indent, ['结束当']);
             if (endIndex < 0) this.error(line.lineIndex, '「当」缺少「结束当」。');
             const bodyEnd = endIndex < 0 ? this.implicitEnd(start + 1, end, indent) : endIndex;
-            const cond = this.parseCondition(text.slice(1).trim());
-            if (!cond) this.error(line.lineIndex, `「当」条件格式无效：${text.slice(1).trim()}（应形如 变量 比较符 值）`);
+            const cond = this.parseCondition(text.slice(1).trim(), line.lineIndex);
             return {
                 'node': { 'type': 'while', 'cond': cond, 'body': this.parseBlock(start + 1, bodyEnd), 'indent': indent, 'lineStart': start, 'lineEnd': bodyEnd + 1 },
                 'next': bodyEnd + 1,
@@ -463,8 +638,7 @@ class JQBJParser {
             const endIndex = this.findEnd(start + 1, end, indent, ['结束直到']);
             if (endIndex < 0) this.error(line.lineIndex, '「直到」缺少「结束直到」。');
             const bodyEnd = endIndex < 0 ? this.implicitEnd(start + 1, end, indent) : endIndex;
-            const cond = this.parseCondition(text.slice(2).trim());
-            if (!cond) this.error(line.lineIndex, `「直到」条件格式无效：${text.slice(2).trim()}（应形如 变量 比较符 值）`);
+            const cond = this.parseCondition(text.slice(2).trim(), line.lineIndex);
             return {
                 'node': { 'type': 'until', 'cond': cond, 'body': this.parseBlock(start + 1, bodyEnd), 'indent': indent, 'lineStart': start, 'lineEnd': bodyEnd + 1 },
                 'next': bodyEnd + 1,
@@ -493,12 +667,12 @@ class JQBJParser {
             };
         }
 
-        // 框 / 结束框（仅编辑器分组）
-        if (/^框(?:\s|$)/.test(text)) {
-            const endIndex = this.findEnd(start + 1, end, indent, ['结束框', '框结束']);
-            if (endIndex < 0) this.error(line.lineIndex, '框缺少「结束框」。');
+        // 分组框：{ 标题 色=#6f42c1 … }（仅编辑器分组；兼容旧的「框 / 结束框」写法）
+        if (/^\{/.test(text) || /^框(?:\s|$)/.test(text)) {
+            const endIndex = this.findEnd(start + 1, end, indent, ['}', '结束框', '框结束']);
+            if (endIndex < 0) this.error(line.lineIndex, '分组框缺少「}」。');
             const bodyEnd = endIndex < 0 ? this.implicitEnd(start + 1, end, indent) : endIndex;
-            const tokens = text.slice(1).trim().split(/\s+/).filter(Boolean);
+            const tokens = text.replace(/^(?:框|\{)/, '').trim().split(/\s+/).filter(Boolean);
             let color = null;
             const titleParts = [];
             tokens.forEach((token) => {
@@ -689,8 +863,7 @@ class JQBJParser {
         const line = this.lines[start];
         const branches = [];
         let branchStart = start;
-        let cond = this.parseCondition(line.text.replace(/^如果\s*/, ''));
-        if (!cond) this.error(line.lineIndex, `「如果」条件格式无效：${line.text.slice(2).trim()}`);
+        let cond = this.parseCondition(line.text.replace(/^如果\s*/, ''), line.lineIndex);
         let index = start + 1;
         while (index <= endIndex) {
             const item = this.lines[index];
@@ -699,8 +872,7 @@ class JQBJParser {
             if (index === endIndex || isElseIf || isElse) {
                 branches.push({ 'cond': cond, 'body': this.parseBlock(branchStart + 1, index), 'lineStart': branchStart, 'lineEnd': index });
                 if (index === endIndex) break;
-                cond = isElse ? null : this.parseCondition(item.text.replace(/^否则如果\s*/, ''));
-                if (!isElse && !cond) this.error(item.lineIndex, `「否则如果」条件格式无效：${item.text}`);
+                cond = isElse ? null : this.parseCondition(item.text.replace(/^否则如果\s*/, ''), item.lineIndex);
                 branchStart = index;
             }
             index += 1;
@@ -955,15 +1127,76 @@ const validateJQBJTree = (tree) => {
             return whole;
         });
     };
-    const checkCondition = (cond, node) => {
-        if (!cond) return;
-        if (!vars.has(cond.name)) { errors.push(`${lineOf(node)}条件引用了未声明的变量：${cond.name}`); return; }
-        const left = vars.get(cond.name);
-        const right = typeOfValue(cond.value);
-        if ((cond.op === '>' || cond.op === '<' || cond.op === '>=' || cond.op === '<=') && left !== 'number' && left !== 'string') {
-            errors.push(`${lineOf(node)}变量 ${cond.name} 的类型是 ${left}，不能使用 ${cond.op} 比较。`);
+    const collectBareVars = (expr, names = []) => {
+        if (!expr) return names;
+        if (expr.type === 'var') {
+            if (!vars.has(expr.name)) names.push(expr.name);
+            return names;
         }
-        if (left !== right) errors.push(`${lineOf(node)}变量 ${cond.name}（${left}）与比较值（${right}）类型不一致。`);
+        if (expr.type === 'not' || expr.type === 'unary') return collectBareVars(expr.expr, names);
+        if (expr.type === 'binary' || expr.type === 'compare' || expr.type === 'logic') {
+            collectBareVars(expr.left, names);
+            collectBareVars(expr.right, names);
+        }
+        return names;
+    };
+    const checkExprType = (expr, expected, node) => {
+        if (!expr) return 'unknown';
+        if (expr.type === 'literal') {
+            if (expr.valueType === 'string') checkInterp(jqbjUnquote(expr.value), node);
+            return expr.valueType;
+        }
+        if (expr.type === 'var') {
+            if (vars.has(expr.name)) return vars.get(expr.name);
+            // 比较/算术中的裸词沿用旧版语义：未声明时按字符串常量处理；布尔上下文仍然报错
+            if (expected === 'any' || expected === 'string') return 'string';
+            errors.push(`${lineOf(node)}条件引用了未声明的变量：${expr.name}`);
+            return 'string';
+        }
+        if (expr.type === 'not') {
+            const type = checkExprType(expr.expr, 'boolean', node);
+            if (type !== 'boolean') errors.push(`${lineOf(node)}「非」需要布尔值，当前为 ${type}。`);
+            return 'boolean';
+        }
+        if (expr.type === 'unary') {
+            const type = checkExprType(expr.expr, 'number', node);
+            if (type !== 'number') errors.push(`${lineOf(node)}负号只能用于数字，当前为 ${type}。`);
+            return 'number';
+        }
+        if (expr.type === 'binary') {
+            const left = checkExprType(expr.left, 'number', node);
+            const right = checkExprType(expr.right, 'number', node);
+            if (left !== 'number' || right !== 'number') errors.push(`${lineOf(node)}运算符 ${expr.op} 两侧必须是数字（当前 ${left} 与 ${right}）。`);
+            if ((expr.op === '/' || expr.op === '%') && expr.right && expr.right.type === 'literal' && expr.right.valueType === 'number' && expr.right.value === 0) {
+                errors.push(`${lineOf(node)}不能除以 0。`);
+            }
+            return 'number';
+        }
+        if (expr.type === 'compare') {
+            const left = checkExprType(expr.left, 'any', node);
+            const right = checkExprType(expr.right, 'any', node);
+            if (left !== right) {
+                const missing = [...new Set([...collectBareVars(expr.left), ...collectBareVars(expr.right)])];
+                if (missing.length) missing.forEach((name) => errors.push(`${lineOf(node)}条件引用了未声明的变量：${name}`));
+                else errors.push(`${lineOf(node)}比较两侧类型不一致（${left} 与 ${right}）。`);
+            }
+            if ((expr.op === '>' || expr.op === '<' || expr.op === '>=' || expr.op === '<=') && left !== 'number' && left !== 'string') {
+                errors.push(`${lineOf(node)}布尔值不能使用 ${expr.op} 比较。`);
+            }
+            return 'boolean';
+        }
+        if (expr.type === 'logic') {
+            const left = checkExprType(expr.left, 'boolean', node);
+            const right = checkExprType(expr.right, 'boolean', node);
+            if (left !== 'boolean' || right !== 'boolean') errors.push(`${lineOf(node)}「${expr.op}」两侧必须是布尔条件（当前 ${left} 与 ${right}）。`);
+            return 'boolean';
+        }
+        return 'unknown';
+    };
+    const checkCondition = (cond, node) => {
+        if (!cond || !cond.ast) return;
+        const type = checkExprType(cond.ast, 'boolean', node);
+        if (type !== 'boolean') errors.push(`${lineOf(node)}条件的结果必须是布尔值。`);
     };
     const checkAssignValue = (name, op, raw, node) => {
         const base = vars.get(name);
@@ -1530,11 +1763,11 @@ class StoryScript {
                 if (node.color && !BOX_COLOR_RE.test(node.color)) result.push(`第 ${index + 1} 个框的颜色无效：${node.color}（应形如 #6f42c1）`);
                 boxStack.push(index);
             } else if (node.type === 'box_end') {
-                if (!boxStack.length) result.push(`第 ${index + 1} 个「结束框」没有对应的「框」。`);
+                if (!boxStack.length) result.push(`第 ${index + 1} 个「}」没有对应的「{」。`);
                 else boxStack.pop();
             }
         });
-        if (boxStack.length) result.push(`第 ${boxStack[boxStack.length - 1] + 1} 个「框」缺少「结束框」。`);
+        if (boxStack.length) result.push(`第 ${boxStack[boxStack.length - 1] + 1} 个「{」缺少「}」。`);
 
         // 封装块与结构化菜单块：必须成对出现，「返回」只能在封装块内使用
         const defStack = [];
@@ -1597,8 +1830,10 @@ class StoryScript {
         const nodes = (parsed && parsed.nodes) || [];
         const lines = [];
         const emitted = new Set();
+        const boxIndents = [];
         let indentFloor = 0;
-        const pad = (node) => '  '.repeat(Math.max(indentFloor, 0, Math.min(10, Math.trunc(Number(node.indent) || 0))));
+        const padAt = (indent) => '  '.repeat(Math.max(indentFloor, 0, Math.min(10, Math.trunc(Number(indent) || 0))));
+        const pad = (node) => padAt(node.indent);
         const faceText = (node) => (node.speaker ? (node.expression ? `[${node.speaker}|${node.expression}] ` : `[${node.speaker}] `) : '');
         function emitList(list) { (list || []).forEach(emitNode); }
         function emitNode(node) {
@@ -1656,8 +1891,15 @@ class StoryScript {
             } else if (node.type === 'end') lines.push(lead + '结束');
             else if (node.type === 'resume') lines.push(lead + '继续对局');
             else if (node.type === 'game_end') lines.push(lead + '结束此对局');
-            else if (node.type === 'box') lines.push(lead + `框${node.title ? ` ${node.title}` : ''}${node.color ? ` 色=${node.color}` : ''}`);
-            else if (node.type === 'box_end') lines.push(lead + '结束框');
+            else if (node.type === 'box') {
+                boxIndents.push(node.indent);
+                lines.push(lead + `{${node.title ? ` ${node.title}` : ''}${node.color ? ` 色=${node.color}` : ''}`);
+            }
+            else if (node.type === 'box_end') {
+                // 右大括号与对应的左大括号同缩进，保证文本回填后仍能通过校验
+                const openIndent = boxIndents.length ? boxIndents.pop() : node.indent;
+                lines.push(padAt(openIndent) + '}');
+            }
             else if (node.type === 'setting') {
                 lines.push(lead + `${STORY_SETTING_KEYS[0]}=${node.value == null ? DEFAULT_DIALOGUE_OPACITY : node.value}`);
             }
@@ -1968,17 +2210,57 @@ class StoryRuntime {
     }
 
     eval_condition(cond) {
-        if (!cond || !Object.prototype.hasOwnProperty.call(this.vars, cond.name)) return false;
-        const left = this.vars[cond.name].value;
-        const right = this.value_of(cond.value);
-        if (cond.op === '==') return typeof left === typeof right ? left === right : String(left) === String(right);
-        if (cond.op === '!=') return typeof left === typeof right ? left !== right : String(left) !== String(right);
-        const a = typeof left === 'number' ? left : String(left);
-        const b = typeof right === 'number' ? right : String(right);
-        if (cond.op === '>') return a > b;
-        if (cond.op === '<') return a < b;
-        if (cond.op === '>=') return a >= b;
-        if (cond.op === '<=') return a <= b;
+        if (!cond || !cond.ast) return false;
+        return this.eval_expr(cond.ast) === true;
+    }
+
+    /** 求值 v0.4 条件表达式；未声明的裸词按字符串常量处理，兼容旧剧本 */
+    eval_expr(expr) {
+        if (!expr) return false;
+        if (expr.type === 'literal') {
+            if (expr.valueType === 'string') return this.interpolate(jqbjUnquote(expr.value));
+            return expr.value;
+        }
+        if (expr.type === 'var') {
+            if (Object.prototype.hasOwnProperty.call(this.vars, expr.name)) return this.vars[expr.name].value;
+            return this.interpolate(expr.name);
+        }
+        if (expr.type === 'not') return !(this.eval_expr(expr.expr) === true);
+        if (expr.type === 'unary') {
+            const value = Number(this.eval_expr(expr.expr));
+            return Number.isFinite(value) ? -value : NaN;
+        }
+        if (expr.type === 'logic') {
+            const left = this.eval_expr(expr.left) === true;
+            if (expr.op === '与') return left && this.eval_expr(expr.right) === true;
+            return left || this.eval_expr(expr.right) === true;
+        }
+        if (expr.type === 'binary') {
+            const left = Number(this.eval_expr(expr.left));
+            const right = Number(this.eval_expr(expr.right));
+            if (!Number.isFinite(left) || !Number.isFinite(right)) return NaN;
+            if (expr.op === '+') return left + right;
+            if (expr.op === '-') return left - right;
+            if (expr.op === '*') return left * right;
+            if (expr.op === '/') return right === 0 ? NaN : left / right;
+            if (expr.op === '%') return right === 0 ? NaN : left % right;
+            return NaN;
+        }
+        if (expr.type === 'compare') return this.compare_values(expr.op, this.eval_expr(expr.left), this.eval_expr(expr.right));
+        return false;
+    }
+
+    compare_values(op, left, right) {
+        if (op === '==') return typeof left === typeof right ? left === right : String(left) === String(right);
+        if (op === '!=') return typeof left === typeof right ? left !== right : String(left) !== String(right);
+        let a = left;
+        let b = right;
+        if (typeof left !== 'number') a = String(left);
+        if (typeof right !== 'number') b = String(right);
+        if (op === '>') return a > b;
+        if (op === '<') return a < b;
+        if (op === '>=') return a >= b;
+        if (op === '<=') return a <= b;
         return false;
     }
 }
@@ -2076,6 +2358,6 @@ const DEFAULT_CATALOG = {
     ],
 };
 
-globalThis.StoryExports = { StoryScript, StoryRuntime, DEFAULT_CATALOG, BOARD_SIZE, MARK_ANCHORS, COND_TEXT, COND_MAP, parseDialogues, dialoguesToText, toBoardPoint, fromBoardPoint };
+globalThis.StoryExports = { StoryScript, StoryRuntime, DEFAULT_CATALOG, BOARD_SIZE, MARK_ANCHORS, COND_TEXT, COND_MAP, JQBJ_VERSION, parseDialogues, dialoguesToText, toBoardPoint, fromBoardPoint };
 
-export { StoryScript, StoryRuntime, DEFAULT_CATALOG, MARK_ANCHORS, COND_TEXT, COND_MAP, parseDialogues, dialoguesToText, toBoardPoint, fromBoardPoint };
+export { StoryScript, StoryRuntime, DEFAULT_CATALOG, MARK_ANCHORS, COND_TEXT, COND_MAP, JQBJ_VERSION, parseDialogues, dialoguesToText, toBoardPoint, fromBoardPoint };

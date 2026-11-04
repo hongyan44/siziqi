@@ -23,9 +23,18 @@ namespace Api {
 namespace Http {
 namespace Docs {
 namespace {
+// 文档大小上限：rule / tip 保持 64KB；story 包含全部关卡剧本，放宽到 1MB
+constexpr std::size_t DOC_LIMIT = 65536;
+constexpr std::size_t STORY_LIMIT = 1024 * 1024;
+
 // 只允许固定几篇文档，避免写入任意键值污染数据库
 bool valid_key(std::string_view key) noexcept {
     return key == "rule" || key == "tip" || key == "story";
+}
+
+// 按文档类型返回字节上限（服务端按 UTF-8 字节数校验）
+std::size_t doc_limit(std::string_view key) noexcept {
+    return key == "story" ? STORY_LIMIT : DOC_LIMIT;
 }
 
 std::string json_string(const jsoncons::json& value, std::string_view key) noexcept {
@@ -85,7 +94,7 @@ void docs_update(cinatra::coro_http_request& request, cinatra::coro_http_respons
     if (!valid_key(key)) return api_http_error("docs_update", response);
 
     const auto data = json_string(value, "data");
-    if (data.empty() || data.size() > 65536) return api_http_error("docs_update", response);
+    if (data.empty() || data.size() > doc_limit(key)) return api_http_error("docs_update", response);
 
     const bool status = Manager::Docs::update_doc(key, data, creator, static_cast<uint64_t>(Libs::Only::Time::timestamp_ms()));
     std::string buffer;

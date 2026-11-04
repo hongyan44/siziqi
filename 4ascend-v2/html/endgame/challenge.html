@@ -267,6 +267,8 @@
         // 白方 AI 在各个位置显示的称呼：默认“每日挑战”，关卡模式下替换为关卡名。
         let whiteAiName = '每日挑战';
         let lastAiDecision = null;
+        // 残局 AI 战术矫正开关（全服设置）：关闭后白方 AI 只走 4zero 搜索。
+        let aiTacticsEnabled = true;
         // 引导落子：按作者顺序依次提示玩家落点；未命中当前引导点则取消后续全部引导。
         let guide = null;
         let guideFrame = 0;
@@ -678,7 +680,16 @@
                 document.getElementById('game_msg').textContent = 'ASCEND 结算完成';
                 await fxDone;
 
-                pendingAscend.flat().forEach((pos) => { ui.clear_stone_ascend(pos.x, pos.y); ui.clear_plant(pos.x, pos.y); });
+                // 被反击/卖血占据的升变点已换成占方普通子，其草仍然存在，
+                // 清层后必须按当前盘面重绘，否则占点上的草会被一并擦掉。
+                pendingAscend.flat().forEach((pos) => {
+                    ui.clear_stone_ascend(pos.x, pos.y);
+                    ui.clear_plant(pos.x, pos.y);
+                    const current = game.board.get_pos(pos.x, pos.y);
+                    if (!current) return;
+                    if (current.plant === PLANT_ENUM.ONE) ui.draw_plant(pos.x, pos.y);
+                    else if (current.plant === PLANT_ENUM.TWO) ui.draw_2plant(pos.x, pos.y);
+                });
                 pendingAscend[0].length = 0;
                 pendingAscend[1].length = 0;
             }
@@ -725,7 +736,7 @@
             lastAiDecision = null;
             if (aiWorker) {
                 try {
-                    const search = await aiWorker.ENDGAME_THINK(ENDGAME_SIMULATIONS);
+                    const search = await aiWorker.ENDGAME_THINK(ENDGAME_SIMULATIONS, aiTacticsEnabled);
                     const index = search && search.action;
                     const engineMove = Number.isInteger(index) && index >= 0 && index < 81 ? [index % 9, Math.floor(index / 9)] : null;
                     if (engineMove && legal(engineMove[0], engineMove[1])) {
@@ -796,10 +807,10 @@
                     source = '正着应手';
                     setStatus('白方按残局正着应手。', 'info');
                 } else {
-                    setStatus('白方 AI（战术矫正 + 4zero）正在计算...', 'info');
+                    setStatus(aiTacticsEnabled ? '白方 AI（战术矫正 + 4zero）正在计算...' : '白方 AI（纯 4zero）正在计算...', 'info');
                     move = await aiThink();
                     tacticalMove = Boolean(lastAiDecision && lastAiDecision.tactical);
-                    source = tacticalMove ? `战术AI · ${lastAiDecision.reason || '矫正'}` : '战术AI';
+                    source = aiTacticsEnabled ? (tacticalMove ? `战术AI · ${lastAiDecision.reason || '矫正'}` : '战术AI') : '纯 4zero AI';
                 }
                 if (!move || !legal(move[0], move[1])) {
                     setStatus('白方 AI 未找到合法落点，请重置后重试。', 'danger');
@@ -976,8 +987,15 @@
             ui.init(); ui.draw_board(); redraw(); renderInfo();
         };
 
+        // 读取全服战术矫正开关；读取失败时保持默认开启，不影响挑战。
+        const loadAiTactics = async () => {
+            if (typeof window.http_puzzle_ai_tactics_query !== 'function') return;
+            try { aiTacticsEnabled = await window.http_puzzle_ai_tactics_query(); } catch (_) { aiTacticsEnabled = true; }
+        };
+
         const initAi = async () => {
             aiReady = false;
+            await loadAiTactics();
             setStatus('正在加载 4zero MCTS 和 ONNX 模型...', 'warning');
             if (sound) sound.init().catch(() => {});
             try {

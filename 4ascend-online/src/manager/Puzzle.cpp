@@ -35,6 +35,9 @@ sqlite3_stmt* p_sub_review         = nullptr;
 sqlite3_stmt* p_claim_clear        = nullptr;
 sqlite3_stmt* p_count_clears       = nullptr;
 
+sqlite3_stmt* p_ai_tactics_query   = nullptr;
+sqlite3_stmt* p_ai_tactics_update  = nullptr;
+
 void bind_text(sqlite3_stmt* statement, int index, std::string_view value) noexcept {
     sqlite3_bind_text(statement, index, value.data(), static_cast<int>(value.size()), SQLITE_TRANSIENT);
 }
@@ -183,6 +186,28 @@ void init() noexcept {
         &p_count_clears,
         nullptr
     );
+
+    // 残局 AI 全局设置：单行记录，默认开启战术矫正（斩杀 / 防自杀）。
+    sqlite3_exec(
+        db,
+        "CREATE TABLE IF NOT EXISTS puzzle_settings ("
+        "id INTEGER PRIMARY KEY CHECK(id = 1), "
+        "ai_tactics_enabled INTEGER NOT NULL DEFAULT 1, "
+        "updated_at INTEGER NOT NULL DEFAULT 0"
+        ") STRICT",
+        nullptr,
+        nullptr,
+        nullptr
+    );
+    sqlite3_prepare_v2(db, "SELECT ai_tactics_enabled FROM puzzle_settings WHERE id = 1", -1, &p_ai_tactics_query, nullptr);
+    sqlite3_prepare_v2(
+        db,
+        "INSERT INTO puzzle_settings(id, ai_tactics_enabled, updated_at) VALUES (1, ?, ?) "
+        "ON CONFLICT(id) DO UPDATE SET ai_tactics_enabled = excluded.ai_tactics_enabled, updated_at = excluded.updated_at",
+        -1,
+        &p_ai_tactics_update,
+        nullptr
+    );
 }
 
 void close() noexcept {
@@ -200,6 +225,8 @@ void close() noexcept {
     sqlite3_finalize(p_sub_review);
     sqlite3_finalize(p_claim_clear);
     sqlite3_finalize(p_count_clears);
+    sqlite3_finalize(p_ai_tactics_query);
+    sqlite3_finalize(p_ai_tactics_update);
     p_insert = nullptr;
     p_update = nullptr;
     p_delete = nullptr;
@@ -213,6 +240,8 @@ void close() noexcept {
     p_sub_review = nullptr;
     p_claim_clear = nullptr;
     p_count_clears = nullptr;
+    p_ai_tactics_query = nullptr;
+    p_ai_tactics_update = nullptr;
     if (db) sqlite3_close(db);
     db = nullptr;
 }
@@ -299,6 +328,25 @@ bool update_daily(std::string_view title, std::string_view description, std::str
     sqlite3_bind_int64(p_daily_update, 5, static_cast<sqlite3_int64>(updated_at));
     const int rc = sqlite3_step(p_daily_update);
     reset(p_daily_update);
+    return rc == SQLITE_DONE;
+}
+
+bool query_ai_tactics(bool& enabled) noexcept {
+    // 无记录时视为开启，保证旧数据库升级后行为与此前一致。
+    enabled = true;
+    if (!db || !p_ai_tactics_query) return false;
+    const int rc = sqlite3_step(p_ai_tactics_query);
+    if (rc == SQLITE_ROW) enabled = sqlite3_column_int(p_ai_tactics_query, 0) != 0;
+    reset(p_ai_tactics_query);
+    return rc == SQLITE_ROW || rc == SQLITE_DONE;
+}
+
+bool update_ai_tactics(bool enabled, uint64_t updated_at) noexcept {
+    if (!db || !p_ai_tactics_update) return false;
+    sqlite3_bind_int(p_ai_tactics_update, 1, enabled ? 1 : 0);
+    sqlite3_bind_int64(p_ai_tactics_update, 2, static_cast<sqlite3_int64>(updated_at));
+    const int rc = sqlite3_step(p_ai_tactics_update);
+    reset(p_ai_tactics_update);
     return rc == SQLITE_DONE;
 }
 

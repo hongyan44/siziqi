@@ -318,15 +318,18 @@ Comlink.expose({
     },
 
     /**
-     * 残局思考：先走防自杀 / 斩杀遍历矫正；无命中时再回退 4zero MCTS。
+     * 残局思考：默认先走防自杀 / 斩杀遍历矫正；无命中时再回退 4zero MCTS。
      * 矫正逻辑不依赖落子历史，专门修复残局无 history 时的树算法失灵。
+     * @param {number} simulations 模拟次数
+     * @param {boolean} useTactics 是否叠加战术矫正；管理员关闭时为 false，仅走 4zero MCTS
      */
-    async ENDGAME_THINK(simulations = 888) {
+    async ENDGAME_THINK(simulations = 888, useTactics = true) {
         const game = requireEndgameGame();
         const requestedSimulations = clampInteger(simulations, 888, 1, 5000);
+        const tacticsEnabled = useTactics !== false;
 
         // 底层战术：遍历全部合法点，强制斩杀 / 防自杀 / 堵点 / 构建 ASCEND。
-        const tactical = endgameTactics.chooseMove(game);
+        const tactical = tacticsEnabled ? endgameTactics.chooseMove(game) : null;
         if (tactical && Number.isInteger(tactical.action)) {
             lastEndgameSearch = {
                 'action': tactical.action,
@@ -354,20 +357,22 @@ Comlink.expose({
         lastEndgameSearch.searchSeeds = null;
         lastEndgameSearch.corrected = false;
 
-        // 若树算法落点与斩杀冲突，仍强制改为斩杀/防自杀点（二次保险）。
-        const forced = endgameTactics.correctMove(game);
-        if (forced && Number.isInteger(forced.action)
-            && (forced.reason === 'kill'
-                || forced.reason === 'anti-suicide-must-ascend'
-                || forced.reason === 'anti-suicide-stronger-ascend'
-                || forced.reason === 'anti-suicide-fallback')
-            && forced.action !== lastEndgameSearch.action) {
-            lastEndgameSearch.action = forced.action;
-            lastEndgameSearch.engine = forced.engine || 'endgame-tactics';
-            lastEndgameSearch.reason = forced.reason;
-            lastEndgameSearch.detail = forced.detail || null;
-            lastEndgameSearch.corrected = true;
-            lastEndgameSearch.overriddenMcts = true;
+        // 若树算法落点与斩杀冲突，仍强制改为斩杀/防自杀点（二次保险）；管理员关闭矫正时跳过。
+        if (tacticsEnabled) {
+            const forced = endgameTactics.correctMove(game);
+            if (forced && Number.isInteger(forced.action)
+                && (forced.reason === 'kill'
+                    || forced.reason === 'anti-suicide-must-ascend'
+                    || forced.reason === 'anti-suicide-stronger-ascend'
+                    || forced.reason === 'anti-suicide-fallback')
+                && forced.action !== lastEndgameSearch.action) {
+                lastEndgameSearch.action = forced.action;
+                lastEndgameSearch.engine = forced.engine || 'endgame-tactics';
+                lastEndgameSearch.reason = forced.reason;
+                lastEndgameSearch.detail = forced.detail || null;
+                lastEndgameSearch.corrected = true;
+                lastEndgameSearch.overriddenMcts = true;
+            }
         }
         return lastEndgameSearch;
     },
