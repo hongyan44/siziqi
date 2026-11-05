@@ -770,7 +770,7 @@ window.http_story_character_query = async (faces = null) => {
 };
 
 /**
- * @description: 新增剧情角色（仅管理员；image 为 200×300 压缩图，original 为原图 data URL）
+ * @description: 新增剧情角色（等级 ≥ 2；等级 2/3 提交审核，等级 4 直接保存；image 为压缩图，original 为原图 data URL）
  * @param {string} token
  * @param {string} name 角色名
  * @param {string} image 代表图压缩图 data URL
@@ -786,7 +786,7 @@ window.http_story_character_add = async (token, name, image, original = '') => {
 };
 
 /**
- * @description: 更换剧情角色代表图（仅管理员，图片为 data URL）
+ * @description: 更换剧情角色代表图（等级 ≥ 2；等级 2/3 提交审核，等级 4 直接保存）
  * @param {string} token
  * @param {number} character_id
  * @param {string} image 新代表图 data URL
@@ -802,7 +802,7 @@ window.http_story_character_update_rep = async (token, character_id, image, orig
 };
 
 /**
- * @description: 删除剧情角色及其全部表情（仅管理员，不可恢复）
+ * @description: 删除剧情角色及其全部表情（仅等级 4，不可恢复）
  * @param {string} token
  * @param {number} character_id
  * @return {Promise<{id: number} | void>}
@@ -814,7 +814,7 @@ window.http_story_character_delete = async (token, character_id) => {
 };
 
 /**
- * @description: 为角色新增表情（仅管理员，图片为 data URL）
+ * @description: 为角色新增表情（等级 ≥ 2；等级 2/3 提交审核，等级 4 直接保存）
  * @param {string} token
  * @param {number} character_id
  * @param {string} name 表情名
@@ -830,7 +830,7 @@ window.http_story_expression_add = async (token, character_id, name, image, orig
 };
 
 /**
- * @description: 删除角色的单个表情（仅管理员，不可恢复）
+ * @description: 删除角色的单个表情（仅等级 4，不可恢复）
  * @param {string} token
  * @param {number} character_id
  * @param {number} expression_id
@@ -844,7 +844,7 @@ window.http_story_expression_delete = async (token, character_id, expression_id)
 
 
 /**
- * @description: 覆盖已有表情图片（仅管理员；把旧大图降采样为压缩图时使用）
+ * @description: 覆盖已有表情图片（等级 ≥ 2；等级 2/3 提交审核，等级 4 直接保存）
  * @param {string} token
  * @param {number} character_id
  * @param {number} expression_id
@@ -862,7 +862,46 @@ window.http_story_expression_image_update = async (token, character_id, expressi
 
 
 /**
- * @description: 管理员下载剧情角色/表情原图（服务端磁盘原图，返回 data URL）
+ * @description: 提交剧情/角色编辑投稿（等级 ≥ 2；等级 4 直接保存不调用此接口）
+ * @param {string} token
+ * @param {string} kind level / character / expression / update_rep / update_expression_image
+ * @param {object} [data] level 时含 level_from/level_to/title/script/stats；角色操作含 name/image/original/character_id/expression_id
+ * @return {Promise<{id: number, submitted: boolean} | void>}
+ */
+window.http_story_submission_submit = async (token, kind, data = {}) => {
+    const payload = { token, kind, ...data };
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/submission_submit`, payload, 60000);
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+/**
+ * @description: 查询剧情投稿（等级 4 返回全部待审；等级 2/3 返回自己的投稿记录）
+ * @param {string} token
+ * @return {Promise<{submissions: object[]} | void>}
+ */
+window.http_story_submission_query = async (token) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/submission_query`, { token }, 60000);
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+/**
+ * @description: 审核剧情投稿（仅等级 4）
+ * @param {string} token
+ * @param {number} id 投稿 id
+ * @param {string} action approve / reject
+ * @return {Promise<{id: number, status: number} | void>}
+ */
+window.http_story_submission_review = async (token, id, action) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/submission_review`, { token, id, action }, 60000);
+    if (!rjson || !rjson.status) return;
+    return rjson.result;
+};
+
+
+/**
+ * @description: 下载剧情角色/表情原图（等级 ≥ 2；服务端磁盘原图，返回 data URL）
  * @param {string} token
  * @param {string} kind rep（角色代表图）/ expression（表情）
  * @param {number} character_id

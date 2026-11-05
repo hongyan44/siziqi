@@ -95,6 +95,10 @@ class Canvas {
 
         // 已购皮肤：只改变本机渲染，双方棋子与草都按皮肤绘制
         this.skins = Skins.read();
+        // 记录当前画面上有棋子的交点，供草皮肤区分「空草点」与「被棋子占据的草点」
+        this.stone_points = new Set();
+        // 记录当前画面上已绘制的草点与草数量，供火与钢皮肤做最小范围清除
+        this.plant_cache = new Map();
         // 动画层与棋盘共用同一份皮肤状态，避免动画期间重复读取缓存
         this.ascendfx.skins = this.skins;
     };
@@ -111,6 +115,9 @@ class Canvas {
     init() {
         const size = this.size;
 
+        // 画布重设尺寸会清空所有图层，同步清空占位记录
+        this.stone_points.clear();
+        this.plant_cache.clear();
 
         // 设置尺寸
         this.canvas_board.width = size;
@@ -605,6 +612,9 @@ class Canvas {
         // 设定棋子半径
         const radius = this.spacing * this.stone_radius;
 
+        // 记录该交点已有棋子，草皮肤据此切换「火焰环绕」形态
+        this.stone_points.add(gx + ',' + gy);
+
         // 棋子皮肤为一套：黑白子同时替换
         if (Skins.draw_stone(ctx, x, y, radius, color, { skins: this.skins })) return;
 
@@ -643,6 +653,8 @@ class Canvas {
         // 设定棋子半径
         const radius = this.spacing * this.stone_radius;
 
+        // 记录该交点已有棋子，草皮肤据此切换「火焰环绕」形态
+        this.stone_points.add(gx + ',' + gy);
 
         ctx.beginPath();
         ctx.save();
@@ -939,7 +951,11 @@ class Canvas {
         const y = this.offset + gy * this.spacing;
         const radius = this.spacing * this.plant_radius;
 
-        // 草生成特效：草皮肤启用时同步使用对应光晕（白玉玲珑为玉青，金菱草为金色，反曲点为蓝色）
+        // 草生成特效：草皮肤启用时同步使用对应光晕（火与钢为炽红，白玉玲珑为玉青，金菱草为金色，反曲点为蓝色）
+        if (this.skins.grass_firesteel) {
+            this.effect.plant(x, y, radius * (count >= 2 ? 1.6 : 1.25), 1, 'firesteel');
+            return;
+        }
         this.effect.plant(
             x,
             y,
@@ -968,8 +984,17 @@ class Canvas {
         // 设定棋子半径
         const radius = this.spacing * this.plant_radius;
 
+        // 火与钢：同一草点从三角徽记切换为火焰时，只需清掉中心的小徽记，
+        // 避免大面积清除误伤相邻草点的火焰
+        if (this.skins.grass_firesteel && this.plant_cache.has(gx + ',' + gy)) this.clear_plant_center(gx, gy);
+        this.plant_cache.set(gx + ',' + gy, 1);
+
         // 已购草皮肤：仅改变本机渲染
-        if (Skins.draw_grass(ctx, x, y, radius, { skins: this.skins })) return;
+        if (Skins.draw_grass(ctx, x, y, radius, {
+            skins: this.skins,
+            occupied: this.stone_occupied(gx, gy),
+            stone_radius: this.spacing * this.stone_radius,
+        })) return;
 
         ctx.beginPath();
         ctx.save();
@@ -1005,9 +1030,20 @@ class Canvas {
         // 设定棋子半径
         const radius = this.spacing * this.plant_radius;
 
+        const plant_opts = {
+            skins: this.skins,
+            occupied: this.stone_occupied(gx, gy),
+            stone_radius: this.spacing * this.stone_radius,
+        };
+
+        // 火与钢：双草改为单个「三角 + 圆框 + 刀纹」徽记（被占据时改为更炽烈的火焰）
+        if (this.skins.grass_firesteel && this.plant_cache.has(gx + ',' + gy)) this.clear_plant_center(gx, gy);
+        this.plant_cache.set(gx + ',' + gy, 2);
+        if (Skins.draw_grass_double(ctx, x, y, radius, plant_opts)) return;
+
         // 已购草皮肤：仅改变本机渲染，双草同样替换
-        if (Skins.draw_grass(ctx, x - radius * 1.3, y, radius, { skins: this.skins })) {
-            Skins.draw_grass(ctx, x + radius * 1.3, y, radius, { skins: this.skins });
+        if (Skins.draw_grass(ctx, x - radius * 1.3, y, radius, plant_opts)) {
+            Skins.draw_grass(ctx, x + radius * 1.3, y, radius, plant_opts);
             return;
         }
 
@@ -1062,6 +1098,7 @@ class Canvas {
         const clear = this.spacing * this.stone_radius + this.spacing * (this.stone_radius * 0.3);
 
         ctx.clearRect(x - clear, y - clear, clear * 2, clear * 2);
+        this.stone_points.delete(gx + ',' + gy);
     };
 
     /**
@@ -1082,6 +1119,17 @@ class Canvas {
         const clear = this.spacing * this.stone_radius + this.spacing * (this.stone_radius * 0.35);
 
         ctx.clearRect(x - clear, y - clear, clear * 2, clear * 2);
+        this.stone_points.delete(gx + ',' + gy);
+    };
+
+    /**
+     * @description: 该交点当前是否画有棋子
+     * @param {number} gx
+     * @param {number} gy
+     * @return {boolean}
+     */
+    stone_occupied(gx, gy) {
+        return this.stone_points.has(gx + ',' + gy);
     };
 
     /**
@@ -1144,9 +1192,13 @@ class Canvas {
         const x = this.offset + gx * this.spacing;
         const y = this.offset + gy * this.spacing;
 
+        // 火与钢：该点没有画过草时直接跳过，避免新草生成时误清相邻草点的火焰
+        const firesteel = !!this.skins.grass_firesteel;
+        if (firesteel && !this.plant_cache.has(gx + ',' + gy)) return;
+
         // 计算擦除区域的大小
-        // 这里稍微比棋子半径多加 2 像素，确保描边也能被擦干净
-        const clear = this.spacing * this.stone_radius;
+        // 火与钢的火焰会略超出棋子范围，需要相应扩大擦除区域
+        const clear = this.spacing * this.stone_radius * (firesteel ? 1.75 : 1);
 
         ctx.clearRect(
             x - clear,
@@ -1154,6 +1206,54 @@ class Canvas {
             clear * 2,
             clear * 2
         );
+        this.plant_cache.delete(gx + ',' + gy);
+
+        // 扩大擦除可能波及相邻草点，补绘周围仍存在的草，保持火焰完整
+        if (firesteel) this.redraw_plants_near(gx, gy);
+    };
+
+    /**
+     * @description: 只擦除草点中心的小徽记区域（不伤及相邻草点的火焰）
+     * @param {number} gx
+     * @param {number} gy
+     * @return {void}
+     */
+    clear_plant_center(gx, gy) {
+        const ctx = this.canvas_plant.getContext('2d');
+
+        const x = this.offset + gx * this.spacing;
+        const y = this.offset + gy * this.spacing;
+        const clear = this.spacing * this.stone_radius * 0.86;
+
+        ctx.clearRect(x - clear, y - clear, clear * 2, clear * 2);
+    };
+
+    /**
+     * @description: 补绘指定坐标周围八格中仍然存在的草（用于火与钢擦除后的修复）
+     * @param {number} gx
+     * @param {number} gy
+     * @return {void}
+     */
+    redraw_plants_near(gx, gy) {
+        const ctx = this.canvas_plant.getContext('2d');
+        const radius = this.spacing * this.plant_radius;
+
+        this.plant_cache.forEach((count, key) => {
+            const [nx, ny] = key.split(',').map(Number);
+            if (Math.max(Math.abs(nx - gx), Math.abs(ny - gy)) !== 1) return;
+
+            const x = this.offset + nx * this.spacing;
+            const y = this.offset + ny * this.spacing;
+            const opts = {
+                skins: this.skins,
+                occupied: this.stone_occupied(nx, ny),
+                stone_radius: this.spacing * this.stone_radius,
+            };
+
+            if (Skins.draw_grass_double(ctx, x, y, radius, opts)) return;
+            Skins.draw_grass(ctx, x - radius * 1.3, y, radius, opts);
+            Skins.draw_grass(ctx, x + radius * 1.3, y, radius, opts);
+        });
     };
 
     /**
@@ -1190,6 +1290,7 @@ class Canvas {
         this.canvas_board.getContext('2d').clearRect(0, 0, this.size, this.size);
         this.canvas_stone_fill.getContext('2d').clearRect(0, 0, this.size, this.size);
         this.canvas_stone_ascend.getContext('2d').clearRect(0, 0, this.size, this.size);
+        this.stone_points.clear();
         this.canvas_view_ascend.getContext('2d').clearRect(0, 0, this.size, this.size);
         this.canvas_view_move.getContext('2d').clearRect(0, 0, this.size, this.size);
         this.canvas_view_turn.getContext('2d').clearRect(0, 0, this.size, this.size);

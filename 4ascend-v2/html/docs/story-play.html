@@ -54,10 +54,15 @@
         .story-top-panel { width: min(94vw, 680px); }
         .story-board-wrap { box-shadow: 0 0 0 2px rgba(52, 152, 219, .08), 0 12px 28px rgba(0, 0, 0, .12); }
         .story-board-wrap.is-dialogue { pointer-events: none; }
+        /* 剧情推进时棋盘不接收点击，保证点击棋盘空白处能触发对话框收起/弹出 */
+        .story-board-wrap.is-dialogue #canvas_board { pointer-events: none; }
         #game_p1_name, #game_p1_hp, #game_p2_name, #game_p2_hp { transition: color .5s ease; }
         /* 对话框高度固定为半屏；表情框尺寸由脚本按对话框高度的 2/5 计算（1:1.5），靠左并上下居中，此处为兜底值 */
-        .dialogue-panel { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1100; height: 50vh; box-sizing: border-box; padding: .75rem; transition: transform .3s ease, opacity .3s ease; }
-        .dialogue-panel.is-hidden { transform: translateY(120%); opacity: 0; pointer-events: none; }
+        .dialogue-panel { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1100; height: 50vh; box-sizing: border-box; padding: .75rem; transition: transform .36s cubic-bezier(.4, 0, .2, 1), opacity .3s ease; will-change: transform, opacity; }
+        /* 对局/结束时收起与玩家点击空白处临时收起共用同一套底部滑出动效 */
+        .dialogue-panel.is-hidden, .dialogue-panel.is-collapsed { transform: translateY(130%); opacity: 0; pointer-events: none; }
+        /* 重新弹出时带轻微回弹，模拟对话框从底部弹起 */
+        .dialogue-panel.is-popping { transition-timing-function: cubic-bezier(.34, 1.4, .64, 1); }
         .dialogue-inner { height: 100%; box-sizing: border-box; max-width: 900px; margin-inline: auto; background: rgba(23, 26, 33, var(--dialogue-alpha, .6)); color: #f5f6f8; border-radius: .8rem; box-shadow: 0 -6px 26px rgba(0, 0, 0, .35); padding: 1rem 1.1rem 1.1rem; cursor: pointer; display: flex; align-items: center; gap: 1rem; }
         .met-cursor-pointer .dialogue-inner { cursor: pointer; }
         .dialogue-face { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .4rem; }
@@ -75,6 +80,9 @@
         .dialogue-option:hover { background: rgba(52, 152, 219, .34); border-color: #8fd0ff; }
         .dialogue-next { text-align: right; font-size: .82rem; color: #9fb0c0; margin-top: .5rem; animation: dialogue-blink 1.4s ease-in-out infinite; }
         @keyframes dialogue-blink { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+        @media (prefers-reduced-motion: reduce) {
+            .dialogue-panel, .dialogue-dim { transition: none; }
+        }
         .ending-panel { position: fixed; inset: 0; z-index: 1200; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(12, 14, 18, .9); color: #fff; gap: 1rem; }
         .ending-title { font-size: 2.6rem; font-weight: 800; letter-spacing: .3em; }
         .story-subtitle { font-size: .82rem; }
@@ -265,7 +273,47 @@
 
         // ==================== 剧本引擎 ====================
         const dialoguePanel = $('dialogue');
-        const setDialogueVisible = (visible) => { dialoguePanel.classList.toggle('is-hidden', !visible); $('dialogue_dim').classList.toggle('is-hidden', !visible); $('board_wrap').classList.toggle('is-dialogue', visible); if (visible) drawDim(); };
+        const dialogueDim = $('dialogue_dim');
+        const boardWrap = $('board_wrap');
+        // dialogueActive：当前是否处于剧情推进（对局时关闭）；dialogueCollapsed：玩家点击对话框外临时收起
+        let dialogueActive = false;
+        let dialogueCollapsed = false;
+        let dialoguePopTimer = 0;
+
+        // 弹出时临时切换为回弹曲线，动画结束后恢复常速
+        const popDialogue = () => {
+            dialoguePanel.classList.add('is-popping');
+            clearTimeout(dialoguePopTimer);
+            dialoguePopTimer = setTimeout(() => dialoguePanel.classList.remove('is-popping'), 460);
+        };
+
+        const applyDialogueVisible = (showPop) => {
+            const shown = dialogueActive && !dialogueCollapsed;
+            dialoguePanel.classList.toggle('is-hidden', !dialogueActive);
+            dialoguePanel.classList.toggle('is-collapsed', dialogueActive && dialogueCollapsed);
+            dialoguePanel.setAttribute('aria-hidden', String(!shown));
+            dialogueDim.classList.toggle('is-hidden', !shown);
+            boardWrap.classList.toggle('is-dialogue', dialogueActive);
+            if (!shown) return;
+            drawDim();
+            if (showPop) popDialogue();
+        };
+
+        const setDialogueVisible = (visible) => {
+            dialogueActive = Boolean(visible);
+            if (!dialogueActive) dialogueCollapsed = false;
+            applyDialogueVisible(true);
+        };
+
+        // 点击对话框外：收起；再次点击任意位置：从底部弹出。仅临时隐藏，不改变当前节点与打字进度。
+        const setDialogueCollapsed = (collapsed) => {
+            if (!dialogueActive) return;
+            const next = Boolean(collapsed);
+            if (next === dialogueCollapsed) return;
+            dialogueCollapsed = next;
+            if (next) clearTimeout(dialoguePopTimer);
+            applyDialogueVisible(!next);
+        };
 
         const finishTyping = () => {
             if (!typingTimer) return false;
@@ -732,6 +780,19 @@
             renderNode();
         };
         dialoguePanel.addEventListener('click', advanceDialogue);
+
+        // 点击对话框以外的位置：临时收起对话框；收起后点击任意位置再从底部弹出
+        document.addEventListener('click', (event) => {
+            if (!dialogueActive || mode !== 'dialogue') return;
+            const ending = $('ending');
+            if (ending && !ending.classList.contains('d-none')) return;
+            const target = event.target;
+            if (!target || !target.closest) return;
+            if (target.closest('#button_home')) return;
+            if (dialogueCollapsed) { setDialogueCollapsed(false); return; }
+            if (target.closest('#dialogue')) return;
+            setDialogueCollapsed(true);
+        });
 
         const endStory = () => {
             mode = 'end';

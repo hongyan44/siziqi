@@ -60,8 +60,8 @@ bool claim_coin_match(std::string_view uuid_a, std::string_view uuid_b, int64_t 
 // 棋币购买权限等级：返回 0 成功、1 已拥有更高等级、2 棋币不足、-1 失败
 int purchase_level(std::string_view uuid, int target_level, int64_t price, int& level, int64_t& coin) noexcept;
 
-// 查询已购皮肤：棋子（黑白合并）/ 高级定制棋子 / 草 / 金菱草 / 白玉玲珑 / 棋盘 / 玄金棋盘 / 风格 UI / 留青 UI（仅自己可见的外观光效）
-bool get_skins(std::string_view uuid, bool& piece, bool& piece_rouge, bool& piece_atlantis, bool& grass, bool& grass_gold, bool& grass_jade, bool& board, bool& board_gold, bool& board_atlantis, bool& theme, bool& theme_black, bool& theme_liuqing) noexcept;
+// 查询已购皮肤：棋子（黑白合并）/ 高级定制棋子 / 草 / 金菱草 / 白玉玲珑 / 火与钢 / 棋盘 / 玄金棋盘 / 风格 UI / 留青 UI（仅自己可见的外观光效）
+bool get_skins(std::string_view uuid, bool& piece, bool& piece_rouge, bool& piece_atlantis, bool& grass, bool& grass_gold, bool& grass_jade, bool& grass_firesteel, bool& board, bool& board_gold, bool& board_atlantis, bool& theme, bool& theme_black, bool& theme_liuqing) noexcept;
 // 棋币购买皮肤：返回 0 成功、1 已拥有、2 棋币不足、-1 失败
 int purchase_skin(std::string_view uuid, std::string_view item, int64_t price, bool& owned, int64_t& coin) noexcept;
 

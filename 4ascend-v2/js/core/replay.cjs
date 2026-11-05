@@ -17,6 +17,11 @@ const canvas_view_turn = document.getElementById('canvas_view_turn');
 const canvas_view_ascend = document.getElementById('canvas_view_ascend');
 const canvas_view_move = document.getElementById('canvas_view_move');
 
+const canvas_threat = document.getElementById('canvas_threat');
+
+const threat_switch = document.getElementById('threat_switch');
+const switch_threat = document.getElementById('switch_threat');
+
 
 const game_top_card = document.getElementById('game_top_card');
 const game_buttom_card = document.getElementById('game_buttom_card');
@@ -90,7 +95,7 @@ const GameSound = window.GameExports.Sound;
 const ShToast = window.UiExports.ShToast;
 const BaseZalgo = window.UtilsExports.BaseZalgo;
 
-const { GameNormal, GameBlight, GameNight, Board, OVER_ENUM, ASCEND_ENUM, PLANT_ENUM, PLAYER_ENUM, STONE_ENUM, Pos, Rand, State, ATK, AIC, ArchiveV0, RandAIC, RandUnity, RandOther, RulesRuntime } = window.FAscendExports;
+const { GameNormal, GameBlight, GameNight, Board, OVER_ENUM, ASCEND_ENUM, PLANT_ENUM, PLAYER_ENUM, STONE_ENUM, Pos, Rand, State, ATK, AIC, ArchiveV0, RandAIC, RandUnity, RandOther, RulesRuntime, Threats } = window.FAscendExports;
 const EndgameArchive = window.EndgameExports.EndgameArchive;
 
 const toast = new ShToast();
@@ -100,6 +105,22 @@ let gl_sound, gl_ui, gl_archive;
 let gl_game, gl_rand_aic, gl_rand_unity, gl_rand_other, gl_board, gl_state, gl_timer;
 // 回放就绪后由 run() 注册：窗口尺寸变化时按当前帧重绘，避免棋盘与分析标注被清空
 let gl_resize_redraw = null;
+// 全盘打点：由 run() 注册当前帧重绘，局内随时可开关
+let gl_threat_on = false;
+let gl_threat_refresh = null;
+
+
+// 全盘打点开关（局内随时可切换）
+(() => {
+    if (!switch_threat) return;
+
+    switch_threat.addEventListener('change', () => {
+        gl_threat_on = Boolean(switch_threat.checked);
+
+        if (gl_threat_refresh) gl_threat_refresh();
+        else Threats.clear(canvas_threat);
+    });
+})();
 
 
 
@@ -191,6 +212,8 @@ const game_clear = () => {
     gl_ui.init();
     gl_ui.draw_board();
 
+    Threats.clear(canvas_threat);
+
     // button_tools_restart.disabled = true;
     // button_tools_restart.classList.add('pe-none');
 };
@@ -231,6 +254,9 @@ const game_redraw = () => {
         gl_ui.clear_view_turn();
         gl_ui.draw_stone_turn(gl_state.turn_pos[0], gl_state.turn_pos[1], '#FFD700', 5);
     }
+
+    // 打点图层由帧循环重绘，这里先清空避免残留上一帧内容
+    Threats.clear(canvas_threat);
 };
 
 
@@ -499,6 +525,8 @@ const setup = (archive) => {
 
     // 回放就绪后才显示局势分析入口
     if (analysis_fab) analysis_fab.classList.remove('d-none');
+    // 回放就绪后显示全盘打点开关
+    if (threat_switch) threat_switch.classList.remove('d-none');
 
     gl_archive = archive;
 };
@@ -650,6 +678,24 @@ const run = async () => {
         if (ptr < 0) return;
         gl_silent_redraw = true;
         gen.dispatch(ptr);
+    };
+
+
+    // 全盘打点：按当前帧盘面绘制（局内开关随时生效）
+    const threat_layout = () => ({
+        'stoneEnum': STONE_ENUM,
+        'plantEnum': PLANT_ENUM,
+        'offset': gl_ui.offset,
+        'spacing': gl_ui.spacing,
+        'size': gl_ui.size,
+        'w': 9,
+        'h': 9,
+    });
+
+    gl_threat_refresh = () => {
+        if (!gl_threat_on || ptr < 0 || !info_canvas[ptr]) return Threats.clear(canvas_threat);
+
+        Threats.draw(canvas_threat, info_canvas[ptr], threat_layout());
     };
 
 
@@ -1579,6 +1625,9 @@ const run = async () => {
         // 局势分析面板
         render_analysis();
         analysis_sweep_prioritize(p);
+
+        // 全盘打点
+        gl_threat_refresh();
     }
 };
 

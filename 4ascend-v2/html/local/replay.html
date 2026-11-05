@@ -151,6 +151,51 @@
             line-height: 1.2;
             box-shadow: 0 1px 4px rgba(15, 23, 42, 0.35);
         }
+
+        /* 全盘打点开关 */
+        .threat-switch {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            user-select: none;
+            font-size: 12px;
+            font-weight: 600;
+            color: #334155;
+        }
+
+        .threat-switch input {
+            display: none;
+        }
+
+        .threat-switch-track {
+            position: relative;
+            width: 30px;
+            height: 16px;
+            border-radius: 8px;
+            background: #cbd5e1;
+            transition: background 0.18s ease;
+        }
+
+        .threat-switch-track::after {
+            content: '';
+            position: absolute;
+            left: 2px;
+            top: 2px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #fff;
+            transition: transform 0.18s ease;
+        }
+
+        .threat-switch input:checked + .threat-switch-track {
+            background: #2563eb;
+        }
+
+        .threat-switch input:checked + .threat-switch-track::after {
+            transform: translateX(14px);
+        }
     </style>
 
     <div id='loading' class='loading-a'>
@@ -352,6 +397,10 @@
                         class='position-absolute pe-none top-0 start-0 w-100 h-100'></canvas>
                     <canvas id='canvas_view_move' class='position-absolute pe-none top-0 start-0 w-100 h-100'></canvas>
 
+                    <!-- 全盘打点数值图层 -->
+                    <canvas id='canvas_threat' class='position-absolute pe-none top-0 start-0 w-100 h-100'
+                        style='z-index: 8;'></canvas>
+
                     <div id='analysis_badge' class='analysis-badge d-none'></div>
                 </div>
 
@@ -397,6 +446,16 @@
                             </sl-button>
                         </div>
                     </div>
+                </div>
+
+                <!-- 全盘打点开关（局内可随时切换） -->
+                <div id='threat_switch' class='position-fixed bottom-0 start-0 d-none'
+                    style='z-index: 1050; margin: 0.75rem; background: rgba(255, 255, 255, 0.72); border-radius: 999px; backdrop-filter: blur(6px);'>
+                    <label class='threat-switch px-2 py-1' title='显示全盘打点'>
+                        <input type='checkbox' id='switch_threat'>
+                        <span class='threat-switch-track'></span>
+                        <span>打点</span>
+                    </label>
                 </div>
             </div>
         </main>

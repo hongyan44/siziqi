@@ -257,11 +257,13 @@ class Effect {
     plant(x, y, r, count = 1, skinned = false) {
         const pip_count = Math.min(2, Math.max(1, Number(count) || 1));
         // 未启用草皮肤时沿用绿色；启用后按对应皮肤取光晕颜色
-        const color = skinned === 'gold'
-            ? '#ffd166'
-            : (skinned === 'jade'
-                ? '#8fd8b4'
-                : (skinned === 'qing' ? '#7ed3a1' : (skinned ? '#4aa6ff' : '#2ecc71')));
+        const color = skinned === 'firesteel'
+            ? '#ff5a2a'
+            : (skinned === 'gold'
+                ? '#ffd166'
+                : (skinned === 'jade'
+                    ? '#8fd8b4'
+                    : (skinned === 'qing' ? '#7ed3a1' : (skinned ? '#4aa6ff' : '#2ecc71'))));
         const centers = pip_count === 2
             ? [x - r * 1.3, x + r * 1.3]
             : [x];

@@ -1,6 +1,6 @@
 <!--
  * @Author: CsVeryLoveXieWenLi
- * @Description: 剧情系统 - 关卡列表与管理员行式编辑器
+ * @Description: 剧情系统 - 关卡列表与行式编辑器（等级 2+ 编辑，等级 4 审核）
  * @Copyright (c) 2026 by CsVeryLoveXieWenLi, All Rights Reserved.
 -->
 <!DOCTYPE html>
@@ -195,8 +195,8 @@
 
             <section id='admin_editor' class='card admin-panel shadow-sm mb-4 d-none'>
                 <div class='card-body p-3 p-md-4'>
-                    <div class='d-flex flex-wrap align-items-center gap-2 mb-1'><sl-icon name='shield-lock' class='text-primary'></sl-icon><span class='fw-bold'>管理员剧情编辑器</span><sl-badge variant='warning' pill>权限等级 4</sl-badge></div>
-                    <p class='text-secondary small mb-3'>每行一个命令，拖动左侧手柄可调整顺序；点击某一行即成为当前行（蓝色荧光虚线边框），下方或右侧新增的命令会插入到该行之后。保存后所有玩家都会看到最新内容。</p>
+                    <div class='d-flex flex-wrap align-items-center gap-2 mb-1'><sl-icon name='shield-lock' class='text-primary'></sl-icon><span class='fw-bold'>剧情编辑器</span><sl-badge variant='warning' pill>权限等级 2+</sl-badge></div>
+                    <p class='text-secondary small mb-3'>每行一个命令，拖动左侧手柄可调整顺序；点击某一行即成为当前行（蓝色荧光虚线边框），下方或右侧新增的命令会插入到该行之后。等级 2/3 的修改会提交投稿，等待等级 4 管理员审核；等级 4 可直接保存。</p>
                     <div class='row g-2 align-items-end'>
                         <div class='col-12 col-sm-3 col-md-2'><sl-input id='input_level' type='number' min='1' max='9999' value='1' label='关卡序号' help-text='1 - 9999'></sl-input></div>
                         <div class='col-12 col-sm-9 col-md-4'><sl-input id='input_title' maxlength='20' label='关卡标题' placeholder='最多20个字符'></sl-input></div>
@@ -238,12 +238,12 @@
                     <div class='d-flex flex-wrap gap-2 mt-3'>
                         <sl-button id='button_save' variant='primary'><sl-icon slot='prefix' name='cloud-arrow-up'></sl-icon>保存到服务端</sl-button>
                         <sl-button id='button_export_jqbj' variant='default' outline><sl-icon slot='prefix' name='download'></sl-icon>导出剧情为JQBJ</sl-button>
-                        <sl-button id='button_delete' variant='danger' outline disabled>删除当前关卡</sl-button>
+                        <sl-button id='button_delete' variant='danger' outline disabled class='d-none'>删除当前关卡</sl-button>
                         <sl-button id='button_reset_editor' variant='default' outline>清空编辑器</sl-button>
                         <sl-button id='button_copy_mode' variant='default' outline title='开启复制模式'><sl-icon slot='prefix' name='clipboard-check'></sl-icon>复制模式</sl-button>
                     </div>
                     <div id='editor_errors' class='mt-2'></div>
-                    <div id='editor_feedback' class='text-secondary small mt-2'>仅权限等级4管理员可编辑剧情。剧本格式说明见下方。</div>
+                    <div id='editor_feedback' class='text-secondary small mt-2'>等级 2/3 的修改会提交投稿，等级 4 可直接保存；剧本格式说明见下方。</div>
                     <details class='mt-2'>
                         <summary class='text-secondary small' style='cursor: pointer;'>剧本语法说明</summary>
                         <div class='small text-secondary mt-2'>
@@ -277,6 +277,16 @@
                             <div>可选颜色覆盖：<code>@ 箭头 名字 色=#ff3b30</code>（默认 <code>#ff2d2d</code>）。新标注会替换上一个标注。</div>
                         </div>
                     </details>
+                </div>
+            </section>
+
+            <section id='story_review_panel' class='card admin-panel shadow-sm mb-4 d-none'>
+                <div class='card-body p-3 p-md-4'>
+                    <div class='d-flex flex-wrap align-items-center gap-2 mb-1'><sl-icon name='inbox' class='text-primary'></sl-icon><span class='fw-bold'>剧情投稿审核</span><sl-badge id='review_count' variant='warning' pill>0</sl-badge></div>
+                    <p class='text-secondary small mb-3'>等级 2/3 提交的剧情关卡与角色修改都在这里审核；通过后立即应用到线上数据，拒绝不会改动现有内容。仅权限等级 4 可见。</p>
+                    <div id='review_list' class='d-flex flex-column gap-2'></div>
+                    <div id='review_empty' class='text-secondary small py-3 text-center'>暂无待审投稿。</div>
+                    <div id='review_feedback' class='small mt-2'></div>
                 </div>
             </section>
 
@@ -462,6 +472,7 @@
         let catalog = { version: 1, levels: [] };
         let storyAdmin = null;
         let storyCharacters = [];
+        let reviewItems = [];
         let editingLevel = null;
         let rows = [];
         // 编辑模式：boxes = 拖动框模式；jqbj = JQBJ 语言模式（大文本框）
@@ -476,6 +487,8 @@
         let copyMode = false;
         const copySelected = new Set();
 
+        // 等级 ≥ 2 可使用编辑器与角色管理器；等级 4 额外拥有删除与审核权限
+        const isEditor = () => Boolean(storyAdmin && Number(storyAdmin.level) >= 2);
         const isAdmin = () => Boolean(storyAdmin && Number(storyAdmin.level) === 4);
         const escapeHtml = (text) => String(text == null ? '' : text).replace(/[<>&"']/g, (char) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[char]));
         const attr = (text) => escapeHtml(text);
@@ -1642,14 +1655,17 @@
                 start.innerHTML = `<sl-icon slot='prefix' name='play-fill'></sl-icon>开始`;
                 start.addEventListener('click', () => { window.location.href = `/pages/docs/story-play.html?level=${level.level}`; });
                 actions.append(start);
-                if (isAdmin()) {
+                if (isEditor()) {
                     const edit = document.createElement('sl-button');
                     edit.size = 'small'; edit.variant = 'default'; edit.textContent = '编辑';
                     edit.addEventListener('click', () => editLevel(level.level));
+                    actions.append(edit);
+                }
+                if (isAdmin()) {
                     const remove = document.createElement('sl-button');
                     remove.size = 'small'; remove.variant = 'danger'; remove.outline = true; remove.textContent = '删除';
                     remove.addEventListener('click', () => removeLevel(level.level, level.title));
-                    actions.append(edit, remove);
+                    actions.append(remove);
                 }
                 card.append(actions);
                 grid.append(card);
@@ -1657,13 +1673,18 @@
         };
 
         const renderAdminEditor = () => {
+            const editor = isEditor();
             const admin = isAdmin();
-            $('admin_editor').classList.toggle('d-none', !admin);
-            // 右侧命令快捷栏同样只对管理员展示，并给正文留出避让空间
-            $('command_dock').classList.toggle('d-none', !admin);
-            document.body.classList.toggle('dock-open', admin);
+            $('admin_editor').classList.toggle('d-none', !editor);
+            // 右侧命令快捷栏同样只对可编辑账号展示，并给正文留出避让空间
+            $('command_dock').classList.toggle('d-none', !editor);
+            document.body.classList.toggle('dock-open', editor);
+            const saveButton = $('button_save');
+            saveButton.innerHTML = `<sl-icon slot='prefix' name='cloud-arrow-up'></sl-icon>${admin ? '保存到服务端' : '提交投稿审核'}`;
+            $('button_delete').classList.toggle('d-none', !admin);
             $('button_delete').disabled = !(admin && editingLevel !== null);
-            if (admin && editingLevel === null) resetEditor();
+            $('story_review_panel').classList.toggle('d-none', !admin);
+            if (editor && editingLevel === null) resetEditor();
             applyEditorModeUi();
         };
 
@@ -1696,7 +1717,7 @@
         };
 
         const editLevel = async (levelNo) => {
-            if (!isAdmin()) return;
+            if (!isEditor()) return;
             const level = catalog.levels.find((item) => item.level === Number(levelNo));
             if (!level) return;
             let script = level.script;
@@ -1877,10 +1898,10 @@
             updateEmpty();
             updateCopyUi();
             // 快捷栏在两种模式下都保留：拖动框模式操作行，语言模式把语句插入到光标处
-            const admin = isAdmin();
-            $('command_dock').classList.toggle('d-none', !admin);
-            $('command_dock_copy').classList.toggle('d-none', !admin || !boxes);
-            document.body.classList.toggle('dock-open', admin);
+            const editor = isEditor();
+            $('command_dock').classList.toggle('d-none', !editor);
+            $('command_dock_copy').classList.toggle('d-none', !editor || !boxes);
+            document.body.classList.toggle('dock-open', editor);
         };
 
         // 拖动框 ⇄ JQBJ 语言模式切换：进入时把行模型转成文本；离开时先校验文本再还原为行
@@ -1925,7 +1946,7 @@
         };
 
         const saveLevel = async () => {
-            if (!isAdmin()) { showFeedback('只有权限等级4管理员可以编辑剧情。', 'danger'); return; }
+            if (!isEditor()) { showFeedback('权限等级 2 及以上可以使用剧情编辑器。', 'danger'); return; }
             const levelNo = safeLevelNo($('input_level').value);
             $('input_level').value = String(levelNo);
             const title = ($('input_title').value || '').trim();
@@ -1937,11 +1958,29 @@
             const button = $('button_save');
             button.disabled = true;
             try {
-                // 目录里没有剧本，保存前先取服务端完整目录，只替换当前关卡
+                // 目录里没有剧本，保存/投稿前先取服务端完整目录，只替换当前关卡
                 const full = await loadServerCatalog();
                 const clash = full.levels.find((item) => item.level === levelNo && item.level !== editingLevel);
                 if (clash) { showFeedback(`关卡序号 ${levelNo} 已被占用（${clash.title}），请更换。`, 'danger'); return; }
                 const stats = nodeStats(script);
+
+                // 等级 2/3：提交投稿，不直接写入线上数据
+                if (!isAdmin()) {
+                    const result = await window.http_story_submission_submit(window.get_token(), 'level', {
+                        'level_from': editingLevel === null ? 0 : Number(editingLevel),
+                        'level_to': levelNo,
+                        'title': title,
+                        'script': script,
+                        'stats': stats,
+                    });
+                    if (!result || !result.submitted) {
+                        showFeedback('投稿失败，服务暂不可用，请稍后重试。', 'danger');
+                        return;
+                    }
+                    showFeedback(`已提交投稿：第 ${levelNo} 关“${title}”，等待等级 4 管理员审核。`, 'success');
+                    return;
+                }
+
                 const existing = editingLevel === null ? null : full.levels.find((item) => item.level === editingLevel);
                 if (existing) { existing.level = levelNo; existing.title = title; existing.script = script; existing.stats = stats; }
                 else full.levels.push({ 'level': levelNo, 'title': title, 'script': script, 'stats': stats });
@@ -1968,6 +2007,95 @@
             if (editingLevel === Number(levelNo)) resetEditor();
             renderLevels();
             showFeedback(`第 ${levelNo} 关已删除。`, 'success');
+        };
+
+        // ---------- 剧情投稿审核（仅等级 4）----------
+        const reviewFeedback = (message, type = 'secondary') => {
+            const node = $('review_feedback');
+            node.textContent = message;
+            node.className = `small mt-2 text-${type}`;
+        };
+
+        const reviewKindLabel = (item) => {
+            const payload = item.payload && typeof item.payload === 'object' ? item.payload : {};
+            if (item.kind === 'level') {
+                const from = Number(item.level_from) > 0 ? `编辑第 ${item.level_from} 关 → ` : '新建 → ';
+                return `${from}第 ${item.level_to} 关“${item.name}”`;
+            }
+            if (item.kind === 'character') return `新增角色“${item.name}”`;
+            if (item.kind === 'expression') return `角色 #${payload.character_id || '?'} 新增表情“${item.name}”`;
+            if (item.kind === 'update_rep') return `更换角色 #${payload.character_id || '?'} 代表图`;
+            if (item.kind === 'update_expression_image') return `更换角色 #${payload.character_id || '?'} 表情“${item.name}”图片`;
+            return item.kind;
+        };
+
+        const renderReviews = () => {
+            const panel = $('story_review_panel');
+            panel.classList.toggle('d-none', !isAdmin());
+            if (!isAdmin()) return;
+            $('review_count').textContent = String(reviewItems.length);
+            $('review_empty').classList.toggle('d-none', reviewItems.length > 0);
+            const list = $('review_list');
+            list.innerHTML = reviewItems.map((item) => {
+                const payload = item.payload && typeof item.payload === 'object' ? item.payload : {};
+                const body = item.kind === 'level'
+                    ? `<details class='mt-1'><summary class='small text-secondary' style='cursor: pointer;'>查看剧本（${String(payload.script || '').length} 字）</summary><pre class='small mt-1 mb-0' style='max-height: 240px; overflow: auto; white-space: pre-wrap;'>${escapeHtml(payload.script || '')}</pre></details>`
+                    : `<div class='mt-1'><img src='${attr(payload.image || '')}' alt='投稿预览' style='max-width: 90px; max-height: 135px; border-radius: 6px; border: 1px solid var(--sl-color-neutral-300);' loading='lazy'></div>`;
+                return `<div class='border rounded p-2'>
+                    <div class='d-flex flex-wrap align-items-center justify-content-between gap-2'>
+                        <div class='min-w-0'>
+                            <div class='fw-bold text-truncate'>${escapeHtml(reviewKindLabel(item))}</div>
+                            <div class='small text-secondary'>投稿人：${escapeHtml(item.creator_name || item.creator || '未知')} · ${new Date(Number(item.created_at) || 0).toLocaleString()}</div>
+                        </div>
+                        <div class='d-flex gap-1'>
+                            <sl-button size='small' variant='success' outline data-review data-id='${Number(item.id)}' data-action='approve'>通过</sl-button>
+                            <sl-button size='small' variant='danger' outline data-review data-id='${Number(item.id)}' data-action='reject'>拒绝</sl-button>
+                        </div>
+                    </div>
+                    ${body}
+                </div>`;
+            }).join('');
+            list.querySelectorAll('[data-review]').forEach((button) => {
+                button.addEventListener('click', () => reviewSubmission(Number(button.dataset.id), button.dataset.action));
+            });
+        };
+
+        const loadReviews = async () => {
+            if (!isAdmin()) { reviewItems = []; renderReviews(); return; }
+            try {
+                const result = await window.http_story_submission_query(window.get_token());
+                reviewItems = result && Array.isArray(result.submissions) ? result.submissions : [];
+            } catch (_) { reviewItems = []; }
+            renderReviews();
+        };
+
+        const reviewSubmission = async (id, action) => {
+            const item = reviewItems.find((entry) => Number(entry.id) === Number(id));
+            if (!item) return;
+            if (action === 'approve' && item.kind === 'level') {
+                if (!window.confirm(`通过后第 ${item.level_to} 关“${item.name}”会立即覆盖线上内容，确定吗？`)) return;
+            }
+            reviewFeedback(action === 'approve' ? '正在应用投稿...' : '正在拒绝投稿...', 'primary');
+            const result = await window.http_story_submission_review(window.get_token(), id, action);
+            if (!result) {
+                reviewFeedback('审核失败：投稿可能已被处理，或应用时发生冲突（如名称重复、内容过大），请检查后重试。', 'danger');
+                await loadReviews();
+                return;
+            }
+            reviewFeedback(action === 'approve' ? '已通过并应用投稿。' : '已拒绝该投稿。', 'success');
+            await loadReviews();
+            if (action !== 'approve') return;
+            try {
+                if (item.kind === 'level') {
+                    const loaded = await loadCatalogIndex();
+                    catalog = loaded.catalog;
+                    renderLevels();
+                } else {
+                    await loadCharacters();
+                    charactersReady = true;
+                    if (rows.length) renderRows();
+                }
+            } catch (_) { /* 刷新失败不阻断审核结果 */ }
         };
 
         const checkScript = () => {
@@ -2411,7 +2539,7 @@
             try { storyAdmin = await window.http_user_info(window.get_token()); } catch (_) { storyAdmin = null; }
         };
 
-        // 角色与表情只在管理员编辑时加载，普通玩家进入剧情模式不拉取任何角色图
+        // 角色与表情只在等级 ≥ 2 编辑时加载，普通玩家进入剧情模式不拉取任何角色图
         let charactersReady = false;
         let charactersLoading = null;
         const loadCharacters = async () => {
@@ -2458,8 +2586,9 @@
             badge.variant = loaded.source === 'server' ? 'success' : 'neutral';
             badge.textContent = loaded.source === 'server' ? '服务端目录' : '内置目录';
             renderAdminEditor();
+            await loadReviews();
             renderLevels();
-            if (isAdmin()) resetEditor();
+            if (isEditor()) resetEditor();
         })();
     </script>
 </body>

@@ -66,6 +66,7 @@ const switch_skin_piece_atlantis = document.getElementById('switch_skin_piece_at
 const switch_skin_grass = document.getElementById('switch_skin_grass');
 const switch_skin_grass_gold = document.getElementById('switch_skin_grass_gold');
 const switch_skin_grass_jade = document.getElementById('switch_skin_grass_jade');
+const switch_skin_grass_firesteel = document.getElementById('switch_skin_grass_firesteel');
 const switch_skin_board = document.getElementById('switch_skin_board');
 const switch_skin_board_gold = document.getElementById('switch_skin_board_gold');
 const switch_skin_board_atlantis = document.getElementById('switch_skin_board_atlantis');
@@ -502,6 +503,7 @@ const sync_owned_skins = (skins) => {
             grass: skins.includes('grass'),
             grass_gold: skins.includes('grass_gold'),
             grass_jade: skins.includes('grass_jade'),
+            grass_firesteel: skins.includes('grass_firesteel'),
             board: skins.includes('board'),
             board_gold: skins.includes('board_gold'),
             board_atlantis: skins.includes('board_atlantis'),
@@ -944,6 +946,7 @@ const SKIN_ROWS = [
     { id: 'grass', switch_el: switch_skin_grass },
     { id: 'grass_gold', switch_el: switch_skin_grass_gold },
     { id: 'grass_jade', switch_el: switch_skin_grass_jade },
+    { id: 'grass_firesteel', switch_el: switch_skin_grass_firesteel },
     { id: 'board', switch_el: switch_skin_board },
     { id: 'board_gold', switch_el: switch_skin_board_gold },
     { id: 'board_atlantis', switch_el: switch_skin_board_atlantis },
@@ -972,7 +975,7 @@ const render_skin_settings = () => {
 
 // 同组皮肤互斥：开启组内任一皮肤时自动关闭同组其余皮肤
 [[switch_skin_piece, switch_skin_piece_rouge, switch_skin_piece_atlantis],
-    [switch_skin_grass, switch_skin_grass_gold, switch_skin_grass_jade],
+    [switch_skin_grass, switch_skin_grass_gold, switch_skin_grass_jade, switch_skin_grass_firesteel],
     [switch_skin_board, switch_skin_board_gold, switch_skin_board_atlantis],
     [switch_skin_theme, switch_skin_theme_black, switch_skin_theme_liuqing]]
     .forEach((group) => {
@@ -1014,6 +1017,7 @@ const BAG_SKIN_NAMES = {
     grass: '草皮肤：反曲点',
     grass_gold: '草皮肤：黄金',
     grass_jade: '草皮肤：白玉玲珑',
+    grass_firesteel: '草皮肤：火与钢',
     board: '棋盘皮肤：玉中乾坤',
     board_gold: '棋盘皮肤：黑派',
     board_atlantis: '棋盘皮肤：亚特兰蒂斯',
@@ -1048,6 +1052,9 @@ const backpack_skin_icon = (id) => {
     }
     if (id === 'grass_jade') {
         return `<svg viewBox='0 0 32 32' aria-hidden='true'><defs><radialGradient id='bag-grass-jade' cx='38%' cy='34%' r='72%'><stop offset='0' stop-color='#fdfefb'/><stop offset='0.34' stop-color='#d5ecda'/><stop offset='0.68' stop-color='#63af82'/><stop offset='0.9' stop-color='#2c7350'/><stop offset='1' stop-color='#0d3a28'/></radialGradient></defs><circle cx='16' cy='16' r='13' fill='url(#bag-grass-jade)' stroke='#0b3223' stroke-width='1.4'/><path d='M7 20c3-2 5-6 9-6s5 3 9 5' fill='none' stroke='rgba(255,255,255,.5)' stroke-width='1.2'/><ellipse cx='12' cy='10' rx='4' ry='2.4' fill='rgba(255,255,255,.6)' transform='rotate(-24 12 10)'/></svg>`;
+    }
+    if (id === 'grass_firesteel') {
+        return `<svg viewBox='0 0 32 32' aria-hidden='true'><defs><linearGradient id='bag-grass-fs' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#ff6a44'/><stop offset='0.45' stop-color='#e11f26'/><stop offset='1' stop-color='#87090f'/></linearGradient></defs><circle cx='16' cy='16' r='13.6' fill='none' stroke='#c91d27' stroke-width='1.5'/><path d='M16 4.5L27.4 26H4.6z' fill='url(#bag-grass-fs)' stroke='#420509' stroke-width='1.2'/><path d='M16 10.5l2.6 5.6h-5.2z' fill='#ffe6c4' stroke='#4a0508' stroke-width='0.7'/><path d='M16 16.2v6.4' stroke='#2b0407' stroke-width='1.6'/></svg>`;
     }
     if (id === 'board') {
         return `<svg viewBox='0 0 32 32' aria-hidden='true'><rect x='4' y='4' width='24' height='24' rx='3' fill='#d7ebdd' stroke='#6f9c83'/><path d='M12 4v24M20 4v24M4 12h24M4 20h24' stroke='rgba(42,86,64,.45)'/></svg>`;
@@ -1413,7 +1420,7 @@ const backpack_render_skins = () => {
             // 同组皮肤互斥：切换一套时关闭同组其余皮肤
             const SKIN_GROUPS = [
                 ['piece', 'piece_rouge', 'piece_atlantis'],
-                ['grass', 'grass_gold', 'grass_jade'],
+                ['grass', 'grass_gold', 'grass_jade', 'grass_firesteel'],
                 ['board', 'board_gold', 'board_atlantis'],
                 ['theme', 'theme_black', 'theme_liuqing'],
             ];
@@ -1575,7 +1582,7 @@ button_local_submit.addEventListener('click', () => {
         // 同组皮肤互斥：按优先级（数组靠前者优先）只保留当前开启的那一套
         const exclusive_groups = [
             [['piece_atlantis', switch_skin_piece_atlantis], ['piece_rouge', switch_skin_piece_rouge], ['piece', switch_skin_piece]],
-            [['grass', switch_skin_grass], ['grass_gold', switch_skin_grass_gold], ['grass_jade', switch_skin_grass_jade]],
+            [['grass_firesteel', switch_skin_grass_firesteel], ['grass', switch_skin_grass], ['grass_gold', switch_skin_grass_gold], ['grass_jade', switch_skin_grass_jade]],
             [['board_atlantis', switch_skin_board_atlantis], ['board_gold', switch_skin_board_gold], ['board', switch_skin_board]],
             [['theme_liuqing', switch_skin_theme_liuqing], ['theme_black', switch_skin_theme_black], ['theme', switch_skin_theme]],
         ];
@@ -1638,8 +1645,9 @@ const task_row_html = (task) => {
     const done = Boolean(task && task.done);
     const claimed = Boolean(task && task.claimed);
     const claimable = done && !claimed;
-    // 投稿任务固定保留，已完成任务无需重抽，这两类不显示刷新按钮
-    const refreshable = !done && String(task && task.kind) !== 'puzzle';
+    // 投稿类固定任务保留，已完成任务无需重抽，这些都不显示刷新按钮
+    const kind = String(task && task.kind);
+    const refreshable = !done && kind !== 'puzzle' && kind !== 'story';
     const status = done ? (claimed ? '已完成，奖励已领取' : '已完成，待领取奖励') : `进度 ${progress} / ${target}`;
     const idle = `<sl-button class='task-row-refresh' size='small' variant='default' data-task-id='${task_escape(task && task.id)}'>刷新</sl-button>`;
     const action = claimable
@@ -1727,7 +1735,7 @@ const task_claim_one = async (id, button) => {
 };
 
 /**
- * @description: 渲染任务列表（多人 / 单人 / 投稿分组）
+ * @description: 渲染任务列表（多人 / 单人 / 投稿 / 剧情投稿分组）
  * @param {Object} data
  * @return {void}
  */
@@ -1738,7 +1746,7 @@ const task_render = (data) => {
         div_task_list.innerHTML = `<div class='text-secondary small'>暂无任务，请稍后重试。</div>`;
         return;
     }
-    const groups = [['multi', '多人任务'], ['single', '单人任务'], ['puzzle', '投稿任务']];
+    const groups = [['multi', '多人任务'], ['single', '单人任务'], ['puzzle', '投稿任务'], ['story', '剧情投稿任务']];
     div_task_list.innerHTML = groups.map(([kind, label]) => {
         const list = tasks.filter((task) => task.kind === kind);
         if (!list.length) return '';

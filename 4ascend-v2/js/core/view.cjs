@@ -17,6 +17,11 @@ const canvas_view_turn = document.getElementById('canvas_view_turn');
 const canvas_view_ascend = document.getElementById('canvas_view_ascend');
 const canvas_view_move = document.getElementById('canvas_view_move');
 
+const canvas_threat = document.getElementById('canvas_threat');
+
+const threat_switch = document.getElementById('threat_switch');
+const switch_threat = document.getElementById('switch_threat');
+
 
 const game_top_card = document.getElementById('game_top_card');
 const game_buttom_card = document.getElementById('game_buttom_card');
@@ -83,7 +88,7 @@ const GameSound = window.GameExports.Sound;
 const ShToast = window.UiExports.ShToast;
 const BaseZalgo = window.UtilsExports.BaseZalgo;
 
-const { GameNormal, GameBlight, GameNight, Board, OVER_ENUM, ASCEND_ENUM, PLANT_ENUM, PLAYER_ENUM, STONE_ENUM, Pos, Rand, State, ATK, AIC, ArchiveV0, RandAIC, RandUnity, RandOther } = window.FAscendExports;
+const { GameNormal, GameBlight, GameNight, Board, OVER_ENUM, ASCEND_ENUM, PLANT_ENUM, PLAYER_ENUM, STONE_ENUM, Pos, Rand, State, ATK, AIC, ArchiveV0, RandAIC, RandUnity, RandOther, Threats } = window.FAscendExports;
 
 const toast = new ShToast();
 
@@ -101,6 +106,9 @@ let gl_click_time, gl_click_level;
 let gl_game, gl_rand_aic, gl_rand_unity, gl_rand_other, gl_board, gl_state, gl_timer;
 let gl_cf_room, gl_cf_archive, gl_cf_health, gl_cf_initb, gl_cf_balance, gl_cf_mode, gl_cf_first, gl_cf_color, gl_cf_token, gl_cf_client;
 
+// 全盘打点：局内随时可开关
+let gl_threat_on = false;
+
 
 // 昵称颜色缓存（uuid -> 颜色描述：'' 无 / '#rrggbb' 单色 / 'linear-gradient(...)' 彩色渐变 / 'rainbow' 流动彩虹）
 const view_name_color_cache = new Map();
@@ -115,6 +123,37 @@ const apply_name_color = (node, color) => {
     if (!node) return;
     if (typeof window.name_color_apply === 'function') return window.name_color_apply(node, color);
 };
+
+
+/**
+ * @description: 全盘打点重绘（关闭或棋盘未就绪时清空图层）
+ * @return {void}
+ */
+const refresh_threat_overlay = () => {
+    if (!canvas_threat) return;
+    if (!gl_threat_on || !gl_board || !gl_ui) return Threats.clear(canvas_threat);
+
+    Threats.draw(canvas_threat, gl_board.data, {
+        'stoneEnum': STONE_ENUM,
+        'plantEnum': PLANT_ENUM,
+        'offset': gl_ui.offset,
+        'spacing': gl_ui.spacing,
+        'size': gl_ui.size,
+        'w': 9,
+        'h': 9,
+    });
+};
+
+
+// 全盘打点开关（局内随时可切换）
+(() => {
+    if (!switch_threat) return;
+
+    switch_threat.addEventListener('change', () => {
+        gl_threat_on = Boolean(switch_threat.checked);
+        refresh_threat_overlay();
+    });
+})();
 
 
 
@@ -221,6 +260,8 @@ const game_clear = () => {
     gl_ui.init();
     gl_ui.draw_board();
 
+    Threats.clear(canvas_threat);
+
     button_tools_restart.disabled = true;
     button_tools_restart.classList.add('pe-none');
 };
@@ -239,7 +280,10 @@ const game_redraw = () => {
     gl_ui.init();
     gl_ui.draw_board();
 
-    if (!gl_board) return;
+    if (!gl_board) {
+        refresh_threat_overlay();
+        return;
+    }
     gl_board.data.forEach((pos) => {
         const stone = pos.stone;
         const plant = pos.plant;
@@ -260,6 +304,8 @@ const game_redraw = () => {
         gl_ui.clear_view_turn();
         gl_ui.draw_stone_turn(gl_state.turn_pos[0], gl_state.turn_pos[1], '#FFD700', 5);
     }
+
+    refresh_threat_overlay();
 };
 
 /**
@@ -801,6 +847,8 @@ const setup = (client, token, room) => {
 
     game_top_card.style.width = `${size}px`;
 
+    // 观战就绪后显示全盘打点开关
+    if (threat_switch) threat_switch.classList.remove('d-none');
 
     gl_cf_client = client;
     gl_cf_token = token;
@@ -1265,6 +1313,7 @@ const run = async () => {
 
             game_msg.innerText = win === my_color ? `🏆|${my_name}|胜利${my_icon}` : `💀|${foe_name}|胜利${foe_icon}`;
             gl_win = true;
+            refresh_threat_overlay();
             break;
         }
 
@@ -1287,6 +1336,9 @@ const run = async () => {
 
         // ASCEND清理
         game.ed_as_3();
+
+        // 全盘打点：每手结算后刷新
+        refresh_threat_overlay();
     }
 
 

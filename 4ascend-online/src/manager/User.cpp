@@ -61,6 +61,7 @@ sqlite3_stmt* p_buy_skin_piece_atlantis = nullptr;
 sqlite3_stmt* p_buy_skin_grass   = nullptr;
 sqlite3_stmt* p_buy_skin_grass_gold = nullptr;
 sqlite3_stmt* p_buy_skin_grass_jade = nullptr;
+sqlite3_stmt* p_buy_skin_grass_firesteel = nullptr;
 sqlite3_stmt* p_buy_skin_board      = nullptr;
 sqlite3_stmt* p_buy_skin_board_gold = nullptr;
 sqlite3_stmt* p_buy_skin_board_atlantis = nullptr;
@@ -274,6 +275,7 @@ void init() noexcept {
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN skin_grass INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN skin_grass_gold INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN skin_grass_jade INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "ALTER TABLE users ADD COLUMN skin_grass_firesteel INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN skin_board INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN skin_board_gold INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN skin_theme INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
@@ -451,7 +453,7 @@ void init() noexcept {
     // 皮肤：读取已购状态；购买时用条件 UPDATE 原子扣币并置位，避免并发重复购买。
     sqlite3_prepare_v2(
         db,
-        "SELECT skin_stone_white, skin_stone_black, skin_grass, skin_board, skin_theme, skin_board_gold, skin_grass_gold, skin_piece_rouge, skin_theme_black, skin_grass_jade, skin_piece_atlantis, skin_board_atlantis, skin_theme_liuqing FROM users WHERE uuid = ?;",
+        "SELECT skin_stone_white, skin_stone_black, skin_grass, skin_board, skin_theme, skin_board_gold, skin_grass_gold, skin_piece_rouge, skin_theme_black, skin_grass_jade, skin_piece_atlantis, skin_board_atlantis, skin_theme_liuqing, skin_grass_firesteel FROM users WHERE uuid = ?;",
         -1,
         &p_get_skins,
         nullptr
@@ -496,6 +498,13 @@ void init() noexcept {
         "UPDATE users SET coin = coin - ?, skin_grass_jade = 1 WHERE uuid = ? AND coin >= ? AND skin_grass_jade = 0;",
         -1,
         &p_buy_skin_grass_jade,
+        nullptr
+    );
+    sqlite3_prepare_v2(
+        db,
+        "UPDATE users SET coin = coin - ?, skin_grass_firesteel = 1 WHERE uuid = ? AND coin >= ? AND skin_grass_firesteel = 0;",
+        -1,
+        &p_buy_skin_grass_firesteel,
         nullptr
     );
     sqlite3_prepare_v2(
@@ -601,6 +610,7 @@ void close() noexcept {
     sqlite3_finalize(p_buy_skin_grass);
     sqlite3_finalize(p_buy_skin_grass_gold);
     sqlite3_finalize(p_buy_skin_grass_jade);
+    sqlite3_finalize(p_buy_skin_grass_firesteel);
     sqlite3_finalize(p_buy_skin_board);
     sqlite3_finalize(p_buy_skin_board_gold);
     sqlite3_finalize(p_buy_skin_board_atlantis);
@@ -1210,14 +1220,15 @@ int purchase_level(std::string_view uuid, int target_level, int64_t price, int& 
     return 0;
 };
 
-// 查询已购皮肤：棋子（黑白合并）/ 高级定制棋子 / 亚特兰蒂斯棋子 / 草 / 金菱草 / 白玉玲珑 / 棋盘 / 玄金棋盘 / 亚特兰蒂斯棋盘 / 风格 UI / 黑派 UI / 留青 UI
-bool get_skins(std::string_view uuid, bool& piece, bool& piece_rouge, bool& piece_atlantis, bool& grass, bool& grass_gold, bool& grass_jade, bool& board, bool& board_gold, bool& board_atlantis, bool& theme, bool& theme_black, bool& theme_liuqing) noexcept {
+// 查询已购皮肤：棋子（黑白合并）/ 高级定制棋子 / 亚特兰蒂斯棋子 / 草 / 金菱草 / 白玉玲珑 / 火与钢 / 棋盘 / 玄金棋盘 / 亚特兰蒂斯棋盘 / 风格 UI / 黑派 UI / 留青 UI
+bool get_skins(std::string_view uuid, bool& piece, bool& piece_rouge, bool& piece_atlantis, bool& grass, bool& grass_gold, bool& grass_jade, bool& grass_firesteel, bool& board, bool& board_gold, bool& board_atlantis, bool& theme, bool& theme_black, bool& theme_liuqing) noexcept {
     piece = false;
     piece_rouge = false;
     piece_atlantis = false;
     grass = false;
     grass_gold = false;
     grass_jade = false;
+    grass_firesteel = false;
     board = false;
     board_gold = false;
     board_atlantis = false;
@@ -1242,6 +1253,7 @@ bool get_skins(std::string_view uuid, bool& piece, bool& piece_rouge, bool& piec
         piece_atlantis = sqlite3_column_int(p_get_skins, 10) != 0;
         board_atlantis = sqlite3_column_int(p_get_skins, 11) != 0;
         theme_liuqing = sqlite3_column_int(p_get_skins, 12) != 0;
+        grass_firesteel = sqlite3_column_int(p_get_skins, 13) != 0;
     }
     reset(p_get_skins);
     return rc == SQLITE_ROW;
@@ -1253,8 +1265,8 @@ int purchase_skin(std::string_view uuid, std::string_view item, int64_t price, b
     coin  = 0;
     if (!db || uuid.empty() || price < 0) return -1;
 
-    bool piece = false, piece_rouge = false, piece_atlantis = false, grass = false, grass_gold = false, grass_jade = false, board = false, board_gold = false, board_atlantis = false, theme = false, theme_black = false, theme_liuqing = false;
-    if (!get_skins(uuid, piece, piece_rouge, piece_atlantis, grass, grass_gold, grass_jade, board, board_gold, board_atlantis, theme, theme_black, theme_liuqing)) return -1;
+    bool piece = false, piece_rouge = false, piece_atlantis = false, grass = false, grass_gold = false, grass_jade = false, grass_firesteel = false, board = false, board_gold = false, board_atlantis = false, theme = false, theme_black = false, theme_liuqing = false;
+    if (!get_skins(uuid, piece, piece_rouge, piece_atlantis, grass, grass_gold, grass_jade, grass_firesteel, board, board_gold, board_atlantis, theme, theme_black, theme_liuqing)) return -1;
 
     sqlite3_stmt* statement = nullptr;
     bool current            = false;
@@ -1276,6 +1288,9 @@ int purchase_skin(std::string_view uuid, std::string_view item, int64_t price, b
     } else if (item == "grass_jade") {
         statement = p_buy_skin_grass_jade;
         current   = grass_jade;
+    } else if (item == "grass_firesteel") {
+        statement = p_buy_skin_grass_firesteel;
+        current   = grass_firesteel;
     } else if (item == "board") {
         statement = p_buy_skin_board;
         current   = board;

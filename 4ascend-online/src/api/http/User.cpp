@@ -383,8 +383,8 @@ void user_info(cinatra::coro_http_request& request, cinatra::coro_http_response&
     info["ai_games"] = ai_games;
     info["showcase"] = split_showcase(showcase);
     // 已购皮肤：仅本人读取，用于在本机替换棋子 / 草 / 棋盘的外观（不影响对手）。
-    bool skin_piece = false, skin_piece_rouge = false, skin_piece_atlantis = false, skin_grass = false, skin_grass_gold = false, skin_grass_jade = false, skin_board = false, skin_board_gold = false, skin_board_atlantis = false, skin_theme = false, skin_theme_black = false, skin_theme_liuqing = false;
-    if (!Manager::User::get_skins(uuid, skin_piece, skin_piece_rouge, skin_piece_atlantis, skin_grass, skin_grass_gold, skin_grass_jade, skin_board, skin_board_gold, skin_board_atlantis, skin_theme, skin_theme_black, skin_theme_liuqing)) return api_http_error("user_info", response);
+    bool skin_piece = false, skin_piece_rouge = false, skin_piece_atlantis = false, skin_grass = false, skin_grass_gold = false, skin_grass_jade = false, skin_grass_firesteel = false, skin_board = false, skin_board_gold = false, skin_board_atlantis = false, skin_theme = false, skin_theme_black = false, skin_theme_liuqing = false;
+    if (!Manager::User::get_skins(uuid, skin_piece, skin_piece_rouge, skin_piece_atlantis, skin_grass, skin_grass_gold, skin_grass_jade, skin_grass_firesteel, skin_board, skin_board_gold, skin_board_atlantis, skin_theme, skin_theme_black, skin_theme_liuqing)) return api_http_error("user_info", response);
     jsoncons::json skins = jsoncons::json::array();
     if (skin_piece) skins.push_back(std::string("piece"));
     if (skin_piece_rouge) skins.push_back(std::string("piece_rouge"));
@@ -458,7 +458,7 @@ void user_shop_buy(cinatra::coro_http_request& request, cinatra::coro_http_respo
 
     int target_level = 0;
     int64_t price    = 0;
-    // 皮肤定价：棋子（黑白合并）999 棋币，高级定制棋子 1830 棋币，亚特兰蒂斯棋子 1499 棋币，草 599 棋币，金菱草 325 棋币，白玉玲珑 899 棋币，棋盘 999 棋币，玄金棋盘 799 棋币，亚特兰蒂斯棋盘 1999 棋币，风格 UI 3999 棋币，黑派 UI 4999 棋币，留青 UI 1399 棋币。
+    // 皮肤定价：棋子（黑白合并）999 棋币，高级定制棋子 1830 棋币，亚特兰蒂斯棋子 1499 棋币，草 599 棋币，金菱草 325 棋币，白玉玲珑 899 棋币，火与钢 1299 棋币，棋盘 999 棋币，玄金棋盘 799 棋币，亚特兰蒂斯棋盘 1999 棋币，风格 UI 3999 棋币，黑派 UI 4999 棋币，留青 UI 1399 棋币。
     int64_t skin_price = 0;
     // 消耗品定价：单局投稿券 49 棋币；好友赠礼 500 棋币（每日限购 1 个）；3000 棋币好友赠礼 3000 棋币（每周限购 1 个，仅 Lv.3+）。
     int64_t ticket_price     = 0;
@@ -482,6 +482,8 @@ void user_shop_buy(cinatra::coro_http_request& request, cinatra::coro_http_respo
         skin_price = 325;
     } else if (item == "grass_jade") {
         skin_price = 899;
+    } else if (item == "grass_firesteel") {
+        skin_price = 1299;
     } else if (item == "board") {
         skin_price = 999;
     } else if (item == "board_gold") {
@@ -564,8 +566,8 @@ void user_shop_buy(cinatra::coro_http_request& request, cinatra::coro_http_respo
     }
 
     // 回传最新皮肤清单，前端据此刷新本机皮肤缓存（仅自己可见）。
-    bool skin_piece = false, skin_piece_rouge = false, skin_piece_atlantis = false, skin_grass = false, skin_grass_gold = false, skin_grass_jade = false, skin_board = false, skin_board_gold = false, skin_board_atlantis = false, skin_theme = false, skin_theme_black = false, skin_theme_liuqing = false;
-    if (!Manager::User::get_skins(uuid, skin_piece, skin_piece_rouge, skin_piece_atlantis, skin_grass, skin_grass_gold, skin_grass_jade, skin_board, skin_board_gold, skin_board_atlantis, skin_theme, skin_theme_black, skin_theme_liuqing)) return api_http_error("shop_buy", response);
+    bool skin_piece = false, skin_piece_rouge = false, skin_piece_atlantis = false, skin_grass = false, skin_grass_gold = false, skin_grass_jade = false, skin_grass_firesteel = false, skin_board = false, skin_board_gold = false, skin_board_atlantis = false, skin_theme = false, skin_theme_black = false, skin_theme_liuqing = false;
+    if (!Manager::User::get_skins(uuid, skin_piece, skin_piece_rouge, skin_piece_atlantis, skin_grass, skin_grass_gold, skin_grass_jade, skin_grass_firesteel, skin_board, skin_board_gold, skin_board_atlantis, skin_theme, skin_theme_black, skin_theme_liuqing)) return api_http_error("shop_buy", response);
     jsoncons::json skins = jsoncons::json::array();
     if (skin_piece) skins.push_back(std::string("piece"));
     if (skin_piece_rouge) skins.push_back(std::string("piece_rouge"));
@@ -573,6 +575,7 @@ void user_shop_buy(cinatra::coro_http_request& request, cinatra::coro_http_respo
     if (skin_grass) skins.push_back(std::string("grass"));
     if (skin_grass_gold) skins.push_back(std::string("grass_gold"));
     if (skin_grass_jade) skins.push_back(std::string("grass_jade"));
+    if (skin_grass_firesteel) skins.push_back(std::string("grass_firesteel"));
     if (skin_board) skins.push_back(std::string("board"));
     if (skin_board_gold) skins.push_back(std::string("board_gold"));
     if (skin_board_atlantis) skins.push_back(std::string("board_atlantis"));
