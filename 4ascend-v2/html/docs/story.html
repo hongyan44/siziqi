@@ -139,6 +139,14 @@
             .level-card { min-height: 92px; }
             .level-number { width: 36px; height: 36px; }
         }
+        /* 桌面端：剧情编辑器放宽到屏幕宽度的 80% 并居中；右侧为固定命令栏预留安全距离，其余内容（关卡列表等）保持 960px 居中 */
+        @media (min-width: 1200px) {
+            .story-main { max-width: none; }
+            /* 除编辑器外的版块保持原 container 内宽（960px 内容区），位置与加宽前完全一致 */
+            .story-main > section:not(#admin_editor), .story-main > .row { max-width: 936px; margin-left: auto; margin-right: auto; }
+            .dock-open .story-main > section:not(#admin_editor), .dock-open .story-main > .row { max-width: 760px; }
+            #admin_editor { width: 80vw; margin-left: calc(min(10vw, 20vw - 188px) - .75rem); margin-right: auto; }
+        }
     </style>
     <div id='loading' class='loading-a'>
         <div class='loading-p'></div>
@@ -238,6 +246,8 @@
                     <div class='d-flex flex-wrap gap-2 mt-3'>
                         <sl-button id='button_save' variant='primary'><sl-icon slot='prefix' name='cloud-arrow-up'></sl-icon>保存到服务端</sl-button>
                         <sl-button id='button_export_jqbj' variant='default' outline><sl-icon slot='prefix' name='download'></sl-icon>导出剧情为JQBJ</sl-button>
+                        <sl-button id='button_import_jqbj' variant='default' outline><sl-icon slot='prefix' name='upload'></sl-icon>导入JQBJ文件</sl-button>
+                        <input type='file' id='import_jqbj_file' accept='.jqbj,text/plain' hidden>
                         <sl-button id='button_delete' variant='danger' outline disabled class='d-none'>删除当前关卡</sl-button>
                         <sl-button id='button_reset_editor' variant='default' outline>清空编辑器</sl-button>
                         <sl-button id='button_copy_mode' variant='default' outline title='开启复制模式'><sl-icon slot='prefix' name='clipboard-check'></sl-icon>复制模式</sl-button>
@@ -1886,6 +1896,50 @@
             showFeedback(`已导出 ${link.download}（${content.split('\n').filter((line) => line.trim()).length} 行）。`, 'success');
         };
 
+        // 解析导出文件名「序号-标题.jqbj」，命中则回填关卡序号与标题
+        const parseJQBJFileName = (name) => {
+            const match = /^(\d+)-(.+)\.jqbj$/i.exec(String(name || '').trim());
+            if (!match) return null;
+            return { 'level': Number(match[1]), 'title': match[2].trim() };
+        };
+
+        // 导入按钮：读取本地 .jqbj 文件，校验后载入 JQBJ 语言模式
+        const importJQBJ = () => {
+            const input = $('import_jqbj_file');
+            input.value = '';
+            input.click();
+        };
+        const importJQBJFile = async () => {
+            const input = $('import_jqbj_file');
+            const file = input.files && input.files[0];
+            if (!file) return;
+            if (file.size > 1024 * 1024) { showErrors([]); showFeedback('文件过大，JQBJ 剧本请控制在 1MB 以内。', 'danger'); return; }
+            let text = '';
+            try { text = await file.text(); } catch (_) { showErrors([]); showFeedback('文件读取失败，请重试。', 'danger'); return; }
+            if (!text.trim()) { showErrors([]); showFeedback('文件内容为空，未导入。', 'danger'); return; }
+            const parsed = parseJQBJFileName(file.name);
+            if (parsed) {
+                const levelNo = safeLevelNo(parsed.level);
+                $('input_level').value = String(levelNo);
+                $('input_title').value = parsed.title;
+                // 文件名命中已有关卡时按「编辑该关」处理，避免覆盖保存时误判序号占用
+                editingLevel = catalog.levels.some((item) => item.level === levelNo) ? levelNo : null;
+                $('button_delete').disabled = editingLevel === null;
+            }
+            await ensureCharacters();
+            setEditorMode('jqbj');
+            $('jqbj_text').value = text;
+            $('jqbj_text').dispatchEvent(new Event('input', { 'bubbles': true }));
+            const errors = window.StoryExports.StoryScript.validate(text);
+            if (errors.length) {
+                showErrors(errors);
+                showFeedback(`已导入 ${file.name}，但有 ${errors.length} 处语法问题，修正后才能保存或切回拖动框模式。`, 'danger');
+                return;
+            }
+            showErrors([]);
+            showFeedback(`已导入 ${file.name}（${text.split('\n').filter((line) => line.trim()).length} 行），当前为 JQBJ 语言模式。`, 'success');
+        };
+
         const applyEditorModeUi = () => {
             const boxes = editorMode === 'boxes';
             const boxesButton = $('button_mode_boxes');
@@ -2514,6 +2568,8 @@
 
         $('button_save').addEventListener('click', saveLevel);
         $('button_export_jqbj').addEventListener('click', exportJQBJ);
+        $('button_import_jqbj').addEventListener('click', importJQBJ);
+        $('import_jqbj_file').addEventListener('change', importJQBJFile);
         $('button_mode_boxes').addEventListener('click', () => setEditorMode('boxes'));
         $('button_mode_jqbj').addEventListener('click', () => setEditorMode('jqbj'));
         $('jqbj_text').addEventListener('input', () => {

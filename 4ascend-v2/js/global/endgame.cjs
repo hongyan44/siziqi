@@ -209,7 +209,12 @@ class EndgameArchive {
         const firstPlayer = snapshot.firstPlayer === undefined
             ? (data.first === 'white' ? 1 : 0)
             : (snapshot.firstPlayer === 1 ? 1 : 0);
-        const turnPlayer = snapshot.turnPlayer === 1 ? 1 : 0;
+        // 编辑器数据不带 snapshot 时，开局行棋方必须与先手方一致：
+        // AI 先手（白方先手）会让白方从第 0 手开始，黑方随后仍是第 1 手。
+        // 已保存的快照（含中途局面）仍以 snapshot.turnPlayer 为准。
+        const turnPlayer = snapshot.turnPlayer === undefined
+            ? firstPlayer
+            : (snapshot.turnPlayer === 1 ? 1 : 0);
         const naturalPlant = snapshot.naturalPlant === undefined ? Boolean(data.natural_plant) : Boolean(snapshot.naturalPlant);
 
         const flags = (data.player === 'white' ? 1 : 0)

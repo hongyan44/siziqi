@@ -200,7 +200,14 @@
                                 <div class='col-6'><sl-input id='black_hp' type='number' label='黑方 HP' value='6' min='0' max='99' step='1' size='small'></sl-input></div>
                                 <div class='col-6'><sl-input id='white_hp' type='number' label='白方 HP' value='6' min='0' max='99' step='1' size='small'></sl-input></div>
                             </div>
-                            <div class='small text-secondary mt-2'>默认玩家为黑方，黑方先落子。</div>
+                            <div class='d-flex justify-content-between align-items-center gap-2 mt-2'>
+                                <div class='min-w-0'>
+                                    <div class='fw-bold small'>AI 先手</div>
+                                    <div class='small text-secondary'>勾选后白方 AI 在开局先落一子（第 0 手）；黑方之后的第一手仍按第 1 手计数。</div>
+                                </div>
+                                <sl-switch id='ai_first' title='勾选后白方 AI 先手落子'></sl-switch>
+                            </div>
+                            <div class='small text-secondary mt-2'>默认玩家为黑方；未开启 AI 先手时黑方先落子。</div>
                         </div>
                     </div>
 
@@ -227,7 +234,7 @@
                                 <div class='fw-bold'>白方预定落子顺序</div>
                                 <sl-badge id='sequence_count' variant='warning' pill>0 手</sl-badge>
                             </div>
-                            <div class='book-rule-note text-secondary mb-2'>第 N 个白方预设对应第 N 个黑方正着。同一个格子可以出现多个黑方正着或多个白方预设，按序号分别参与匹配。</div>
+                            <div class='book-rule-note text-secondary mb-2'>第 N 个白方预设对应第 N 个黑方正着。同一个格子可以出现多个黑方正着或多个白方预设，按序号分别参与匹配。开启 AI 先手时，白方第 0 手不参与此列表，列表仍从黑方第 1 手开始配对。</div>
                             <div id='sequence_empty' class='text-secondary small py-2'>暂无白方落子，选择工具后点击棋盘添加。</div>
                             <div id='sequence_list' class='sequence-list d-flex flex-column gap-1'></div>
                             <sl-button id='button_clear_sequence' class='w-100 mt-2' size='small' variant='default' outline>清空白方落子顺序</sl-button>
@@ -253,7 +260,7 @@
                                 <div class='fw-bold'>AI 预设落子顺序</div>
                                 <sl-badge id='ai_count' variant='primary' pill>0 手</sl-badge>
                             </div>
-                            <div class='book-rule-note text-secondary mb-2'>独立于黑方正着与白方预案。<strong>只要存在 AI 预设</strong>，白方 AI 就无条件按它依序落子（黑方是否命中正着都不影响）；若某一步预设点已被占用而无法落子，仅该步改由 AI 思考，其余步仍按预设落子。棋盘上以蓝色虚线框标注在选中点的左下角，允许同一格重复出现多个。</div>
+                            <div class='book-rule-note text-secondary mb-2'>独立于黑方正着与白方预案。<strong>只要存在 AI 预设</strong>，白方 AI 就无条件按它依序落子（黑方是否命中正着都不影响）；若某一步预设点已被占用而无法落子，仅该步改由 AI 思考，其余步仍按预设落子。棋盘上以蓝色虚线框标注在选中点的左下角，允许同一格重复出现多个。开启 AI 先手时，第 1 个 AI 预设用于白方第 0 手（开局），其余预设依次用于后续白方回合。</div>
                             <div id='ai_empty' class='text-secondary small py-2'>暂无 AI 预设落子，选择「AI 预设」工具后点击棋盘添加。</div>
                             <div id='ai_list' class='sequence-list d-flex flex-column gap-1'></div>
                             <sl-button id='button_clear_ai' class='w-100 mt-2' size='small' variant='default' outline>清空 AI 预设落子顺序</sl-button>
@@ -378,6 +385,9 @@
         let tool = 'black';
         let plantLevel = 0;
         let scheduleTurn = 1;
+        // AI 先手：勾选后白方 AI 在开局先落一子（第 0 手），黑方第一手仍为第 1 手。
+        // 第 0 手只允许使用 AI 预设（或 AI 思考），白方预案从黑方第 1 手开始配对。
+        let aiFirst = false;
         // 服务端投稿/审核依赖的用户信息；未登录时为 null。
         let submit_user = null;
         // 黑方正着与白方预设按同一序号一一对应：blackBook[i] -> sequence[i]。
@@ -738,7 +748,8 @@
             aiPreset.forEach((pos, index) => {
                 const row = document.createElement('div');
                 row.className = 'sequence-item d-flex align-items-center justify-content-between border rounded px-2';
-                row.innerHTML = `<span><span class='badge rounded-pill me-1' style='background:#fff;border:1.5px dashed #2563eb;color:#2563eb'>${index + 1}</span>AI 预设落子 ${displayPoint(pos[0], pos[1])}</span>`;
+                // AI 先手时第 1 个 AI 预设用于白方第 0 手（开局），序号从 0 开始更直观。
+                row.innerHTML = `<span><span class='badge rounded-pill me-1' style='background:#fff;border:1.5px dashed #2563eb;color:#2563eb'>${aiFirst ? index : index + 1}</span>AI 预设落子 ${displayPoint(pos[0], pos[1])}</span>`;
                 const remove = document.createElement('sl-button');
                 remove.size = 'small'; remove.circle = true; remove.title = '移除此预设步';
                 remove.innerHTML = '<sl-icon name="x-lg"></sl-icon>';
@@ -789,7 +800,7 @@
 
         const exportData = () => ({
             cells,
-            player: 'black', first: 'black', natural_plant: false,
+            player: 'black', first: aiFirst ? 'white' : 'black', natural_plant: false,
             hp: { black: Number(document.getElementById('black_hp').value) || 0, white: Number(document.getElementById('white_hp').value) || 0 },
             blackBook,
             whiteTurns: sequence,
@@ -814,7 +825,8 @@
             const badge = document.getElementById('mode_badge');
             badge.textContent = schedulePoints ? `残局模式 · 定时刷草 ${schedulePoints} 点` : '残局模式 · 不刷草';
             badge.variant = schedulePoints ? 'primary' : 'success';
-            document.getElementById('editor_summary').textContent = `黑方 ${black} 子 · 白方 ${white} 子 · 草 ${plants} 点 · 正着 ${blackBook.length} 手 · 白方预案 ${sequence.length} 手 · 引导 ${guideMoves.length} 点 · AI 预设 ${aiPreset.length} 手 · 已配对 ${pairCount} 手${pairing} · 同格叠加 ${sameCell} 处 · 重复标记 ${repeatedBlack + repeatedWhite} 个 · 黑方先手 · ${plantNote}`;
+            const firstNote = aiFirst ? 'AI 先手（白方第 0 手）· 黑方第 1 手起算' : '黑方先手';
+            document.getElementById('editor_summary').textContent = `黑方 ${black} 子 · 白方 ${white} 子 · 草 ${plants} 点 · 正着 ${blackBook.length} 手 · 白方预案 ${sequence.length} 手 · 引导 ${guideMoves.length} 点 · AI 预设 ${aiPreset.length} 手 · 已配对 ${pairCount} 手${pairing} · 同格叠加 ${sameCell} 处 · 重复标记 ${repeatedBlack + repeatedWhite} 个 · ${firstNote} · ${plantNote}`;
         };
 
         const setTool = (nextTool) => {
@@ -868,7 +880,12 @@
         document.getElementById('button_clear_ai').addEventListener('click', () => { aiPreset.length = 0; renderAiPreset(); redraw(); updateSummary(); });
         document.getElementById('button_clear_book').addEventListener('click', () => { blackBook.length = 0; renderBook(); redraw(); updateSummary(); });
         document.getElementById('button_clear_schedule').addEventListener('click', () => { plantSchedule.length = 0; renderSchedule(); redraw(); updateSummary(); });
-        document.getElementById('button_reset_board').addEventListener('click', () => { cells.forEach((item) => { item.stone = 'none'; item.plant = 0; }); sequence.length = 0; blackBook.length = 0; plantSchedule.length = 0; guideMoves.length = 0; aiPreset.length = 0; renderSequence(); renderBook(); renderSchedule(); renderGuide(); renderAiPreset(); redraw(); updateSummary(); showAlert('已清空初始盘面'); });
+        document.getElementById('button_reset_board').addEventListener('click', () => { cells.forEach((item) => { item.stone = 'none'; item.plant = 0; }); sequence.length = 0; blackBook.length = 0; plantSchedule.length = 0; guideMoves.length = 0; aiPreset.length = 0; aiFirst = false; document.getElementById('ai_first').checked = false; renderSequence(); renderBook(); renderSchedule(); renderGuide(); renderAiPreset(); redraw(); updateSummary(); showAlert('已清空初始盘面'); });
+        document.getElementById('ai_first').addEventListener('sl-change', (event) => {
+            aiFirst = Boolean(event.target.checked);
+            renderAiPreset();
+            updateSummary();
+        });
         document.getElementById('button_sample_board').addEventListener('click', () => {
             cells.forEach((item) => { item.stone = 'none'; item.plant = 0; });
             [[2, 3], [3, 4], [5, 5]].forEach(([x, y]) => { cellByDisplayPoint(x, y).stone = 'black'; });
@@ -919,6 +936,9 @@
             aiPreset.splice(0, aiPreset.length, ...(data.ai_preset || []).map((move) => [move[0], move[1]]));
             document.getElementById('black_hp').value = data.hp.black;
             document.getElementById('white_hp').value = data.hp.white;
+            // 归档中的 first 即先手方；white 表示 AI 先手（白方第 0 手开局）。
+            aiFirst = data.first === 'white';
+            document.getElementById('ai_first').checked = aiFirst;
             renderSequence(); renderBook(); renderSchedule(); renderGuide(); renderAiPreset(); redraw(); updateSummary();
         };
 

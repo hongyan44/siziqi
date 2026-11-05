@@ -246,6 +246,8 @@
         let cells = [];
         let game = null;
         let state = null;
+        // AI 先手：残局以白方第 0 手开局（初始局面仍为 turn_count 0）。
+        const aiOpensFirst = () => Boolean(state && state.turn_player === PLAYER_ENUM.WHITE && state.turn_count === 0);
         let ui = null;
         let aiWorker = null;
         let aiWorkerThread = null;
@@ -812,6 +814,8 @@
                     tacticalMove = Boolean(lastAiDecision && lastAiDecision.tactical);
                     source = aiTacticsEnabled ? (tacticalMove ? `战术AI · ${lastAiDecision.reason || '矫正'}` : '战术AI') : '纯 4zero AI';
                 }
+                // 重置/结束可能发生在等待 AI 期间：此时不能把旧局落点写进新棋局。
+                if (generation !== challengeGeneration || challengeOver) return;
                 if (!move || !legal(move[0], move[1])) {
                     setStatus('白方 AI 未找到合法落点，请重置后重试。', 'danger');
                     return;
@@ -943,8 +947,11 @@
             // 作者可在编辑器里定义定时刷草计划，这里按回合触发。
             game.natural_plant = false;
             // 刷草点坐标随残局码使用编辑器显示轴（左下原点），导入时翻转 Y。
+            // AI 先手时白方第 0 手先行，turn_count 会比“黑方第 1 手”多 1；
+            // 作者填写的刷草回合仍按黑方手数语义，这里整体后移 1 回合。
+            const plantTurnShift = aiOpensFirst() ? 1 : 0;
             game.plant_schedule = (challengeData.plant_schedule || []).map((entry) => ({
-                turn: Math.max(0, Math.floor(Number(entry.turn) || 0)),
+                turn: Math.max(0, Math.floor(Number(entry.turn) || 0)) + plantTurnShift,
                 cells: (entry.cells || []).map(archiveMoveToBoard),
             }));
             game.plant_fired = new Set();
@@ -1050,6 +1057,18 @@
             }
             running = false;
             renderInfo();
+            // AI 先手：白方在开局自动落第 0 手。该步只读取 AI 预设或调用 AI 思考，
+            // 不参与正着分支，也不消耗白方预案（白方预案仍从黑方第 1 手开始配对）。
+            if (!challengeOver && aiOpensFirst()) {
+                running = true;
+                await playWhite(null, generation);
+                if (generation !== challengeGeneration) return;
+                running = false;
+                if (!challengeOver) {
+                    renderInfo();
+                    if (state.turn_player === PLAYER_ENUM.BLACK) setStatus('白方已先手落子，轮到你（黑方）落子。', 'primary');
+                }
+            }
         };
 
         // 白方 AI 的名字显示当前关卡名：优先用选关页传入的标题，否则按关卡号查询服务端记录。
@@ -1084,7 +1103,7 @@
         };
 
         if (isCodeChallenge && archiveCode) {
-            try { challengeData = EndgameArchive.decode(archiveCode); importedArchive = true; document.getElementById('game_msg').textContent = '残局码破解'; document.getElementById('challenge_subtitle').textContent = '已载入指定盘面，命中正着后白方自动应手'; document.getElementById('challenge_badge').textContent = '残局码'; } catch (error) { showAlert('残局码解析失败，已回退到每日挑战。', 'warning'); }
+            try { challengeData = EndgameArchive.decode(archiveCode); importedArchive = true; document.getElementById('game_msg').textContent = '残局码破解'; document.getElementById('challenge_subtitle').textContent = challengeData.first === 'white' ? '已载入指定盘面，白方 AI 先手（第 0 手），命中正着后白方自动应手' : '已载入指定盘面，命中正着后白方自动应手'; document.getElementById('challenge_badge').textContent = '残局码'; } catch (error) { showAlert('残局码解析失败，已回退到每日挑战。', 'warning'); }
         }
         document.getElementById('button_reset_challenge').addEventListener('click', resetChallenge);
         document.getElementById('challenge_result_restart').addEventListener('click', () => {
