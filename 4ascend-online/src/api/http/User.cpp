@@ -392,6 +392,7 @@ void user_info(cinatra::coro_http_request& request, cinatra::coro_http_response&
     if (skin_grass) skins.push_back(std::string("grass"));
     if (skin_grass_gold) skins.push_back(std::string("grass_gold"));
     if (skin_grass_jade) skins.push_back(std::string("grass_jade"));
+    if (skin_grass_firesteel) skins.push_back(std::string("grass_firesteel"));
     if (skin_board) skins.push_back(std::string("board"));
     if (skin_board_gold) skins.push_back(std::string("board_gold"));
     if (skin_board_atlantis) skins.push_back(std::string("board_atlantis"));
