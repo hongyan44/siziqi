@@ -1,0 +1,8 @@
+.venv/
+.vscode/
+*.pt
+*.pyc
+*.out
+*.sh
+adjustData.py
+adjust_model.py

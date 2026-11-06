@@ -1,0 +1,352 @@
+from __future__ import annotations
+from typing import List, Tuple
+import os
+import time
+import random
+import pickle
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from tqdm import tqdm
+import multiprocessing as mp
+from .core.types import Player
+import sys
+
+from .core.rules import RulesConfig
+from .core.board import Board
+from .core.state import GameState
+from .core.engine import Engine
+from .core.encoding import AlphaZeroStateEncoder
+from .ai.model import PolicyValueNet
+from .ai.selfplay import SelfPlay
+import argparse
+from .utils.checkpoint import (
+    ensure_dir, latest_checkpoint_path, save_checkpoint, load_checkpoint,
+)
+
+__IF__HPC__ = "SLURM_JOB_ID" in os.environ
+__IF__DEBUG__ = sys.gettrace() is not None
+
+"""
+Script for training the AlphaZero-like model. It performs self-play to generate training data, then trains the model on that data. By default, it runs for a specified number of epochs, with a certain number of self-play games per epoch.
+Usage: python -m src.train --epoch 1 --game 100 --sim 1600 --batch 2048
+"""
+
+class AZLiteTrainer:
+    def __init__(self, board_size=9, win_k=4, hp_max=6, device="cpu",
+                 save_dir: str = "checkpoints", save_every_sec: int = 300,
+                 num_workers: int = 0,
+                 shaped_reward_enabled: bool = False,
+                 shaped_reward_coeff: float = 0.05,
+                 reuse_tree: bool = False,
+                 policy_endgame_weight: float = 10.0,
+                 value_endgame_weight: float = 20.0):
+        self.cfg = RulesConfig(board_size=board_size, win_k=win_k, hp_max=hp_max)
+        self.engine = Engine(win_k=self.cfg.win_k)
+        self.encoder = AlphaZeroStateEncoder(last_k=8)
+        self.device = device
+
+        self.model = PolicyValueNet(in_planes=self.encoder.num_planes, board_size=board_size).to(device)
+        print("trainable parameters: %d" % sum(p.numel() for p in self.model.parameters() if p.requires_grad) )
+        self.model.eval()
+        self.opt = optim.Adam(self.model.parameters(), lr=1e-4, weight_decay=1e-4)
+
+        self.save_dir = save_dir
+        self.save_every_sec = save_every_sec
+        ensure_dir(self.save_dir)
+        self.global_step = 0
+        self.num_workers = max(0, int(num_workers))
+
+        # reward shaping, default off; if on, z_target = clip(z + λ * aux_r, -1, 1)
+        self.shaped_reward_enabled = bool(shaped_reward_enabled)
+        self.shaped_reward_coeff = float(shaped_reward_coeff)
+
+        # When selfplaying, whether to reuse the search tree from the previous move (default: False).
+        self.reuse_tree = bool(reuse_tree)
+        self.policy_endgame_weight = max(1.0, float(policy_endgame_weight))
+        self.value_endgame_weight = max(1.0, float(value_endgame_weight))
+
+        ckpt = latest_checkpoint_path(self.save_dir)
+        if ckpt is not None:
+            print(f"[train] Loading latest checkpoint: {ckpt}")
+            payload = load_checkpoint(ckpt, self.model, self.opt, map_location=device)
+            self.global_step = int(payload.get("global_step", self.global_step))
+        else:
+            print("[train] No checkpoint found. Starting fresh.")
+            try:
+                path = os.path.join(self.save_dir, "ckpt_step0_init.pt")
+                save_checkpoint(path, self.model, self.opt, global_step=0)
+                print(f"[train] Initial checkpoint saved: {path}")
+            except Exception as exc:
+                print(f"[train] Initial checkpoint save failed: {exc}")
+
+    # single-process self-play (default)
+    def _self_play_batch_serial(self, games=8, sims=400) -> List[Tuple[np.ndarray, np.ndarray, int, float, float]]:
+        sp = SelfPlay(self.model, self.encoder, self.engine, c_puct=2.5,
+                      board_size=self.cfg.board_size, sims=sims, device=self.device,
+                      use_tree_reuse=self.reuse_tree)
+        dataset = []
+        for _ in tqdm(range(games), desc="Self-play games", unit="game"):
+            s = GameState(cfg=self.cfg, board=Board(self.cfg.board_size), to_play=Player.BLACK)
+            data = sp.play_one(s)  # 返回 (planes, pi, z, aux_r, is_endgame)
+            for sample in data:
+                dataset.extend(SelfPlay.augment(sample))  # 也返回五元组
+        random.shuffle(dataset)
+        print("length of dataset: %d" % len(dataset))
+        return dataset
+
+    # multiprocess self-play
+    @staticmethod
+    def _worker_self_play(payload):
+        state_dict, cfg_dict, sims, reuse_tree = payload
+        encoder = AlphaZeroStateEncoder(last_k=8)
+        engine = Engine(win_k=cfg_dict['win_k'])
+        model = PolicyValueNet(in_planes=encoder.num_planes, board_size=cfg_dict['board_size']).to('cpu')
+        model.load_state_dict(state_dict)
+        model.eval()
+        sp = SelfPlay(model, encoder, engine, board_size=cfg_dict['board_size'],
+                      sims=sims, device='cpu', use_tree_reuse=reuse_tree)
+        s = GameState(cfg=RulesConfig(**cfg_dict), board=Board(cfg_dict['board_size']))
+        data = sp.play_one(s)  # (planes, pi, z, aux_r, is_endgame)
+        out = []
+        for sample in data:
+            out.extend(SelfPlay.augment(sample))
+        return out
+
+    def self_play_batch(self, games=8, sims=400) -> List[Tuple[np.ndarray, np.ndarray, int, float, float]]:
+        if self.num_workers <= 0:
+            return self._self_play_batch_serial(games=games, sims=sims)
+
+        state_dict = {k: v.cpu() for k, v in self.model.state_dict().items()}
+        cfg_dict = {
+            'board_size': self.cfg.board_size,
+            'win_k': self.cfg.win_k,
+            'hp_max': self.cfg.hp_max,
+            'allow_overlap_plants': self.cfg.allow_overlap_plants,
+            'max_turns': self.cfg.max_turns,
+            'ad_attacker_hp_delta_on_fail': self.cfg.ad_attacker_hp_delta_on_fail,
+            'ad_defender_hp_delta_on_fail': self.cfg.ad_defender_hp_delta_on_fail,
+            'ad_attacker_hp_delta_on_success': self.cfg.ad_attacker_hp_delta_on_success,
+            'ad_defender_hp_delta_on_success': self.cfg.ad_defender_hp_delta_on_success,
+        }
+        tasks = [(state_dict, cfg_dict, sims, self.reuse_tree) for _ in range(games)]
+        dataset = []
+        with mp.get_context("spawn").Pool(processes=self.num_workers) as pool:
+            for out in tqdm(pool.imap_unordered(self._worker_self_play, tasks),
+                            total=games, desc="Self-play (mp)", unit="game"):
+                dataset.extend(out)
+        random.shuffle(dataset)
+        return dataset
+
+    def train_step(self, batch: List[Tuple[np.ndarray, np.ndarray, int, float, float]]):
+        xs, target_pi, target_v, aux, endgame_flags = [], [], [], [], []
+        for x, pi, z, a_r, is_endgame in batch:
+            xs.append(x)
+            target_pi.append(pi)
+            target_v.append(z)
+            aux.append(a_r)
+            endgame_flags.append(is_endgame)
+
+        x = torch.from_numpy(np.stack(xs)).float().to(self.device)                 # [B,C,H,W]
+        pi = torch.from_numpy(np.stack(target_pi)).float().to(self.device)         # [B,81]
+        z = torch.from_numpy(np.array(target_v, dtype=np.float32)).to(self.device)  # [B]
+        aux_r = torch.from_numpy(np.array(aux, dtype=np.float32)).to(self.device)   # [B]
+        is_endgame = torch.from_numpy(np.array(endgame_flags, dtype=np.float32)).to(self.device)
+
+        # reward shaping：z' = clip(z + λ * aux_r, -1, 1)（开关控制）
+        if self.shaped_reward_enabled:
+            z_target = torch.clamp(z + self.shaped_reward_coeff * aux_r, -1.0, 1.0)
+        else:
+            z_target = z
+
+        self.model.train()
+        p_logits, v = self.model(x)  # p_logits:[B,81], v:[B]
+        logp = torch.log_softmax(p_logits, dim=-1)
+        target_logp = torch.log(pi.clamp_min(1e-12))
+
+        w_p = 1.0 + (self.policy_endgame_weight - 1.0) * is_endgame
+        w_v = 1.0 + (self.value_endgame_weight - 1.0) * is_endgame
+        loss_p_per = (pi * (target_logp - logp)).sum(dim=-1)
+        loss_v_per = (v - z_target).pow(2)
+
+        loss_p = (w_p * loss_p_per).sum() / w_p.sum().clamp_min(1e-6)
+        loss_v = (w_v * loss_v_per).sum() / w_v.sum().clamp_min(1e-6)
+        loss = loss_p + loss_v
+
+        self.opt.zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+        self.opt.step()
+
+        self.global_step += 1
+        return float(loss.item()), float(loss_p.item()), float(loss_v.item())
+
+    def self_play_and_train_epoch(self, games_per_epoch: int, sims: int,
+                                  batch_size: int) -> None:
+        data = self.self_play_batch(games=games_per_epoch, sims=sims)
+        print(f"[train] Collected samples: {len(data)}")
+        for i in tqdm(range(0, len(data), batch_size), desc="Train", unit="batch"):
+            batch = data[i:i+batch_size]
+            loss, lp, lv = self.train_step(batch)
+            tqdm.write(f"[train] step={self.global_step} loss={loss:.4f} (p={lp:.4f}, v={lv:.4f})")
+
+    def train_loop(self, epochs: int = 1, games_per_epoch: int = 8, sims: int = 400,
+                   batch_size: int = 256):
+        last_save_t = time.time()
+        try:
+            for ep in range(epochs):
+                print(f"[train] Epoch {ep+1}/{epochs}: self-play generating...")
+                self.self_play_and_train_epoch(games_per_epoch, sims, batch_size)
+
+
+                # now = time.time()
+                # if now - last_save_t >= self.save_every_sec:
+                #     path = os.path.join(self.save_dir, f"ckpt_step{self.global_step}.pt")
+                #     save_checkpoint(path, self.model, self.opt, global_step=self.global_step)
+                #     print(f"[train] checkpoint saved: {path}")
+                #     last_save_t = now
+
+                # 每个 epoch 也落一个
+                # if ep % 10 == 9:
+                path = os.path.join(self.save_dir, f"ckpt_ep{ep+1}_step{self.global_step}.pt")
+                save_checkpoint(path, self.model, self.opt, global_step=self.global_step)
+                print(f"[train] checkpoint saved (epoch end): {path}")
+        except KeyboardInterrupt:
+            path = os.path.join(self.save_dir, f"ckpt_interrupt_step{self.global_step}.pt")
+            save_checkpoint(path, self.model, self.opt, global_step=self.global_step)
+            print(f"[train] checkpoint saved (interrupt): {path}")
+
+def _unique_dataset_path(dataset_dir: str) -> str:
+    ensure_dir(dataset_dir)
+    stamp = int(time.time() * 1000)
+    rid = random.randint(0, 1_000_000_000)
+    return os.path.join(dataset_dir, f"dataset_{stamp}_{os.getpid()}_{rid}.pt")
+
+def _save_dataset_file(dataset_dir: str, data: List[Tuple[np.ndarray, np.ndarray, int, float, float]]) -> str:
+    path = _unique_dataset_path(dataset_dir)
+    torch.save(data, path)
+    return path
+
+def _list_dataset_files(dataset_dir: str) -> List[str]:
+    if not os.path.isdir(dataset_dir):
+        return []
+    valid_suffixes = (".pt", ".pth")
+    return sorted(
+        os.path.join(dataset_dir, f)
+        for f in os.listdir(dataset_dir)
+        if os.path.isfile(os.path.join(dataset_dir, f)) and f.endswith(valid_suffixes)
+    )
+
+def _load_dataset_files(file_paths: List[str]) -> List[Tuple[np.ndarray, np.ndarray, int, float, float]]:
+    data = []
+    for path in file_paths:
+        try:
+            data.extend(torch.load(path, map_location=device, weights_only=False))
+        except (EOFError, RuntimeError, ValueError, pickle.UnpicklingError) as exc:
+            print(f"[trainOnly] skipped corrupted dataset file: {path}. error={exc}")
+    return data
+
+def _load_all_datasets(dataset_dir: str) -> List[Tuple[np.ndarray, np.ndarray, int, float, float]]:
+    return _load_dataset_files(_list_dataset_files(dataset_dir))
+
+def _delete_dataset_files(dataset_dir: str) -> None:
+    if not os.path.isdir(dataset_dir):
+        return
+    for fname in os.listdir(dataset_dir):
+        path = os.path.join(dataset_dir, fname)
+        if os.path.isfile(path):
+            os.remove(path)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="training parameters")
+    parser.add_argument('--epoch', type=int, default=1, help='Number of training epochs')
+    parser.add_argument('--sim', type=int, default=1600, help='Number of simulations')
+    default_save_path = os.environ.get("ASCEND_CHECKPOINT_DIR", "checkpoints")
+    parser.add_argument('--savePath', type=str, default=default_save_path, help='model path')
+    parser.add_argument('--game', type=int, default=100, help='Number of games per epoch')
+    parser.add_argument('--batch', type=int, default=2048, help='Number of batch')
+    parser.add_argument('--playOnly', action='store_true', help='Only run self-play and save datasets')
+    parser.add_argument('--trainOnly', action='store_true', help='Only train using datasets on disk')
+    parser.add_argument('--trainFileChunk', type=int, default=120,
+                        help='Number of dataset files loaded into RAM per trainOnly chunk')
+    parser.add_argument('--policyEndgameWeight', type=float, default=10.0,
+                        help='Policy loss weight multiplier for endgame samples')
+    parser.add_argument('--valueEndgameWeight', type=float, default=20.0,
+                        help='Value loss weight multiplier for endgame samples')
+    args = parser.parse_args()
+
+    if args.playOnly and args.trainOnly:
+        raise ValueError("playOnly and trainOnly cannot both be True.")
+    if args.trainFileChunk <= 0:
+        raise ValueError("trainFileChunk must be > 0.")
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if not __IF__DEBUG__:
+        if device == "cuda":
+            print("using %s as device." % torch.cuda.get_device_name(torch.cuda.current_device()))
+        else:
+            print("using cpu as device.")
+    trainer = AZLiteTrainer(board_size=9, win_k=4, hp_max=6, device=device,
+                            save_dir=args.savePath, save_every_sec=300,
+                            num_workers=0,
+                            shaped_reward_enabled=False,   # if enable reward shaping, usually false.
+                            shaped_reward_coeff=0.05,     # reward shaping coefficient λ
+                            reuse_tree=False,             # whether to reuse MCTS search tree in self-play
+                            policy_endgame_weight=args.policyEndgameWeight,
+                            value_endgame_weight=args.valueEndgameWeight)
+    dataset_dir = os.path.join(default_save_path, "dataset")
+    ensure_dir(dataset_dir)
+
+    if args.playOnly:
+        for ep in range(args.epoch):
+            print(f"[playOnly] Epoch {ep+1}/{args.epoch}: self-play generating...")
+            remaining = args.game
+            while remaining > 0:
+                chunk = min(10, remaining)
+                data = trainer.self_play_batch(games=chunk, sims=args.sim)
+                path = _save_dataset_file(dataset_dir, data)
+                print(f"[playOnly] saved dataset: {path} (games={chunk}, samples={len(data)})")
+                remaining -= chunk
+    elif args.trainOnly:
+        all_files = _list_dataset_files(dataset_dir)
+        print(f"[trainOnly] found dataset files: {len(all_files)}")
+        if len(all_files) == 0:
+            print("[trainOnly] no dataset files found; nothing to train.")
+        for ep in range(args.epoch):
+            print(f"[trainOnly] Epoch {ep+1}/{args.epoch}: training...")
+            epoch_files = list(all_files)
+            random.shuffle(epoch_files)
+            chunk_files_total = (len(epoch_files) + args.trainFileChunk - 1) // args.trainFileChunk
+            for chunk_idx in range(0, len(epoch_files), args.trainFileChunk):
+                file_chunk = epoch_files[chunk_idx:chunk_idx + args.trainFileChunk]
+                data = _load_dataset_files(file_chunk)
+                if len(data) == 0:
+                    continue
+                random.shuffle(data)
+                chunk_no = chunk_idx // args.trainFileChunk + 1
+                print(
+                    f"[trainOnly] epoch {ep+1}: loaded chunk {chunk_no}/{chunk_files_total} "
+                    f"(files={len(file_chunk)}, samples={len(data)})"
+                )
+                for i in tqdm(range(0, len(data), args.batch), desc="Train", unit="batch"):
+                    batch = data[i:i+args.batch]
+                    loss, lp, lv = trainer.train_step(batch)
+                    tqdm.write(f"[train] step={trainer.global_step} loss={loss:.4f} (p={lp:.4f}, v={lv:.4f})")
+                del data
+        saved_ok = False
+        try:
+            ensure_dir(args.savePath)
+            stamp = int(time.time() * 1000)
+            path = os.path.join(args.savePath, f"ckpt_trainonly_step{trainer.global_step}_{stamp}.pt")
+            save_checkpoint(path, trainer.model, trainer.opt, global_step=trainer.global_step)
+            print(f"[trainOnly] checkpoint saved: {path}")
+            saved_ok = True
+        except Exception as exc:
+            print(f"[trainOnly] checkpoint save failed; dataset kept. error={exc}")
+
+        # if saved_ok:
+        #     _delete_dataset_files(dataset_dir)
+        #     print(f"[trainOnly] deleted dataset files under: {dataset_dir}")
+    else:
+        trainer.train_loop(epochs=args.epoch, games_per_epoch=args.game, sims=args.sim, batch_size=args.batch)

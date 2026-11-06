@@ -1,0 +1,16 @@
+--index-url https://download.pytorch.org/whl/cu118
+numpy
+scipy
+networkx
+pydantic
+pygame
+matplotlib
+pillow
+dataclasses-json
+rich
+typer
+pytest
+torch
+torchvision
+torchaudio
+tqdm
