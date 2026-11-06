@@ -1,0 +1,10 @@
+# 第三方依赖（不入库，避免体积膨胀与示例密钥被扫描拦截）
+node_modules/
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 截图与临时产物
+.screenshots/
+outputs/
