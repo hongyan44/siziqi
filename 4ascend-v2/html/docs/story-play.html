@@ -1090,6 +1090,8 @@
             await syncAiStone(move[0], move[1], generation);
             moves.push({ move, source });
             if (source === 'player') playerMoveCount += 1;
+            // 记录玩家落子历史：供「% IF/ELIF 检测落子 / 第几步落子」条件读取
+            runtime.record_move(source, move[0], move[1]);
             await renderMove(move[0], move[1], source, generation);
             // 检测落子：玩家自己的第 N 手一落下就判定，先于结算/胜负，保证“绝杀手”也能触发
             await runDetections(source, move);
@@ -1137,8 +1139,8 @@
             }
         };
 
-        // 检测落子：玩家自己的第 N 手落在指定交叉点时，暂停本局并跳转到检测块播放剧情；
-        // 块内语句播完后由自动「继续对局」回到棋盘（若块内主动跳转则按作者写的流程走）
+        // 检测落子：玩家自己的第 N 手落在指定交叉点时，暂停本局并跳转到标签播放剧情；
+        // 标签内容播到「继续对局」时回到棋盘（作者也可在标签内继续跳转）
         const runDetections = async (source, move) => {
             if (source !== 'player' || !move) return;
             const entries = (currentConfig && currentConfig.detections) || [];
@@ -1357,6 +1359,8 @@
             running = true; gameOver = false; moves = []; bookedWhite = null;
             triggeredEvents = new Set(); lastMovePicked = false; gameNodeIndex = runtime.index; pendingResume = null;
             playerMoveCount = 0; triggeredDetections = new Set();
+            // 每局重新记录玩家落子历史，让「检测落子 / 第 N 步」按本局手数判定
+            if (runtime) runtime.player_moves = [];
             // 结束残局=步数:N -> 本局第 N 手落子后结束；步数:0 -> 不落子，点击屏幕结束；胜负 或未配置 -> 分出胜负才结束
             endLimit = config.end_kind === 'steps' ? Math.max(0, Math.trunc(Number(config.end_steps) || 0)) : 0;
             endByClick = config.end_kind === 'steps' && endLimit === 0;

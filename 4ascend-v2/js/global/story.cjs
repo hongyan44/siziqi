@@ -20,14 +20,65 @@ const GAME_END_KEYWORDS = ['结束此对局'];
 // 分组框：仅用于编辑器分区（可自定义颜色），播放时按普通节点跳过
 const BOX_COLOR_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
 
-// 条件分支：% IF 条件 -> 标签 / % ELSE -> 标签
+// 条件分支：% IF 条件 -> 标签 / % ELIF 条件 -> 标签 / % ELSE -> 标签
+// 条件支持：胜利 / 失败 / 平局、检测 N 横,竖、第 N 步、选项 序号或文字
 // 条件取自"最近一次对局的结果"
 const COND_MAP = { '胜利': 'win', 'win': 'win', '失败': 'lose', 'lose': 'lose', '平局': 'draw', 'draw': 'draw' };
-const COND_TEXT = { 'win': '胜利', 'lose': '失败', 'draw': '平局' };
+const COND_TEXT = { 'win': '胜利', 'lose': '失败', 'draw': '平局', 'move': '检测落子', 'step': '第几步落子', 'option': '用户选择选项' };
+
+/**
+ * @description: 解析条件分支头部（IF / ELIF 共用），支持胜负、检测落子、第几步落子与选项选择
+ * @param {string} raw 去掉 IF/ELIF 前缀后的条件文本
+ * @return {{data?: object, error?: string}}
+ */
+const parseCondHead = (raw) => {
+    const head = String(raw == null ? '' : raw).trim();
+    if (!head) return { 'error': '条件为空' };
+    const key = COND_MAP[head] || COND_MAP[head.toLowerCase()];
+    if (key) return { 'data': { 'condition': key } };
+    let match = /^检测\s+(\d+)\s+(\d+)\s*,\s*(\d+)$/.exec(head);
+    if (match) {
+        const step = Math.trunc(Number(match[1]));
+        const across = Number(match[2]);
+        const down = Number(match[3]);
+        if (!(step >= 1)) return { 'error': '「检测」的步数必须是 1 或更大的整数' };
+        if (!toBoardPoint(across, down)) return { 'error': `「检测」坐标无效：${across},${down}（应为 1-9 的 横,竖）` };
+        return { 'data': { 'condition': 'move', 'step': step, 'x': across, 'y': down, 'cell_text': `${across},${down}` } };
+    }
+    match = /^第\s*(\d+)\s*步(?:落子)?$/.exec(head);
+    if (match) {
+        const step = Math.trunc(Number(match[1]));
+        if (!(step >= 1)) return { 'error': '「第几步落子」的步数必须是 1 或更大的整数' };
+        return { 'data': { 'condition': 'step', 'step': step } };
+    }
+    match = /^选项\s+([\s\S]+)$/.exec(head);
+    if (match) {
+        let option = match[1].trim();
+        if ((option.startsWith('"') && option.endsWith('"')) || (option.startsWith("'") && option.endsWith("'"))) option = option.slice(1, -1).trim();
+        if (!option) return { 'error': '「选项」不能为空（可写选项序号或选项文字）' };
+        return { 'data': { 'condition': 'option', 'option': option } };
+    }
+    return { 'error': `条件无效：${head}（可用 胜利 / 失败 / 平局 / 检测 N 横,竖 / 第 N 步 / 选项 序号或文字）` };
+};
+
+/**
+ * @description: 把条件节点还原成条件文本（与 parseCondHead 互逆）
+ * @param {object} node 条件节点
+ * @return {string}
+ */
+const condToText = (node) => {
+    if (!node) return '';
+    if (node.condition === 'move') {
+        const cell = node.cell_text || `${node.x},${node.y}`;
+        return `检测 ${Math.max(1, Math.trunc(Number(node.step) || 1))} ${cell}`;
+    }
+    if (node.condition === 'step') return `第 ${Math.max(1, Math.trunc(Number(node.step) || 1))} 步`;
+    if (node.condition === 'option') return `选项 ${node.option}`;
+    return COND_TEXT[node.condition] || node.condition;
+};
 
 const SIDE_BLACK = 'black';
 const SIDE_WHITE = 'white';
-
 // 标注：红色动态箭头（指向界面区域）与旋转虚线圈（指向棋盘交叉点）
 // 箭头锚点既可用内置名称，也可直接写界面元素 id（#game_p1_hp）
 const MARK_ANCHORS = ['名字', '棋子颜色', '生命值', '信息', '刷草点', '棋盘', '我方', '对手'];
@@ -254,7 +305,7 @@ const dialoguesToText = (dialogues) => (dialogues || []).map((entry) => {
 // 新语法：说 / 菜单 / 如果 / 重复 / 当 / 直到 / 设 / 赋值 / 跳出 / 继续 / 对局 等。
 // v0.4：条件支持 与 / 或 / 非、括号、四则运算与数值比较。
 const JQBJ_VERSION = 'v0.4';
-const JQBJ_DETECT = /^(?:说(?:\s|$)|菜单(?:\s|$)|选项(?:\s|$)|结束菜单$|如果(?:\s|$)|否则如果(?:\s|$)|否则$|结束如果$|重复(?:\s|$)|当(?:\s|$)|直到(?:\s|$)|结束重复$|结束当$|结束直到$|跳出$|继续$|设(?:\s|$)|赋值(?:\s|$)|对局(?:\s|$)|结束对局$|标签(?:\s|$)|跳转(?:\s|$)|标注(?:\s|$)|不透明度(?:\s|$)|如果胜利$|如果失败$|如果平局$|检测(?:\s|$)|结束检测$|\{|\})/;
+const JQBJ_DETECT = /^(?:说(?:\s|$)|菜单(?:\s|$)|选项(?:\s|$)|结束菜单$|如果(?:\s|$)|否则如果(?:\s|$)|否则$|结束如果$|重复(?:\s|$)|当(?:\s|$)|直到(?:\s|$)|结束重复$|结束当$|结束直到$|跳出$|继续$|设(?:\s|$)|赋值(?:\s|$)|对局(?:\s|$)|结束对局$|标签(?:\s|$)|跳转(?:\s|$)|标注(?:\s|$)|不透明度(?:\s|$)|如果胜利$|如果失败$|如果平局$|检测(?:\s|$)|\{|\})/;
 const JQBJ_NAME_RE = /^[A-Za-z_\u4e00-\u9fa5][A-Za-z0-9_\u4e00-\u9fa5]*$/;
 const JQBJ_OUTCOME_TEXT = { 'win': '胜利', 'lose': '失败', 'draw': '平局' };
 const JQBJ_OUTCOME_KEY = { '胜利': 'win', '失败': 'lose', '平局': 'draw' };
@@ -266,7 +317,7 @@ const jqbjIsClosing = (text) => (
     || text === '结束菜单' || text === '结束选择'
     || text === '结束重复' || text === '结束当' || text === '结束直到'
     || text === '结束定义' || text === '}' || text === '结束框' || text === '框结束'
-    || GAME_END_KEYWORDS.includes(text) || text === '结束对局' || text === '结束检测'
+    || GAME_END_KEYWORDS.includes(text) || text === '结束对局'
 );
 
 const jqbjValueType = (raw, vars) => {
@@ -771,7 +822,7 @@ class JQBJParser {
             };
         }
 
-        // 旧式结果条件：% IF 胜利 -> 标签 / % ELSE -> 标签
+        // 旧式结果条件：% IF / ELIF 条件 -> 标签 / % ELSE -> 标签
         if (text.startsWith('%')) {
             const body = text.slice(1).trim();
             const arrow = body.indexOf('->');
@@ -784,13 +835,13 @@ class JQBJParser {
             if (/^else$/i.test(head)) {
                 return { 'node': { 'type': 'cond', 'kind': 'else', 'condition': null, 'target': target, 'indent': indent, 'lineStart': start, 'lineEnd': start + 1 }, 'next': start + 1 };
             }
-            const stripped = head.replace(/^if\s*/i, '').trim();
-            const condition = COND_MAP[stripped] || COND_MAP[stripped.toLowerCase()] || null;
-            if (!condition) {
-                this.error(line.lineIndex, `条件无效：${text}（可用 胜利 / 失败 / 平局）`);
+            const kind = /^elif\b/i.test(head) ? 'elif' : 'if';
+            const parsedCondition = parseCondHead(head.replace(/^(?:if|elif)\b\s*/i, ''));
+            if (parsedCondition.error) {
+                this.error(line.lineIndex, parsedCondition.error);
                 return { 'node': null, 'next': start + 1 };
             }
-            return { 'node': { 'type': 'cond', 'kind': 'if', 'condition': condition, 'target': target, 'indent': indent, 'lineStart': start, 'lineEnd': start + 1 }, 'next': start + 1 };
+            return { 'node': Object.assign({ 'type': 'cond', 'kind': kind, 'target': target, 'indent': indent, 'lineStart': start, 'lineEnd': start + 1 }, parsedCondition.data), 'next': start + 1 };
         }
 
         this.error(line.lineIndex, `无法识别：${text}`);
@@ -928,22 +979,26 @@ class JQBJParser {
                 index += 1;
                 continue;
             }
-            // 检测 N 横,竖：玩家自己的第 N 手落在该交叉点时，暂停本局并播放块内剧情
-            const detect = /^检测\s+(\d+)\s+(\d+)\s*,\s*(\d+)\s*$/.exec(item.text);
-            if (detect && item.indent > line.indent) {
+            // 检测 N 横,竖 -> 标签：玩家自己的第 N 手落在该交叉点时，暂停本局并跳转标签
+            const detect = /^检测\s+(\d+)\s+(\d+)\s*,\s*(\d+)\s*->\s*([\s\S]+)$/.exec(item.text);
+            if (detect) {
                 const step = Math.trunc(Number(detect[1]));
                 const across = Number(detect[2]);
                 const down = Number(detect[3]);
+                const target = detect[4].trim();
                 if (!(step >= 1)) this.error(item.lineIndex, '「检测」的步数必须是 1 或更大的整数。');
                 if (!toBoardPoint(across, down)) this.error(item.lineIndex, `「检测」坐标无效：${across},${down}（应为 1-9 的 横,竖）。`);
-                const endDetect = this.findEnd(index + 1, endIndex, item.indent, ['结束检测']);
-                const bodyEnd = endDetect < 0 ? this.implicitEnd(index + 1, endIndex, item.indent) : endDetect;
+                if (!target) this.error(item.lineIndex, '「检测」缺少“-> 标签”。');
                 detections.push({
                     'type': 'detect', 'step': step >= 1 ? step : 1, 'cell_text': `${across},${down}`,
-                    'x': across, 'y': down, 'body': this.parseBlock(index + 1, bodyEnd),
-                    'indent': item.indent, 'lineStart': index, 'lineEnd': bodyEnd + 1,
+                    'x': across, 'y': down, 'target': target, 'indent': item.indent, 'lineStart': index, 'lineEnd': index + 1,
                 });
-                index = bodyEnd + 1;
+                index += 1;
+                continue;
+            }
+            if (/^检测(?:\s|$)/.test(item.text)) {
+                this.error(item.lineIndex, '「检测」缺少“-> 标签”（应形如 检测 1 4,4 -> 标签）。');
+                index += 1;
                 continue;
             }
             const parsed = this.parseStatement(index, endIndex);
@@ -1090,17 +1145,12 @@ class JQBJParser {
                 this.compileList(branch.body, ctx);
                 this.emitAutoJump(endLabel, indent + 1, 'game');
             });
-            (node.detections || []).forEach((detector, position) => {
-                const label = `__jqbj_game_${seq}_detect_${position}`;
+            (node.detections || []).forEach((detector) => {
                 const point = toBoardPoint(detector.x, detector.y);
                 gameNode.detections.push({
                     'step': detector.step, 'x': point ? point[0] : null, 'y': point ? point[1] : null,
-                    'cell_text': detector.cell_text, 'target': label,
+                    'cell_text': detector.cell_text, 'target': detector.target,
                 });
-                this.emitLabel(label, indent + 1, 'game');
-                this.compileList(detector.body, ctx);
-                // 检测块播完自动回到对局，作者无需再写「继续对局」
-                this.nodes.push({ 'type': 'resume', 'auto': 'detect', 'indent': indent + 1 });
             });
             this.emitLabel(endLabel, indent, 'game_end');
             this.nodes.push({ 'type': 'game_end', 'indent': indent });
@@ -1337,7 +1387,9 @@ const validateJQBJTree = (tree) => {
                     seen.add(branch.outcome);
                     walk(branch.body);
                 });
-                (node.detections || []).forEach((detector) => walk(detector.body));
+                (node.detections || []).forEach((detector) => {
+                    if (!detector.target) errors.push(`${lineOf(node)}对局“${node.title}”的「检测」缺少跳转标签。`);
+                });
                 walk(node.body);
             }
         });
@@ -1549,7 +1601,7 @@ class StoryScript {
                     continue;
                 }
 
-                // 条件分支：% IF 胜利 -> 标签 / % ELSE -> 标签
+                // 条件分支：% IF / ELIF 条件 -> 标签 / % ELSE -> 标签
                 if (text_.startsWith('%')) {
                     const body = text_.slice(1).trim();
                     const arrow = body.indexOf('->');
@@ -1562,10 +1614,10 @@ class StoryScript {
                         index += 1;
                         continue;
                     }
-                    const stripped = head.replace(/^if\s*/i, '').trim();
-                    const condition = COND_MAP[stripped] || COND_MAP[stripped.toLowerCase()] || null;
-                    if (!condition) { errors.push(`第 ${lineIndex + 1} 行条件无效：${text_}（可用 胜利 / 失败 / 平局）`); index += 1; continue; }
-                    push({ 'type': 'cond', 'kind': 'if', 'condition': condition, 'target': target });
+                    const kind = /^elif\b/i.test(head) ? 'elif' : 'if';
+                    const parsedCondition = parseCondHead(head.replace(/^(?:if|elif)\b\s*/i, ''));
+                    if (parsedCondition.error) { errors.push(`第 ${lineIndex + 1} 行${parsedCondition.error}`); index += 1; continue; }
+                    push(Object.assign({ 'type': 'cond', 'kind': kind, 'target': target }, parsedCondition.data));
                     pending = null;
                     index += 1;
                     continue;
@@ -1781,6 +1833,10 @@ class StoryScript {
                     if (item.type === 'cell' && (item.x == null || item.y == null)) result.push(`对局“${node.title}”的对话触发坐标无效：${item.cell_text || ''}（应形如 5,5，取值 1-9）`);
                     if (!hasTarget(item.target)) result.push(`对局“${node.title}”的对话触发指向了不存在的标签：${item.target}`);
                 });
+                (config.detections || []).forEach((item) => {
+                    if (item.x == null || item.y == null) result.push(`对局“${node.title}”的检测落子坐标无效：${item.cell_text || ''}（应形如 5,5，取值 1-9）`);
+                    if (!hasTarget(item.target)) result.push(`对局“${node.title}”的检测落子指向了不存在的标签：${item.target}`);
+                });
             } else if (node.type === 'mark') {
                 if (node.kind === 'arrow') {
                     const anchor = String(node.target || '').trim();
@@ -1921,11 +1977,14 @@ class StoryScript {
                 if (config.win) lines.push(`${configLead}胜利=${config.win}`);
                 if (config.lose) lines.push(`${configLead}失败=${config.lose}`);
                 if (config.draw) lines.push(`${configLead}平局=${config.draw}`);
+                (config.detections || []).forEach((item) => {
+                    lines.push(`${configLead}检测 ${Math.max(1, Math.trunc(Number(item.step) || 1))} ${item.cell_text || ''} -> ${item.target}`);
+                });
             } else if (node.type === 'label') lines.push(lead + `:${node.name}`);
             else if (node.type === 'jump') lines.push(lead + `-> ${node.target}`);
             else if (node.type === 'cond') {
                 if (node.kind === 'else') lines.push(lead + `% ELSE -> ${node.target}`);
-                else lines.push(lead + `% IF ${COND_TEXT[node.condition] || node.condition} -> ${node.target}`);
+                else lines.push(lead + `% ${node.kind === 'elif' ? 'ELIF' : 'IF'} ${condToText(node)} -> ${node.target}`);
             } else if (node.type === 'end') lines.push(lead + '结束');
             else if (node.type === 'resume') lines.push(lead + '继续对局');
             else if (node.type === 'game_end') lines.push(lead + '结束此对局');
@@ -1966,6 +2025,10 @@ class StoryRuntime {
         this.index = 0;
         // 最近一次对局的结果（'win' | 'lose' | 'draw'），供条件分支判定
         this.last_outcome = null;
+        // 玩家落子位置（按玩家自己的落子顺序），供「检测落子 / 第几步落子」条件判定
+        this.player_moves = [];
+        // 最近一次用户选择的选项 {index, text}，供「选项」条件判定
+        this.last_choice = null;
         // JQBJ 变量表：name -> {type, value}；类型由首次声明固定
         this.vars = Object.create(null);
         // 重复循环的运行状态：loop_id -> {i, count}
@@ -2135,7 +2198,47 @@ class StoryRuntime {
         if (node.type !== 'choice') return this.current();
         const option = node.options[option_index];
         if (!option) return this.current();
+        this.last_choice = { 'index': option_index, 'text': this.interpolate(option.text) };
         return this.goto(option.target);
+    }
+
+    /**
+     * @description: 记录一次落子（供「检测落子 / 第几步落子」条件与检测触发使用）
+     * @param {'player' | 'ai'} source 落子方
+     * @param {number} x 棋盘横坐标（0-8）
+     * @param {number} y 棋盘纵坐标（0-8，左下原点）
+     * @return {void}
+     */
+    record_move(source, x, y) {
+        if (source !== 'player') return;
+        this.player_moves.push([x, y]);
+    }
+
+    /**
+     * @description: 判断条件分支是否命中
+     * @param {object} node 条件节点
+     * @return {boolean}
+     */
+    cond_matches(node) {
+        if (!node) return false;
+        const condition = node.condition;
+        if (condition === 'move') {
+            const move = this.player_moves[Math.max(0, Number(node.step || 1) - 1)];
+            // 条件里的坐标是作者坐标（1-9，先横后竖），落子记录是棋盘坐标（0-8，左上原点）
+            const point = toBoardPoint(node.x, node.y);
+            return Array.isArray(move) && !!point && move[0] === point[0] && move[1] === point[1];
+        }
+        if (condition === 'step') {
+            return this.player_moves.length >= Math.max(1, Number(node.step || 1));
+        }
+        if (condition === 'option') {
+            if (!this.last_choice) return false;
+            const wanted = String(node.option == null ? '' : node.option).trim();
+            if (!wanted) return false;
+            if (/^\d+$/.test(wanted)) return this.last_choice.index + 1 === Number(wanted);
+            return String(this.last_choice.text == null ? '' : this.last_choice.text).trim() === wanted;
+        }
+        return this.last_outcome === condition;
     }
 
     /**
@@ -2168,13 +2271,13 @@ class StoryRuntime {
     }
 
     /**
-     * @description: 条件分支（% IF / % ELSE）判定：命中则跳转，未命中则前进到下一个节点
+     * @description: 条件分支（% IF / % ELIF / % ELSE）判定：命中则跳转，未命中则前进到下一个节点
      * @param {object} node
      * @return {object}
      */
     step_cond(node) {
         if (!node) return this.current();
-        if (node.kind === 'else' || (node.kind === 'if' && this.last_outcome === node.condition)) return this.goto(node.target);
+        if (node.kind === 'else' || this.cond_matches(node)) return this.goto(node.target);
         return this.advance();
     }
 
