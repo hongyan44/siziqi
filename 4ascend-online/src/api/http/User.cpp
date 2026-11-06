@@ -18,12 +18,14 @@
 
 #include "../../libs/only/Random.h"
 #include "../../libs/only/Time.h"
+#include "../../libs/security/Bytes.h"
 
 #include <cinatra/coro_http_request.hpp>
 #include <cinatra/coro_http_response.hpp>
 
 #include <jsoncons_ext/msgpack/msgpack.hpp>
 
+#include <cstdlib>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -1055,8 +1057,10 @@ void user_set_account(cinatra::coro_http_request& request, cinatra::coro_http_re
 // 生成一次性权限秘钥
 void generate_level_key(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
     // URL 参数鉴权：password 不应通过公共代理或第三方链接传递，否则可能进入访问日志。
-    static constexpr std::string_view ADMIN_PASSWORD = "REMOVED";
-    if (request.get_query_value("password") != ADMIN_PASSWORD) {
+    // 管理密码仅从环境变量读取，未配置时拒绝所有请求，避免明文写入源码。
+    const char* admin_password = std::getenv("FASCEND_ADMIN_PASSWORD");
+    if (admin_password == nullptr || *admin_password == '\0' ||
+        !Libs::Security::Bytes::safe_equal(std::string_view(admin_password), request.get_query_value("password"))) {
         response.set_status_and_content(cinatra::status_type::unauthorized, "unauthorized");
         return;
     }
