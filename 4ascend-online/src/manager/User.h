@@ -37,6 +37,10 @@ bool account_user(std::string_view uuid, std::string& account, std::string& phon
 bool update_account(std::string_view uuid, std::string_view account) noexcept;
 // 查询用户权限等级
 bool get_level(std::string_view uuid, int& level) noexcept;
+// 查询是否持有萌新证（新注册账号为 true，登录弹出新手引导后销毁）
+bool get_newbie(std::string_view uuid, bool& newbie) noexcept;
+// 销毁萌新证（重复销毁返回 true）
+bool clear_newbie(std::string_view uuid) noexcept;
 // 使用秘钥解锁权限等级（只允许升级）
 bool unlock_level(std::string_view uuid, std::string_view secret, int& level) noexcept;
 // 生成一次性权限秘钥并写入数据库

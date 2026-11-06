@@ -41,6 +41,9 @@ sqlite3_stmt* p_update_pass   = nullptr;
 sqlite3_stmt* p_update_account = nullptr;
 sqlite3_stmt* p_get_level         = nullptr;
 sqlite3_stmt* p_consume_level_key = nullptr;
+// 萌新证：注册时发放，登录弹出新手引导后销毁
+sqlite3_stmt* p_get_newbie   = nullptr;
+sqlite3_stmt* p_clear_newbie = nullptr;
 
 sqlite3_stmt* p_get_name_color = nullptr;
 sqlite3_stmt* p_set_name_color = nullptr;
@@ -253,6 +256,8 @@ void init() noexcept {
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN pass TEXT NOT NULL DEFAULT '';", nullptr, nullptr, nullptr);
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN friend_id TEXT NOT NULL DEFAULT '';", nullptr, nullptr, nullptr);
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN name_color TEXT NOT NULL DEFAULT '';", nullptr, nullptr, nullptr);
+    // 萌新证：仅新注册账号发放（create_user 写入 1），老账号默认 0，不补发。
+    sqlite3_exec(db, "ALTER TABLE users ADD COLUMN newbie INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN ai_games INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN showcase TEXT NOT NULL DEFAULT '';", nullptr, nullptr, nullptr);
     sqlite3_exec(db, "ALTER TABLE users ADD COLUMN coin INTEGER NOT NULL DEFAULT 0;", nullptr, nullptr, nullptr);
@@ -321,7 +326,7 @@ void init() noexcept {
     // 预编译
     sqlite3_prepare_v2(
         db,
-        "INSERT INTO users (mail, phone, account, pass, uuid, time, name, avatar) VALUES (?, ?, ?, ?, ?, ?, ?, ?);",
+        "INSERT INTO users (mail, phone, account, pass, uuid, time, name, avatar, newbie) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1);",
         -1,
         &p_create_user,
         nullptr
@@ -353,6 +358,8 @@ void init() noexcept {
         nullptr
     );
     sqlite3_prepare_v2(db, "SELECT level FROM users WHERE uuid = ?;", -1, &p_get_level, nullptr);
+    sqlite3_prepare_v2(db, "SELECT newbie FROM users WHERE uuid = ?;", -1, &p_get_newbie, nullptr);
+    sqlite3_prepare_v2(db, "UPDATE users SET newbie = 0 WHERE uuid = ?;", -1, &p_clear_newbie, nullptr);
     sqlite3_prepare_v2(db, "SELECT name_color FROM users WHERE uuid = ?;", -1, &p_get_name_color, nullptr);
     sqlite3_prepare_v2(db, "UPDATE users SET name_color = ? WHERE uuid = ?;", -1, &p_set_name_color, nullptr);
     sqlite3_prepare_v2(db, "SELECT ai_games, showcase FROM users WHERE uuid = ?;", -1, &p_get_profile_stats, nullptr);
@@ -594,6 +601,8 @@ void close() noexcept {
     sqlite3_finalize(p_ident_uuid);
     sqlite3_finalize(p_get_level);
     sqlite3_finalize(p_consume_level_key);
+    sqlite3_finalize(p_get_newbie);
+    sqlite3_finalize(p_clear_newbie);
     sqlite3_finalize(p_get_name_color);
     sqlite3_finalize(p_set_name_color);
     sqlite3_finalize(p_get_profile_stats);
@@ -865,6 +874,30 @@ bool get_level(std::string_view uuid, int& level) noexcept {
     level = sqlite3_column_int(p_get_level, 0);
     sqlite3_reset(p_get_level);
     return level >= 1 && level <= 4;
+};
+
+// 查询是否持有萌新证
+bool get_newbie(std::string_view uuid, bool& newbie) noexcept {
+    sqlite3_bind_text(p_get_newbie, 1, uuid.data(), uuid.size(), nullptr);
+
+    int rc = sqlite3_step(p_get_newbie);
+    if (rc != SQLITE_ROW) {
+        sqlite3_reset(p_get_newbie);
+        return false;
+    }
+
+    newbie = sqlite3_column_int(p_get_newbie, 0) != 0;
+    sqlite3_reset(p_get_newbie);
+    return true;
+};
+
+// 销毁萌新证（重复销毁也返回成功）
+bool clear_newbie(std::string_view uuid) noexcept {
+    sqlite3_bind_text(p_clear_newbie, 1, uuid.data(), uuid.size(), nullptr);
+
+    int rc = sqlite3_step(p_clear_newbie);
+    sqlite3_reset(p_clear_newbie);
+    return rc == SQLITE_DONE;
 };
 
 // 生成一次性权限秘钥并写入数据库。

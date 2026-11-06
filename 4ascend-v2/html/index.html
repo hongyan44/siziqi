@@ -1509,6 +1509,27 @@
     </sl-dialog>
 
 
+    <sl-dialog id='dialog_onboard' class='d-none' label='新手引导'>
+        <div class='d-flex flex-column gap-4'>
+            <div class='fs-5 fw-bold'>欢迎来到四子棋，请选择：</div>
+
+            <div class='d-flex flex-column gap-2'>
+                <sl-button id='button_onboard_story' variant='primary' size='large' class='w-100'>
+                    <sl-icon slot='prefix' name='book'></sl-icon>通过剧情对话了解玩法
+                </sl-button>
+
+                <sl-button id='button_onboard_rule' variant='default' size='large' outline class='w-100'>
+                    <sl-icon slot='prefix' name='journal-text'></sl-icon>通过文档了解玩法
+                </sl-button>
+
+                <sl-button id='button_onboard_skip' variant='neutral' size='large' outline class='w-100'>
+                    <sl-icon slot='prefix' name='check2-circle'></sl-icon>我已了解游戏规则，不再弹出此页面
+                </sl-button>
+            </div>
+        </div>
+    </sl-dialog>
+
+
     <sl-dialog id='dialog_clear' class='d-none' label='数据清理'>
         <div class='d-flex flex-column gap-4'>
             <div class='d-flex flex-column gap-1'>

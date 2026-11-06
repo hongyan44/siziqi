@@ -19,6 +19,12 @@ const span_task_refresh = document.getElementById('span_task_refresh');
 
 const dialog_init = document.getElementById('dialog_init');
 
+// 新手引导（仅初次注册时弹出）
+const dialog_onboard = document.getElementById('dialog_onboard');
+const button_onboard_story = document.getElementById('button_onboard_story');
+const button_onboard_rule = document.getElementById('button_onboard_rule');
+const button_onboard_skip = document.getElementById('button_onboard_skip');
+
 const button_init_login = document.getElementById('button_init_login');
 const button_init_register = document.getElementById('button_init_register');
 const panel_init_login = document.getElementById('panel_init_login');
@@ -213,6 +219,7 @@ const add_music_files = async (files) => {
     dialog_local.addEventListener('sl-request-close', (event) => event.detail.source === 'overlay' && event.preventDefault());
     dialog_user.addEventListener('sl-request-close', (event) => event.detail.source === 'overlay' && event.preventDefault());
     dialog_clear.addEventListener('sl-request-close', (event) => event.detail.source === 'overlay' && event.preventDefault());
+    dialog_onboard.addEventListener('sl-request-close', (event) => event.detail.source === 'overlay' && event.preventDefault());
 })();
 
 const is_logged_in = () => Boolean(localStorage.getItem('token'));
@@ -246,7 +253,7 @@ const is_home_free_target = (target) => {
 
 const is_home_gated_target = (target) => {
     if (!(target instanceof Element)) return false;
-    if (target.closest('#dialog_init, #dialog_local, #button_music_toggle, #global_music_toggle')) return false;
+    if (target.closest('#dialog_init, #dialog_onboard, #dialog_local, #button_music_toggle, #global_music_toggle')) return false;
     if (target.closest('footer')) return false;
     if (is_home_free_target(target)) return false;
     return Boolean(target.closest('sl-button, button, a'));
@@ -378,6 +385,56 @@ const register_submit = async (ident, code, account, pass, name) => {
         toast.error('请求错误！');
     }
 };
+
+// ==================== 新手引导（萌新证） ====================
+// 注册时由后端发放萌新证；登录后检测到萌新证才弹出引导，并在弹出后立即销毁，保证只出现一次
+
+/**
+ * @description: 弹出新手引导
+ * @return {void}
+ */
+const show_onboard = () => {
+    dialog_onboard.classList.remove('d-none');
+    dialog_onboard.show();
+};
+
+/**
+ * @description: 登录状态下检测萌新证：有则弹出新手引导并销毁萌新证
+ * @return {Promise<void>}
+ */
+const onboard_sync = async () => {
+    const token = typeof window.get_token === 'function' ? window.get_token() : null;
+    if (!token || typeof window.http_user_info !== 'function') return;
+
+    try {
+        const info = await window.http_user_info(token);
+        if (!info || !info.newbie) return;
+
+        show_onboard();
+        // 弹出即销毁，避免下次登录重复引导；销毁失败不影响本次展示
+        if (typeof window.http_user_newbie_clear === 'function') await window.http_user_newbie_clear(token);
+    } catch (_) {
+        // 检测失败不影响主页正常使用
+    }
+};
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', onboard_sync, { 'once': true });
+else onboard_sync();
+
+// 通过剧情对话了解玩法：直接进入剧情第一关
+button_onboard_story.addEventListener('click', () => {
+    location.assign('/pages/docs/story-play.html?level=1');
+});
+
+// 通过文档了解玩法：进入游戏规则页
+button_onboard_rule.addEventListener('click', () => {
+    location.assign('/pages/docs/rule.html');
+});
+
+// 已了解规则：关闭弹窗（萌新证已在弹出时销毁，不再重复出现）
+button_onboard_skip.addEventListener('click', () => {
+    dialog_onboard.hide();
+});
 
 /**
  * @description: 用户信息获取

@@ -94,6 +94,16 @@ window.http_user_info = async (token) => {
 };
 
 /**
+ * @description: 销毁萌新证（登录弹出新手引导后调用；重复调用也返回成功）
+ * @param {Uint8Array} token
+ * @return {Promise<boolean>}
+ */
+window.http_user_newbie_clear = async (token) => {
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/user/newbie_clear`, { token });
+    return Boolean(rjson && rjson.status);
+};
+
+/**
  * @description: 使用一张 3000 棋币兑换券（背包内使用，成功时增加 3000 棋币）
  * @param {string} token
  * @return {Promise<{ok: boolean, reason: string, coin: number, vouchers: number} | void>}
@@ -761,10 +771,14 @@ window.http_story_level_query = async (level = 0) => {
 /**
  * @description: 查询剧情角色与表情（公开接口，图片为 data URL）
  * @param {{name: string, expressions: string[]}[]} [faces] 只取这些角色与表情（按关卡实际用到）；省略时返回全部
+ * @param {{meta?: boolean}} [options] meta=true 时只返回角色名与表情名，不下发图片（编辑器选角色用，减少响应体与解密耗时）
  * @return {Promise<{characters: {id: number, name: string, rep: string, expressions: {id: number, name: string, image: string}[]}[]} | void>}
  */
-window.http_story_character_query = async (faces = null) => {
-    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/character_query`, faces && faces.length ? { faces } : {});
+window.http_story_character_query = async (faces = null, options = {}) => {
+    const payload = {};
+    if (faces && faces.length) payload.faces = faces;
+    if (options && options.meta) payload.meta = true;
+    const rjson = await window.fetch_task(`${window.http_protocol}${window.online_api}/story/character_query`, payload);
     if (!rjson || !rjson.status) return;
     return rjson.result;
 };

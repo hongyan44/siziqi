@@ -253,6 +253,9 @@
         let triggeredEvents = new Set();
         // 本次落子是否形成了「打」（ASCEND），用于区分「拿起棋子」与「AI拿起棋子」
         let lastMovePicked = false;
+        // 检测落子：按玩家自己的落子手数计数（玩家第一手=1），按条目索引去重
+        let playerMoveCount = 0;
+        let triggeredDetections = new Set();
         let gameNodeIndex = 0;
         let pendingResume = null;
         let pendingConfirm = null;
@@ -1086,7 +1089,11 @@
             if (source === 'player') advanceGuide(move[0], move[1]);
             await syncAiStone(move[0], move[1], generation);
             moves.push({ move, source });
+            if (source === 'player') playerMoveCount += 1;
             await renderMove(move[0], move[1], source, generation);
+            // 检测落子：玩家自己的第 N 手一落下就判定，先于结算/胜负，保证“绝杀手”也能触发
+            await runDetections(source, move);
+            if (gameOver || generation !== gameGeneration) return true;
             const ended = await settleRound(generation);
             if (ended || gameOver) return true;
             // 残局结束条件：本局落子数达到设定步数即结束（胜负优先，此处按平局处理）
@@ -1128,6 +1135,28 @@
                 const ended = await applyMove(move, 'ai', generation);
                 if (ended || gameOver) return;
             }
+        };
+
+        // 检测落子：玩家自己的第 N 手落在指定交叉点时，暂停本局并跳转到检测块播放剧情；
+        // 块内语句播完后由自动「继续对局」回到棋盘（若块内主动跳转则按作者写的流程走）
+        const runDetections = async (source, move) => {
+            if (source !== 'player' || !move) return;
+            const entries = (currentConfig && currentConfig.detections) || [];
+            const hitIndex = entries.findIndex((item, index) => (
+                item && item.target && !triggeredDetections.has(index)
+                && Number(item.step) === playerMoveCount && item.x === move[0] && item.y === move[1]
+            ));
+            if (hitIndex < 0) return;
+            const hit = entries[hitIndex];
+            if (!Object.prototype.hasOwnProperty.call(runtime.labels, hit.target)) return;
+            triggeredDetections.add(hitIndex);
+            await new Promise((resolve) => {
+                pendingResume = resolve;
+                mode = 'dialogue';
+                setDialogueVisible(true);
+                runtime.goto(hit.target);
+                renderNode();
+            });
         };
 
         // 步数对话：命中触发条件后暂停本局，跳转到配置的标签播放对话；“继续对局”回到棋盘
@@ -1327,6 +1356,7 @@
             const generation = ++gameGeneration;
             running = true; gameOver = false; moves = []; bookedWhite = null;
             triggeredEvents = new Set(); lastMovePicked = false; gameNodeIndex = runtime.index; pendingResume = null;
+            playerMoveCount = 0; triggeredDetections = new Set();
             // 结束残局=步数:N -> 本局第 N 手落子后结束；步数:0 -> 不落子，点击屏幕结束；胜负 或未配置 -> 分出胜负才结束
             endLimit = config.end_kind === 'steps' ? Math.max(0, Math.trunc(Number(config.end_steps) || 0)) : 0;
             endByClick = config.end_kind === 'steps' && endLimit === 0;

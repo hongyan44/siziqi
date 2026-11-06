@@ -254,7 +254,7 @@ const dialoguesToText = (dialogues) => (dialogues || []).map((entry) => {
 // 新语法：说 / 菜单 / 如果 / 重复 / 当 / 直到 / 设 / 赋值 / 跳出 / 继续 / 对局 等。
 // v0.4：条件支持 与 / 或 / 非、括号、四则运算与数值比较。
 const JQBJ_VERSION = 'v0.4';
-const JQBJ_DETECT = /^(?:说(?:\s|$)|菜单(?:\s|$)|选项(?:\s|$)|结束菜单$|如果(?:\s|$)|否则如果(?:\s|$)|否则$|结束如果$|重复(?:\s|$)|当(?:\s|$)|直到(?:\s|$)|结束重复$|结束当$|结束直到$|跳出$|继续$|设(?:\s|$)|赋值(?:\s|$)|对局(?:\s|$)|结束对局$|标签(?:\s|$)|跳转(?:\s|$)|标注(?:\s|$)|不透明度(?:\s|$)|如果胜利$|如果失败$|如果平局$|\{|\})/;
+const JQBJ_DETECT = /^(?:说(?:\s|$)|菜单(?:\s|$)|选项(?:\s|$)|结束菜单$|如果(?:\s|$)|否则如果(?:\s|$)|否则$|结束如果$|重复(?:\s|$)|当(?:\s|$)|直到(?:\s|$)|结束重复$|结束当$|结束直到$|跳出$|继续$|设(?:\s|$)|赋值(?:\s|$)|对局(?:\s|$)|结束对局$|标签(?:\s|$)|跳转(?:\s|$)|标注(?:\s|$)|不透明度(?:\s|$)|如果胜利$|如果失败$|如果平局$|检测(?:\s|$)|结束检测$|\{|\})/;
 const JQBJ_NAME_RE = /^[A-Za-z_\u4e00-\u9fa5][A-Za-z0-9_\u4e00-\u9fa5]*$/;
 const JQBJ_OUTCOME_TEXT = { 'win': '胜利', 'lose': '失败', 'draw': '平局' };
 const JQBJ_OUTCOME_KEY = { '胜利': 'win', '失败': 'lose', '平局': 'draw' };
@@ -266,7 +266,7 @@ const jqbjIsClosing = (text) => (
     || text === '结束菜单' || text === '结束选择'
     || text === '结束重复' || text === '结束当' || text === '结束直到'
     || text === '结束定义' || text === '}' || text === '结束框' || text === '框结束'
-    || GAME_END_KEYWORDS.includes(text) || text === '结束对局'
+    || GAME_END_KEYWORDS.includes(text) || text === '结束对局' || text === '结束检测'
 );
 
 const jqbjValueType = (raw, vars) => {
@@ -487,7 +487,9 @@ class JQBJParser {
         this.nodes.forEach((node) => {
             if (node.type === 'game') {
                 node.config = normalizeGameConfig(node.config_raw);
+                node.config.detections = Array.isArray(node.detections) ? node.detections : [];
                 delete node.config_raw;
+                delete node.detections;
             }
             if (node.type === 'mark' && node.kind === 'circle') node.cell = parseCell(node.target);
         });
@@ -651,6 +653,10 @@ class JQBJParser {
         }
         if (/^如果胜利$|^如果失败$|^如果平局$/.test(text)) {
             this.error(line.lineIndex, `「${text}」只能写在「对局」块内。`);
+            return { 'node': null, 'next': start + 1 };
+        }
+        if (/^检测(?:\s|$)/.test(text)) {
+            this.error(line.lineIndex, '「检测」只能写在「对局」块内。');
             return { 'node': null, 'next': start + 1 };
         }
 
@@ -891,6 +897,7 @@ class JQBJParser {
         const configs = [];
         const configRaw = {};
         const branches = [];
+        const detections = [];
         const body = [];
         let branchIndent = -1;
         let index = start + 1;
@@ -905,7 +912,7 @@ class JQBJParser {
                     let next = index + 1;
                     while (next < endIndex) {
                         const sibling = this.lines[next];
-                        if (sibling.text && sibling.indent === branchIndent && /^(如果胜利|如果失败|如果平局)$/.test(sibling.text)) break;
+                        if (sibling.text && sibling.indent === branchIndent && (/^(如果胜利|如果失败|如果平局)$/.test(sibling.text) || /^检测(?:\s|$)/.test(sibling.text))) break;
                         next += 1;
                     }
                     branches.push({ 'outcome': outcome, 'body': this.parseBlock(index + 1, next), 'indent': item.indent, 'lineStart': index, 'lineEnd': next });
@@ -921,6 +928,24 @@ class JQBJParser {
                 index += 1;
                 continue;
             }
+            // 检测 N 横,竖：玩家自己的第 N 手落在该交叉点时，暂停本局并播放块内剧情
+            const detect = /^检测\s+(\d+)\s+(\d+)\s*,\s*(\d+)\s*$/.exec(item.text);
+            if (detect && item.indent > line.indent) {
+                const step = Math.trunc(Number(detect[1]));
+                const across = Number(detect[2]);
+                const down = Number(detect[3]);
+                if (!(step >= 1)) this.error(item.lineIndex, '「检测」的步数必须是 1 或更大的整数。');
+                if (!toBoardPoint(across, down)) this.error(item.lineIndex, `「检测」坐标无效：${across},${down}（应为 1-9 的 横,竖）。`);
+                const endDetect = this.findEnd(index + 1, endIndex, item.indent, ['结束检测']);
+                const bodyEnd = endDetect < 0 ? this.implicitEnd(index + 1, endIndex, item.indent) : endDetect;
+                detections.push({
+                    'type': 'detect', 'step': step >= 1 ? step : 1, 'cell_text': `${across},${down}`,
+                    'x': across, 'y': down, 'body': this.parseBlock(index + 1, bodyEnd),
+                    'indent': item.indent, 'lineStart': index, 'lineEnd': bodyEnd + 1,
+                });
+                index = bodyEnd + 1;
+                continue;
+            }
             const parsed = this.parseStatement(index, endIndex);
             if (!parsed || !parsed.node) { index += 1; continue; }
             body.push(parsed.node);
@@ -928,7 +953,7 @@ class JQBJParser {
         }
         return {
             'node': {
-                'type': 'game', 'title': title, 'configs': configs, 'config_raw': configRaw, 'branches': branches, 'body': body,
+                'type': 'game', 'title': title, 'configs': configs, 'config_raw': configRaw, 'branches': branches, 'detections': detections, 'body': body,
                 'indent': line.indent, 'lineStart': start, 'lineEnd': endIndex + 1,
             },
             'next': endIndex + 1,
@@ -1052,7 +1077,7 @@ class JQBJParser {
             const seq = this.seq.game;
             this.seq.game += 1;
             const endLabel = `__jqbj_game_${seq}_end`;
-            const gameNode = { 'type': 'game', 'title': node.title, 'config_raw': Object.assign({}, node.config_raw), 'indent': indent };
+            const gameNode = { 'type': 'game', 'title': node.title, 'config_raw': Object.assign({}, node.config_raw), 'detections': [], 'indent': indent };
             this.nodes.push(gameNode);
             this.emitAutoJump(endLabel, indent);
             const seen = new Set();
@@ -1064,6 +1089,18 @@ class JQBJParser {
                 this.emitLabel(label, indent + 1, 'game');
                 this.compileList(branch.body, ctx);
                 this.emitAutoJump(endLabel, indent + 1, 'game');
+            });
+            (node.detections || []).forEach((detector, position) => {
+                const label = `__jqbj_game_${seq}_detect_${position}`;
+                const point = toBoardPoint(detector.x, detector.y);
+                gameNode.detections.push({
+                    'step': detector.step, 'x': point ? point[0] : null, 'y': point ? point[1] : null,
+                    'cell_text': detector.cell_text, 'target': label,
+                });
+                this.emitLabel(label, indent + 1, 'game');
+                this.compileList(detector.body, ctx);
+                // 检测块播完自动回到对局，作者无需再写「继续对局」
+                this.nodes.push({ 'type': 'resume', 'auto': 'detect', 'indent': indent + 1 });
             });
             this.emitLabel(endLabel, indent, 'game_end');
             this.nodes.push({ 'type': 'game_end', 'indent': indent });
@@ -1300,6 +1337,7 @@ const validateJQBJTree = (tree) => {
                     seen.add(branch.outcome);
                     walk(branch.body);
                 });
+                (node.detections || []).forEach((detector) => walk(detector.body));
                 walk(node.body);
             }
         });

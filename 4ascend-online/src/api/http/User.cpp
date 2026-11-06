@@ -332,6 +332,10 @@ void user_info(cinatra::coro_http_request& request, cinatra::coro_http_response&
 
     info["score"] = score;
     info["level"] = level;
+    // 萌新证：新注册账号为 true，前端登录后弹出新手引导，弹出后调用 /user/newbie_clear 销毁。
+    bool newbie = false;
+    if (!Manager::User::get_newbie(uuid, newbie)) return api_http_error("user_info", response);
+    info["newbie"] = newbie;
     // 经济系统：棋币余额与经验等级，供账号信息 / 商店 / 玩家资料展示。
     int64_t coin = 0, exp = 0;
     Manager::User::get_wallet(uuid, coin, exp);
@@ -401,6 +405,24 @@ void user_info(cinatra::coro_http_request& request, cinatra::coro_http_response&
     if (skin_theme_liuqing) skins.push_back(std::string("theme_liuqing"));
     info["skins"] = skins;
     api_end("user_info", true, info, buffer);
+    response.set_status_and_content(cinatra::status_type::ok, buffer);
+};
+
+// 销毁萌新证（新手引导弹出后调用，重复销毁也返回成功）
+void user_newbie_clear(cinatra::coro_http_request& request, cinatra::coro_http_response& response) {
+    auto body = api_body(request.get_body());
+    if (!body) return;
+    auto rjson = body.value();
+
+    auto bin = rjson["token"].as<jsoncons::byte_string_view>();
+    std::string token(bin.begin(), bin.end());
+
+    std::string uuid;
+    if (!Manager::Token::token2uuid(token, uuid) || !Manager::User::clear_newbie(uuid))
+        return api_http_error("user_newbie_clear", response); // cp
+
+    std::string buffer;
+    api_end("user_newbie_clear", true, jsoncons::json::null(), buffer);
     response.set_status_and_content(cinatra::status_type::ok, buffer);
 };
 
@@ -1083,6 +1105,7 @@ void load(cinatra::coro_http_server& server) noexcept {
     server.set_http_handler<cinatra::POST>("/user/delete", user_delete);
     server.set_http_handler<cinatra::POST>("/user/rtoken", user_rtoken);
     server.set_http_handler<cinatra::POST>("/user/info", user_info);
+    server.set_http_handler<cinatra::POST>("/user/newbie_clear", user_newbie_clear);
     server.set_http_handler<cinatra::POST>("/user/update", user_update);
     server.set_http_handler<cinatra::POST>("/user/set_color", user_set_color);
     server.set_http_handler<cinatra::POST>("/user/colors", user_colors);
