@@ -1,0 +1,679 @@
+<!--
+ * @Author: CsVeryLoveXieWenLi
+ * @Description: 剧情系统 - 角色与表情管理（仅管理员，可删除角色/表情与更换代表图）
+ * @Copyright (c) 2026 by CsVeryLoveXieWenLi, All Rights Reserved.
+-->
+<!DOCTYPE html>
+<html lang='zh-CN'>
+<head>
+    <meta charset='UTF-8'>
+    <meta http-equiv='X-UA-Compatible' content='IE=edge'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0, user-scalable=no'>
+    <!-- 申请退出浏览器自动深色（Force Dark）：否则 vivo 等浏览器夜间模式会把页面反色，白底表情图会被渲染成负片 -->
+    <meta name='color-scheme' content='only light'>
+    <link rel='shortcut icon' href='/favicon.png' type='image/png'>
+    <title>四子棋 剧情角色管理</title>
+    <link href='https://quantil.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css' rel='stylesheet'>
+    <link href='https://quantil.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/themes/light.css' rel='stylesheet'>
+    <script src='https://quantil.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/shoelace-autoloader.js' type='module'></script>
+    <script src='/js/global/ui.min.js?v=replace'></script>
+    <script src='/js/risk/api.min.js?v=replace'></script>
+    <script src='/js/ref/must.min.js?v=replace'></script>
+    <script src='/js/ref/achievement.min.js?v=replace'></script>
+    <script src='/js/ref/music.min.js?v=replace'></script>
+    <script src='/js/ref/global-music.min.js?v=replace'></script>
+    <script src='/js/ref/http.min.js?v=replace'></script>
+    <script src='/js/ref/friends.min.js?v=replace'></script>
+    <script src='/js/ref/wallet.min.js?v=replace'></script>
+    <link href='/css/global.min.css?v=replace' rel='stylesheet'>
+    <style>
+        .loading-a { position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(255, 255, 255, 1); transition: all .4s ease; }
+        .loading-p { width: 40px; height: 40px; border: 3px solid #f3f3f3; border-top: 3px solid #3498db; border-radius: 50%; animation: loading-spin 1s linear infinite; }
+        .loading-t { margin-top: 15px; font-family: sans-serif; color: #666; font-size: 14px; }
+        @keyframes loading-spin { 0% { transform: rotate(0); } 100% { transform: rotate(360deg); } }
+        .category-title { font-size: 1.1rem; color: var(--sl-color-neutral-600); border-left: 4px solid var(--sl-color-primary-500); padding-left: 8px; margin-bottom: .5rem; }
+        .story-main { max-width: 960px; }
+        .admin-panel { border: 1px solid rgba(111, 66, 193, .18); background: linear-gradient(135deg, rgba(111, 66, 193, .035), rgba(255, 255, 255, .9)); }
+        .char-thumb { width: 72px; height: 108px; object-fit: cover; background: #f4f5f7; border: 1px solid rgba(0, 0, 0, .75); border-radius: .35rem; display: block; }
+        .char-thumb-sm { width: 48px; height: 72px; object-fit: cover; background: #f4f5f7; border: 1px solid rgba(0, 0, 0, .6); border-radius: .3rem; display: block; }
+        /* 兜底：缩略图声明只支持浅色并禁止强制配色，避免浏览器自动深色把白底表情图渲染成负片 */
+        .char-thumb, .char-thumb-sm, .crop-stage img { color-scheme: only light; forced-color-adjust: none; }
+        .char-thumb-empty { display: flex; align-items: center; justify-content: center; color: var(--sl-color-neutral-400); font-size: 1.3rem; }
+        .char-meta { font-size: .74rem; color: var(--sl-color-neutral-500); }
+        .crop-stage { position: relative; width: 100%; background: #101216; border-radius: .5rem; overflow: hidden; touch-action: none; }
+        .crop-stage img { display: block; width: 100%; height: auto; user-select: none; -webkit-user-drag: none; }
+        .crop-box { position: absolute; box-sizing: border-box; border: 2px solid #000; box-shadow: 0 0 0 9999px rgba(0, 0, 0, .55); pointer-events: auto; cursor: move; touch-action: none; }
+        .crop-handle { position: absolute; right: -9px; bottom: -9px; width: 18px; height: 18px; box-sizing: border-box; background: #000; border: 2px solid #fff; border-radius: 50%; pointer-events: auto; cursor: nwse-resize; touch-action: none; }
+        .expr-cell { display: flex; flex-direction: column; align-items: center; gap: .2rem; width: 64px; }
+        .expr-name { font-size: .72rem; color: var(--sl-color-neutral-700); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    </style>
+    <div id='loading' class='loading-a'>
+        <div class='loading-p'></div>
+        <p class='loading-t'>正在初始化...</p>
+    </div>
+    <script>
+        (async () => {
+            await Promise.allSettled([customElements.whenDefined('sl-button'), customElements.whenDefined('sl-icon'), customElements.whenDefined('sl-input'), customElements.whenDefined('sl-badge'), customElements.whenDefined('sl-dialog')]);
+            if (document.readyState === 'loading') await new Promise((resolve) => document.addEventListener('DOMContentLoaded', resolve, { once: true }));
+            await new Promise((resolve) => { if (document.readyState === 'complete') resolve(); else window.addEventListener('load', resolve, { once: true }); });
+            setTimeout(() => { window.loaded = true; const loader = document.getElementById('loading'); if (loader) { loader.style.opacity = '0'; loader.style.visibility = 'hidden'; setTimeout(() => loader.remove(), 400); } }, 300);
+        })();
+    </script>
+</head>
+<body class='d-flex flex-column w-100 h-100 bg-light'>
+    <div id='button_home' class='position-fixed top-0 start-0 d-flex gap-1 p-2' style='z-index: 1050;'>
+        <sl-button variant='default' href='/pages/docs/story.html' circle aria-label='返回上一级' title='返回上一级'><sl-icon name='arrow-left'></sl-icon></sl-button>
+        <sl-button variant='default' href='/' circle aria-label='返回主页' title='返回主页'><sl-icon name='house'></sl-icon></sl-button>
+        <sl-button id='button_music_toggle' variant='default' circle title='单击切换下一首；1 秒内双击开始/停止播放' aria-label='单击切换下一首'><sl-icon id='icon_music_toggle' name='volume-up'></sl-icon></sl-button>
+    </div>
+    <div class='d-flex flex-column w-100 h-100'>
+        <header class='d-flex align-items-center justify-content-center px-3 pt-2'>
+            <span class='text-secondary small'>剧情系统 · 角色管理</span>
+        </header>
+        <main class='container story-main py-3 py-md-4 flex-grow-1 overflow-auto'>
+            <section class='text-center mb-4'>
+                <sl-icon name='person-badge' style='font-size: 3.2rem; color: var(--sl-color-primary-600);'></sl-icon>
+                <h1 class='h3 fw-bold mt-2 mb-1'>角色与表情</h1>
+                <p class='text-secondary small mb-0'>上传角色代表图与表情图；可更换代表图、删除任意表情、删除角色（删除角色会一并移除其全部表情）</p>
+            </section>
+
+            <section id='no_permission' class='card border-0 shadow-sm d-none'>
+                <div class='card-body text-center py-5'>
+                    <sl-icon name='shield-lock' style='font-size: 2.6rem; color: var(--sl-color-neutral-400);'></sl-icon>
+                    <div class='fw-bold mt-2'>仅权限等级 4 的管理员可以管理剧情角色</div>
+                    <div id='no_permission_detail' class='text-secondary small mt-1'></div>
+                </div>
+            </section>
+
+            <div id='manager' class='d-none'>
+                <section class='card admin-panel shadow-sm mb-4'>
+                    <div class='card-body p-3 p-md-4'>
+                        <div class='d-flex align-items-center gap-2 mb-2'><sl-icon name='person-plus' class='text-primary'></sl-icon><span class='fw-bold'>新增角色</span><sl-badge variant='warning' pill>权限等级 2+</sl-badge></div>
+                        <div class='row g-2 align-items-end'>
+                            <div class='col-12 col-md-5'><sl-input id='new_char_name' maxlength='24' label='角色名' placeholder='例如：导员ZERO' help-text='用于台词里的 [角色名]'></sl-input></div>
+                            <div class='col-12 col-md-7'>
+                                <div class='d-flex flex-wrap gap-2'>
+                                    <sl-button id='button_pick_rep' variant='default' outline><sl-icon slot='prefix' name='image'></sl-icon>选择代表图</sl-button>
+                                    <sl-button id='button_add_char' variant='primary' disabled><sl-icon slot='prefix' name='cloud-arrow-up'></sl-icon>保存角色</sl-button>
+                                </div>
+                            </div>
+                        </div>
+                        <div id='new_char_preview' class='d-flex align-items-center gap-2 mt-2'></div>
+                        <div id='new_char_status' class='text-secondary small mt-2'>先选择代表图，再保存角色。</div>
+                    </div>
+                </section>
+
+                <section class='card border-0 shadow-sm mb-3'>
+                    <div class='card-body p-3 p-md-4'>
+                        <div class='d-flex align-items-center justify-content-between gap-3'>
+                            <div>
+                                <div class='category-title fw-bold'>已有角色</div>
+                                <div class='text-secondary small'>共 <span id='char_count'>0</span> 个角色 · <span id='expr_count'>0</span> 个表情</div>
+                            </div>
+                            <div class='d-flex flex-wrap gap-2'>
+                                <sl-button id='button_compress' size='small' variant='warning' outline class='d-none'><sl-icon slot='prefix' name='arrows-collapse'></sl-icon>压缩已有图片</sl-button>
+                                <sl-button id='button_refresh' size='small' variant='default' outline><sl-icon slot='prefix' name='arrow-clockwise'></sl-icon>刷新</sl-button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <div id='char_list' class='d-flex flex-column gap-3'></div>
+                <div id='char_empty' class='text-secondary small py-4 text-center d-none'>还没有任何角色，请先在上方新增。</div>
+            </div>
+        </main>
+        <footer class='text-center text-muted py-1' style='font-size: .74rem;'>剧情系统 · 角色与表情管理</footer>
+    </div>
+
+    <sl-dialog id='crop_dialog' label='裁剪图片' style='--width: min(94vw, 620px);'>
+        <div class='text-secondary small mb-2'>拖动选框调整裁切位置，拖拽右下角黑色控制点调整选框大小；选框比例固定 1:1.5。</div>
+        <input id='crop_file' type='file' accept='image/*' class='form-control form-control-sm mb-2'>
+        <div id='crop_stage' class='crop-stage d-none'>
+            <img id='crop_img' alt=''>
+            <div id='crop_box' class='crop-box'><span id='crop_handle' class='crop-handle'></span></div>
+        </div>
+        <div id='crop_status' class='text-secondary small mt-2'>请选择一张图片。</div>
+        <sl-button slot='footer' id='button_crop_cancel' variant='default'>取消</sl-button>
+        <sl-button slot='footer' id='button_crop_ok' variant='primary' disabled>使用这张图片</sl-button>
+    </sl-dialog>
+
+    <sl-dialog id='confirm_dialog' label='删除角色' style='--width: min(92vw, 440px);'>
+        <div id='confirm_text' class='small text-secondary'></div>
+        <sl-button slot='footer' id='button_confirm_cancel' variant='default'>取消</sl-button>
+        <sl-button slot='footer' id='button_confirm_ok' variant='danger'>确认删除</sl-button>
+    </sl-dialog>
+
+    <script>
+        const $ = (id) => document.getElementById(id);
+        const CROP_RATIO = 1.5;          // 选框高 / 宽 固定为 1.5（即 宽:高 = 1:1.5）
+        const OUTPUT_WIDTH = 512;
+        const OUTPUT_HEIGHT = 768;
+        const THUMB_WIDTH = 200;         // 剧情页加载用的压缩图（宽:高 = 1:1.5）
+        const THUMB_HEIGHT = 300;
+        const NAME_LIMIT = 24;
+
+        let admin = null;
+        let characters = [];
+        let repImage = null;             // { image: 缩略图, original: 原图 }
+        let pending = null;              // { purpose: 'rep' | 'expression', charId? }
+        const drafts = new Map();        // charId -> { image: 缩略图, original: 原图 }
+
+        const isEditor = () => Boolean(admin && Number(admin.level) >= 2);
+        const isAdmin = () => Boolean(admin && Number(admin.level) === 4);
+        const escapeHtml = (text) => String(text == null ? '' : text).replace(/[<>&"']/g, (char) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[char]));
+        const safeImage = (value) => (typeof value === 'string' && value.startsWith('data:image/') ? value : '');
+
+        const setStatus = (node, message, variant = 'secondary') => { node.textContent = message; node.className = `small mt-2 text-${variant}`; };
+
+        // ==================== 图片裁剪（比例固定 1:1.5，仅可调整选框大小） ====================
+        const cropDialog = $('crop_dialog');
+        const cropStage = $('crop_stage');
+        const cropImg = $('crop_img');
+        const cropBox = $('crop_box');
+        const cropHandle = $('crop_handle');
+        const crop = { ready: false, box_h: 0, box_x: 0, box_y: 0, min_h: 60, max_h: 0, disp_w: 0, disp_h: 0, placed: false, drag: null, move: null };
+
+        // 选框：比例固定 1:1.5（宽 = 高 / 1.5），可拖动位置，仅能改大小
+        const layoutCropBox = () => {
+            const width = crop.box_h / CROP_RATIO;
+            crop.box_x = Math.min(Math.max(0, crop.box_x), Math.max(0, crop.disp_w - width));
+            crop.box_y = Math.min(Math.max(0, crop.box_y), Math.max(0, crop.disp_h - crop.box_h));
+            cropBox.style.width = `${width}px`;
+            cropBox.style.height = `${crop.box_h}px`;
+            cropBox.style.left = `${crop.box_x}px`;
+            cropBox.style.top = `${crop.box_y}px`;
+        };
+
+        // 新图首次摆放居中，之后拖动/缩放都保留当前位置
+        const centerCropBox = () => {
+            crop.box_x = (crop.disp_w - crop.box_h / CROP_RATIO) / 2;
+            crop.box_y = (crop.disp_h - crop.box_h) / 2;
+        };
+
+        const syncCropMetrics = () => {
+            crop.disp_w = cropImg.clientWidth;
+            crop.disp_h = cropImg.clientHeight;
+            if (!crop.disp_w || !crop.disp_h) return;
+            crop.max_h = Math.min(crop.disp_h, crop.disp_w * CROP_RATIO);
+            crop.min_h = Math.min(crop.max_h, 60);
+            if (!crop.box_h || crop.box_h > crop.max_h) crop.box_h = crop.max_h;
+            if (crop.box_h < crop.min_h) crop.box_h = crop.min_h;
+            if (!crop.placed) { centerCropBox(); crop.placed = true; }
+            layoutCropBox();
+        };
+
+        const setCropStatus = (message, variant = 'secondary') => setStatus($('crop_status'), message, variant);
+
+        const openCrop = (purpose, charId) => {
+            pending = { 'purpose': purpose, 'charId': charId == null ? null : Number(charId) };
+            crop.ready = false; crop.box_h = 0; crop.box_x = 0; crop.box_y = 0; crop.placed = false; crop.drag = null; crop.move = null;
+            cropStage.classList.add('d-none');
+            cropImg.removeAttribute('src');
+            $('crop_file').value = '';
+            $('button_crop_ok').disabled = true;
+            setCropStatus('请选择一张图片。');
+            cropDialog.show();
+        };
+
+        // 拖动选框本体移动位置（handle 有独立监听，这里排除它）
+        cropBox.addEventListener('pointerdown', (event) => {
+            if (!crop.ready || event.target === cropHandle) return;
+            event.preventDefault();
+            crop.move = { 'startX': event.clientX, 'startY': event.clientY, 'startLeft': crop.box_x, 'startTop': crop.box_y };
+            try { cropBox.setPointerCapture(event.pointerId); } catch (_) { /* 部分浏览器不支持 */ }
+        });
+        cropBox.addEventListener('pointermove', (event) => {
+            if (!crop.move) return;
+            event.preventDefault();
+            crop.box_x = crop.move.startLeft + (event.clientX - crop.move.startX);
+            crop.box_y = crop.move.startTop + (event.clientY - crop.move.startY);
+            layoutCropBox();
+        });
+        const endCropMove = (event) => {
+            if (!crop.move) return;
+            crop.move = null;
+            try { cropBox.releasePointerCapture(event.pointerId); } catch (_) { /* 已释放 */ }
+        };
+        cropBox.addEventListener('pointerup', endCropMove);
+        cropBox.addEventListener('pointercancel', endCropMove);
+
+        cropHandle.addEventListener('pointerdown', (event) => {
+            if (!crop.ready) return;
+            event.preventDefault();
+            event.stopPropagation();
+            crop.drag = { 'startY': event.clientY, 'startH': crop.box_h, 'startLeft': crop.box_x, 'startTop': crop.box_y };
+            try { cropHandle.setPointerCapture(event.pointerId); } catch (_) { /* 部分浏览器不支持 */ }
+        });
+        cropHandle.addEventListener('pointermove', (event) => {
+            if (!crop.drag) return;
+            event.preventDefault();
+            const delta = (event.clientY - crop.drag.startY) * 2; // 居中缩放：以当前选框中心为基准
+            const height = Math.min(crop.max_h, Math.max(crop.min_h, crop.drag.startH + delta));
+            crop.box_h = height;
+            crop.box_x = crop.drag.startLeft + (crop.drag.startH - height) / (2 * CROP_RATIO);
+            crop.box_y = crop.drag.startTop + (crop.drag.startH - height) / 2;
+            layoutCropBox();
+        });
+        const endCropDrag = (event) => {
+            if (!crop.drag) return;
+            crop.drag = null;
+            try { cropHandle.releasePointerCapture(event.pointerId); } catch (_) { /* 已释放 */ }
+        };
+        cropHandle.addEventListener('pointerup', endCropDrag);
+        cropHandle.addEventListener('pointercancel', endCropDrag);
+
+        $('crop_file').addEventListener('change', (event) => {
+            const file = event.target.files && event.target.files[0];
+            if (!file) return;
+            if (!String(file.type || '').startsWith('image/')) { setCropStatus('请选择图片文件。', 'danger'); return; }
+            const reader = new FileReader();
+            reader.onload = () => {
+                cropImg.onload = () => {
+                    crop.ready = true;
+                    crop.box_h = 0;
+                    crop.placed = false;
+                    cropStage.classList.remove('d-none');
+                    syncCropMetrics();
+                    $('button_crop_ok').disabled = false;
+                    setCropStatus('拖动选框可移动位置，拖拽右下角控制点调整选框大小。');
+                };
+                cropImg.onerror = () => { crop.ready = false; $('button_crop_ok').disabled = true; setCropStatus('图片加载失败，请换一张。', 'danger'); };
+                cropImg.src = String(reader.result);
+            };
+            reader.onerror = () => setCropStatus('读取文件失败。', 'danger');
+            reader.readAsDataURL(file);
+        });
+
+        // 按选框当前位置裁切并按指定输出尺寸重绘，返回 data URL
+        const cropToDataUrl = (width = OUTPUT_WIDTH, height = OUTPUT_HEIGHT, quality = 0.92) => {
+            if (!crop.ready || !crop.disp_w || !crop.disp_h) return '';
+            const scale = cropImg.naturalWidth / crop.disp_w;
+            const boxW = crop.box_h / CROP_RATIO;
+            const boxH = crop.box_h;
+            const sx = Math.max(0, crop.box_x * scale);
+            const sy = Math.max(0, crop.box_y * scale);
+            const sw = Math.min(cropImg.naturalWidth - sx, boxW * scale);
+            const sh = Math.min(cropImg.naturalHeight - sy, boxH * scale);
+            if (sw <= 0 || sh <= 0) return '';
+            const canvas = document.createElement('canvas');
+            canvas.width = width; canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return '';
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(cropImg, sx, sy, sw, sh, 0, 0, width, height);
+            const webp = canvas.toDataURL('image/webp', quality);
+            const url = webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/png');
+            return safeImage(url);
+        };
+
+        $('button_crop_cancel').addEventListener('click', () => cropDialog.hide());
+        $('button_crop_ok').addEventListener('click', async () => {
+            // 压缩图 200×300 供剧情页加载；原图 512×768 仅落盘，供管理员下载
+            const picked = { 'image': cropToDataUrl(THUMB_WIDTH, THUMB_HEIGHT, 0.85), 'original': cropToDataUrl() };
+            const image = picked.image;
+            if (!image || !picked.original) { setCropStatus('请选择图片并调整选框后再确认。', 'danger'); return; }
+            if (picked.original.length > 8 * 1024 * 1024) { setCropStatus('图片过大（超过 8MB），请换一张尺寸更小的图。', 'danger'); return; }
+            const target = pending;
+            if (target && target.purpose === 'rep') {
+                repImage = picked;
+                renderCharPreview();
+                $('button_add_char').disabled = false;
+                setStatus($('new_char_status'), '代表图已就绪，填写角色名后保存。', 'success');
+            } else if (target && target.purpose === 'expression') {
+                drafts.set(target.charId, picked);
+                refreshDrafts();
+                setStatus($('new_char_status'), '图片已就绪。', 'secondary');
+            }
+            cropDialog.hide();
+            if (target && target.purpose === 'rep_replace') await replaceCharacterRep(target.charId, picked);
+        });
+
+        // ==================== 新增角色 / 表情 ====================
+        const renderCharPreview = () => {
+            const node = $('new_char_preview');
+            if (!repImage) { node.innerHTML = ''; return; }
+            node.innerHTML = `<img class='char-thumb' src='${escapeHtml(repImage.image)}' alt='代表图预览'><span class='char-meta'>代表图已选择</span>`;
+        };
+
+        const refreshDrafts = () => {
+            drafts.forEach((draft, charId) => {
+                const card = document.querySelector(`[data-char-id='${charId}']`);
+                if (!card) return;
+                const button = card.querySelector('[data-role=save-expression]');
+                const name = card.querySelector('[data-role=expression-name]');
+                const status = card.querySelector('[data-role=expression-status]');
+                if (!button || !name || !status) return;
+                const ready = Boolean(draft.image) && Boolean(String(name.value || '').trim());
+                button.disabled = !ready;
+                if (draft.image) status.textContent = '图片已就绪，填写表情名后保存。';
+            });
+        };
+
+        const addCharacter = async () => {
+            const name = String($('new_char_name').value || '').trim().slice(0, NAME_LIMIT);
+            if (!name) { setStatus($('new_char_status'), '请填写角色名。', 'danger'); return; }
+            if (!repImage) { setStatus($('new_char_status'), '请先选择代表图。', 'danger'); return; }
+            const button = $('button_add_char');
+            button.disabled = true;
+            try {
+                const result = await window.http_story_character_add(window.get_token(), name, repImage.image, repImage.original);
+                if (!result || !result.id) { setStatus($('new_char_status'), '保存失败：角色名可能已存在，或服务暂不可用。', 'danger'); return; }
+                if (result.submitted) {
+                    // 等级 2/3：只提交投稿，线上数据保持不变
+                    setStatus($('new_char_status'), `角色“${name}”已提交投稿，等待等级 4 管理员审核。`, 'success');
+                    repImage = null; $('new_char_name').value = ''; renderCharPreview();
+                    return;
+                }
+                setStatus($('new_char_status'), `角色“${name}”已保存。`, 'success');
+                repImage = null; $('new_char_name').value = ''; renderCharPreview();
+                await loadCharacters();
+            } catch (_) {
+                setStatus($('new_char_status'), '保存失败：服务暂不可用，请稍后重试。', 'danger');
+            } finally {
+                button.disabled = !repImage;
+            }
+        };
+
+        const addExpression = async (charId) => {
+            const card = document.querySelector(`[data-char-id='${charId}']`);
+            if (!card) return;
+            const nameInput = card.querySelector('[data-role=expression-name]');
+            const status = card.querySelector('[data-role=expression-status]');
+            const button = card.querySelector('[data-role=save-expression]');
+            const draft = drafts.get(Number(charId)) || {};
+            const name = String(nameInput.value || '').trim().slice(0, NAME_LIMIT);
+            if (!name) { setStatus(status, '请填写表情名。', 'danger'); return; }
+            if (!draft.image) { setStatus(status, '请先选择表情图片。', 'danger'); return; }
+            button.disabled = true;
+            try {
+                const result = await window.http_story_expression_add(window.get_token(), Number(charId), name, draft.image, draft.original);
+                if (!result || !result.id) { setStatus(status, '保存失败：表情名可能已存在，或服务暂不可用。', 'danger'); return; }
+                if (result.submitted) {
+                    setStatus(status, `表情“${name}”已提交投稿，等待等级 4 管理员审核。`, 'success');
+                    drafts.delete(Number(charId));
+                    return;
+                }
+                setStatus(status, `表情“${name}”已保存。`, 'success');
+                drafts.delete(Number(charId));
+                await loadCharacters();
+            } catch (_) {
+                setStatus(status, '保存失败：服务暂不可用，请稍后重试。', 'danger');
+            } finally {
+                button.disabled = false;
+            }
+        };
+
+        // ==================== 更换代表图 / 删除角色 / 删除表情 ====================
+        const replaceCharacterRep = async (charId, picked) => {
+            const card = document.querySelector(`[data-char-id='${charId}']`);
+            if (!card) return;
+            const status = card.querySelector('[data-role=char-status]');
+            const button = card.querySelector('[data-role=replace-rep]');
+            if (button) button.disabled = true;
+            try {
+                const result = await window.http_story_character_update_rep(window.get_token(), Number(charId), picked.image, picked.original);
+                if (!result || !result.id) { setStatus(status, '更换代表图失败：服务暂不可用。', 'danger'); return; }
+                if (result.submitted) { setStatus(status, '代表图更换已提交投稿，等待等级 4 管理员审核。', 'success'); return; }
+                const thumb = card.querySelector('.char-thumb');
+                if (thumb && thumb.tagName === 'IMG') thumb.src = picked.image;
+                setStatus(status, '代表图已更新。', 'success');
+            } catch (_) {
+                setStatus(status, '更换代表图失败：服务暂不可用，请稍后重试。', 'danger');
+            } finally {
+                if (button) button.disabled = false;
+            }
+        };
+
+        const deleteCharacter = async (charId, name) => {
+            if (!isAdmin()) return;
+            const card = document.querySelector(`[data-char-id='${charId}']`);
+            if (!card) return;
+            const status = card.querySelector('[data-role=char-status]');
+            const button = card.querySelector('[data-role=delete-char]');
+            const confirmed = await confirmDelete(`确定删除角色“${name}”吗？该角色的全部表情会一并删除，且无法恢复。`, '删除角色');
+            if (!confirmed) return;
+            if (button) button.disabled = true;
+            try {
+                const result = await window.http_story_character_delete(window.get_token(), Number(charId));
+                if (!result || !result.id) { setStatus(status, '删除失败：服务暂不可用。', 'danger'); return; }
+                await loadCharacters();
+            } catch (_) {
+                setStatus(status, '删除失败：服务暂不可用，请稍后重试。', 'danger');
+            } finally {
+                if (button) button.disabled = false;
+            }
+        };
+
+        const deleteExpression = async (charId, expressionId, name) => {
+            if (!isAdmin() || !expressionId) return;
+            const card = document.querySelector(`[data-char-id='${charId}']`);
+            if (!card) return;
+            const status = card.querySelector('[data-role=char-status]');
+            const confirmed = await confirmDelete(`确定删除表情“${name}”吗？该操作无法恢复。`, '删除表情');
+            if (!confirmed) return;
+            try {
+                const result = await window.http_story_expression_delete(window.get_token(), Number(charId), Number(expressionId));
+                if (!result || !result.id) { setStatus(status, '删除表情失败：服务暂不可用。', 'danger'); return; }
+                await loadCharacters();
+            } catch (_) {
+                setStatus(status, '删除表情失败：服务暂不可用，请稍后重试。', 'danger');
+            }
+        };
+
+        // ==================== 下载原图（等级 ≥ 2） ====================
+        const downloadDataUrl = (dataUrl, filename) => {
+            const link = document.createElement('a');
+            link.href = dataUrl;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        };
+
+        // 原图保存在服务端磁盘（剧情页只加载 200×300 压缩图），此处按需下载
+        const downloadOriginal = async (kind, charId, exprId, name, label, status) => {
+            try {
+                const result = await window.http_story_image_download(window.get_token(), kind, Number(charId), Number(exprId) || 0);
+                const image = result && safeImage(result.image);
+                if (!image) { setStatus(status, '下载失败：原图不存在或服务暂不可用。', 'danger'); return; }
+                const ext = image.startsWith('data:image/png') ? 'png' : (image.startsWith('data:image/jpeg') ? 'jpg' : 'webp');
+                const safeName = String(result.name || name || 'story').replace(/[\\/:*?"<>|]+/g, '_');
+                downloadDataUrl(image, `${safeName}_${label}.${ext}`);
+                setStatus(status, '原图已开始下载。', 'success');
+            } catch (_) {
+                setStatus(status, '下载失败：服务暂不可用，请稍后重试。', 'danger');
+            }
+        };
+
+        // ==================== 旧图压缩迁移（等级 4） ====================
+        // 以服务端已保存的原图为源，降采样成 200×300 压缩图并覆盖现有压缩图。
+        // 没保存过原图的记录会用当前图作为源，并把当前图转存为原图；已有原图的记录原图保持不动。
+        const shrinkImage = (dataUrl, keepOriginal) => new Promise((resolve) => {
+            const source = safeImage(dataUrl);
+            if (!source) { resolve(null); return; }
+            const img = new Image();
+            img.onload = () => {
+                if (img.naturalWidth <= THUMB_WIDTH && img.naturalHeight <= THUMB_HEIGHT) { resolve(null); return; }
+                const canvas = document.createElement('canvas');
+                canvas.width = THUMB_WIDTH; canvas.height = THUMB_HEIGHT;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) { resolve(null); return; }
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                ctx.drawImage(img, 0, 0, THUMB_WIDTH, THUMB_HEIGHT);
+                const webp = canvas.toDataURL('image/webp', 0.85);
+                const image = safeImage(webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/png'));
+                // keepOriginal 时不传 original：服务端沿用已有原图，避免拿压缩图覆盖原图
+                resolve(image ? { 'image': image, 'original': keepOriginal ? '' : source } : null);
+            };
+            img.onerror = () => resolve(null);
+            img.src = source;
+        });
+
+        // 优先取服务端磁盘上的原图作为压缩源；原图缺失时回退到当前压缩图
+        const loadSourceImage = async (kind, charId, exprId, fallback) => {
+            try {
+                const result = await window.http_story_image_download(window.get_token(), kind, Number(charId), Number(exprId) || 0);
+                const image = result && safeImage(result.image);
+                if (image) return image;
+            } catch (_) { /* 原图不可用时回退 */ }
+            return safeImage(fallback);
+        };
+
+        const compressExisting = async () => {
+            if (!isAdmin()) return;
+            const button = $('button_compress');
+            const refresh = $('button_refresh');
+            const confirmed = await confirmDelete('将读取服务端已保存的原图，重新压缩为 200×300 并覆盖现有压缩图（未保存原图的记录会先把当前图转存为原图再压缩）；原图保持不变，可随时通过「下载原图」取回。是否继续？', '压缩已有图片', '开始压缩');
+            if (!confirmed) return;
+            button.disabled = true;
+            refresh.disabled = true;
+            let done = 0;
+            let failed = 0;
+            try {
+                for (const character of characters) {
+                    const source = await loadSourceImage('rep', character.id, 0, character.rep);
+                    const rep = await shrinkImage(source, Boolean(character.has_original));
+                    if (rep) {
+                        const result = await window.http_story_character_update_rep(window.get_token(), Number(character.id), rep.image, rep.original);
+                        if (result && result.id) done++; else failed++;
+                    }
+                    for (const expression of (Array.isArray(character.expressions) ? character.expressions : [])) {
+                        const exprSource = await loadSourceImage('expression', character.id, expression.id, expression.image);
+                        const picked = await shrinkImage(exprSource, Boolean(expression.has_original));
+                        if (!picked) continue;
+                        const result = await window.http_story_expression_image_update(window.get_token(), Number(character.id), Number(expression.id), picked.image, picked.original);
+                        if (result && result.id) done++; else failed++;
+                    }
+                }
+                await loadCharacters();
+                setStatus($('new_char_status'), `压缩完成：${done} 张已压缩${failed ? `，${failed} 张失败` : ''}。`, failed ? 'warning' : 'success');
+            } catch (_) {
+                setStatus($('new_char_status'), '压缩失败：服务暂不可用，请稍后重试。', 'danger');
+            } finally {
+                button.disabled = false;
+                refresh.disabled = false;
+            }
+        };
+
+        // ==================== 列表渲染 ====================
+        const buildThumb = (image, className, alt) => {
+            const source = safeImage(image);
+            if (!source) return `<div class='${className} char-thumb-empty'><sl-icon name='image'></sl-icon></div>`;
+            return `<img class='${className}' src='${escapeHtml(source)}' alt='${escapeHtml(alt)}'>`;
+        };
+
+        const renderCharacters = () => {
+            const list = $('char_list');
+            list.innerHTML = '';
+            $('char_count').textContent = String(characters.length);
+            $('expr_count').textContent = String(characters.reduce((sum, item) => sum + (Array.isArray(item.expressions) ? item.expressions.length : 0), 0));
+            $('char_empty').classList.toggle('d-none', characters.length > 0);
+            characters.forEach((character) => {
+                const card = document.createElement('div');
+                card.className = 'card border-0 shadow-sm';
+                card.dataset.charId = String(character.id);
+                const expressions = Array.isArray(character.expressions) ? character.expressions : [];
+                card.innerHTML = `
+                    <div class='card-body p-3'>
+                        <div class='d-flex flex-wrap gap-3'>
+                            <div class='d-flex flex-column align-items-center gap-1'>
+                                ${buildThumb(character.rep, 'char-thumb', '代表图')}
+                                <div class='fw-bold small text-center'>${escapeHtml(character.name)}</div>
+                                <div class='char-meta'>代表图</div>
+                            </div>
+                            <div class='flex-grow-1 min-w-0'>
+                                <div class='d-flex flex-wrap gap-2 align-items-center mb-2'>
+                                    <sl-button data-role='replace-rep' size='small' variant='default' outline><sl-icon slot='prefix' name='image'></sl-icon>更换代表图</sl-button>
+                                    <sl-button data-role='download-rep' size='small' variant='default' outline><sl-icon slot='prefix' name='download'></sl-icon>下载原图</sl-button>
+                                    ${isAdmin() ? `<sl-button data-role='delete-char' size='small' variant='danger' outline><sl-icon slot='prefix' name='trash'></sl-icon>删除角色</sl-button>` : ''}
+                                </div>
+                                <div data-role='char-status' class='char-meta mb-1'></div>
+                                <div class='char-meta mb-1'>表情（${expressions.length}）</div>
+                                <div class='d-flex flex-wrap gap-2'>${expressions.map((expression) => `
+                                    <div class='expr-cell' data-expr-id='${expression.id}'>
+                                        ${buildThumb(expression.image, 'char-thumb-sm', expression.name)}
+                                        <div class='expr-name' title='${escapeHtml(expression.name)}'>${escapeHtml(expression.name)}</div>
+                                        <sl-button data-role='download-expression' data-expr-name='${escapeHtml(expression.name)}' size='small' variant='default' outline pill title='下载该表情原图'><sl-icon name='download'></sl-icon></sl-button>
+                                        ${isAdmin() ? `<sl-button data-role='delete-expression' data-expr-name='${escapeHtml(expression.name)}' size='small' variant='danger' outline pill title='删除该表情'><sl-icon name='trash'></sl-icon></sl-button>` : ''}
+                                    </div>`).join('') || '<div class="char-meta">还没有表情。</div>'}</div>
+                                <div class='d-flex flex-wrap gap-2 align-items-end mt-2'>
+                                    <sl-input data-role='expression-name' size='small' maxlength='24' label='表情名' placeholder='例如：微笑' style='max-width: 200px;'></sl-input>
+                                    <sl-button data-role='pick-expression' size='small' variant='default' outline><sl-icon slot='prefix' name='image'></sl-icon>选择图片</sl-button>
+                                    <sl-button data-role='save-expression' size='small' variant='primary' disabled><sl-icon slot='prefix' name='cloud-arrow-up'></sl-icon>保存表情</sl-button>
+                                </div>
+                                <div data-role='expression-status' class='char-meta mt-1'>先选择图片并填写表情名。</div>
+                            </div>
+                        </div>
+                    </div>`;
+                card.querySelector('[data-role=pick-expression]').addEventListener('click', () => openCrop('expression', character.id));
+                card.querySelector('[data-role=save-expression]').addEventListener('click', () => addExpression(character.id));
+                card.querySelector('[data-role=replace-rep]').addEventListener('click', () => openCrop('rep_replace', character.id));
+                const deleteCharButton = card.querySelector('[data-role=delete-char]');
+                if (deleteCharButton) deleteCharButton.addEventListener('click', () => deleteCharacter(character.id, character.name));
+                card.querySelector('[data-role=download-rep]').addEventListener('click', () => downloadOriginal('rep', character.id, 0, character.name, '代表图', card.querySelector('[data-role=char-status]')));
+                card.querySelectorAll('[data-role=download-expression]').forEach((button) => button.addEventListener('click', () => {
+                    const cell = button.closest('.expr-cell');
+                    downloadOriginal('expression', character.id, Number(cell && cell.dataset.exprId), button.dataset.exprName || '', '表情', card.querySelector('[data-role=char-status]'));
+                }));
+                card.querySelectorAll('[data-role=delete-expression]').forEach((button) => button.addEventListener('click', () => {
+                    const cell = button.closest('.expr-cell');
+                    deleteExpression(character.id, Number(cell && cell.dataset.exprId), button.dataset.exprName || '');
+                }));
+                const nameInput = card.querySelector('[data-role=expression-name]');
+                nameInput.addEventListener('input', refreshDrafts);
+                list.append(card);
+            });
+            refreshDrafts();
+        };
+
+        const loadCharacters = async () => {
+            const result = await window.http_story_character_query();
+            characters = result && Array.isArray(result.characters) ? result.characters : [];
+            renderCharacters();
+        };
+
+        // ==================== 删除确认弹窗 ====================
+        let confirmResolve = null;
+        const confirmDelete = (message, title = '删除确认', okLabel = '确认删除') => new Promise((resolve) => {
+            $('confirm_dialog').label = title;
+            $('confirm_text').textContent = message;
+            $('button_confirm_ok').textContent = okLabel;
+            confirmResolve = resolve;
+            $('confirm_dialog').show();
+        });
+        const closeConfirm = (answer) => {
+            $('confirm_dialog').hide();
+            const resolve = confirmResolve;
+            confirmResolve = null;
+            if (resolve) resolve(answer);
+        };
+        $('button_confirm_cancel').addEventListener('click', () => closeConfirm(false));
+        $('button_confirm_ok').addEventListener('click', () => closeConfirm(true));
+
+        // ==================== 入口 ====================
+        $('button_pick_rep').addEventListener('click', () => openCrop('rep'));
+        $('button_add_char').addEventListener('click', addCharacter);
+        $('button_refresh').addEventListener('click', async () => { try { await loadCharacters(); } catch (_) { /* 保持现有列表 */ } });
+        $('button_compress').addEventListener('click', compressExisting);
+
+        (async () => {
+            if (!window.get_token || !window.get_token()) {
+                $('no_permission').classList.remove('d-none');
+                $('no_permission_detail').textContent = '请先登录账号。';
+                return;
+            }
+            try { admin = await window.http_user_info(window.get_token()); } catch (_) { admin = null; }
+            if (!isEditor()) {
+                $('no_permission').classList.remove('d-none');
+                $('no_permission_detail').textContent = '使用权限等级 2 及以上的账号登录后即可管理角色；等级 2/3 的修改需提交审核，且不能删除角色或表情。';
+                return;
+            }
+            $('manager').classList.remove('d-none');
+            $('button_compress').classList.toggle('d-none', !isAdmin());
+            try { await loadCharacters(); } catch (_) { setStatus($('new_char_status'), '角色列表加载失败，请稍后刷新。', 'danger'); }
+        })();
+    </script>
+</body>
+</html>
