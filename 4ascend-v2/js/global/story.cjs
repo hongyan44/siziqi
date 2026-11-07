@@ -64,6 +64,34 @@ const parseCondHead = (raw) => {
 };
 
 /**
+ * @description: 解析条件分支的目标：标签名、调用标签、调用封装块、继续对局
+ * @param {string} raw “->” 之后的文本
+ * @return {{target: string, call?: boolean, call_label?: boolean, action?: string}}
+ */
+const parseCondTarget = (raw) => {
+    const text = String(raw == null ? '' : raw).trim();
+    const callLabel = /^调用标签\s+([\s\S]+)$/.exec(text);
+    if (callLabel) return { 'target': callLabel[1].trim(), 'call_label': true };
+    const call = /^调用\s+([\s\S]+)$/.exec(text);
+    if (call) return { 'target': call[1].trim(), 'call': true };
+    if (RESUME_KEYWORDS.includes(text)) return { 'target': RESUME_KEYWORDS[0], 'action': 'resume' };
+    return { 'target': text };
+};
+
+/**
+ * @description: 条件目标解析结果里的附加标记（调用 / 调用标签 / 继续对局）
+ * @param {object} parsed parseCondTarget 的返回值
+ * @return {object}
+ */
+const condTargetProps = (parsed) => {
+    const props = {};
+    if (parsed && parsed.call) props.call = true;
+    if (parsed && parsed.call_label) props.call_label = true;
+    if (parsed && parsed.action) props.action = parsed.action;
+    return props;
+};
+
+/**
  * @description: 把条件节点还原成条件文本（与 parseCondHead 互逆）
  * @param {object} node 条件节点
  * @return {string}
@@ -88,10 +116,12 @@ const condToText = (node) => {
 const collectMoveCondTriggers = (chain, detections) => {
     if (!Array.isArray(chain) || !chain.length || !Array.isArray(detections)) return;
     const conds = chain.filter((item) => item && item.type === 'cond');
-    const moves = conds.filter((item) => item.condition === 'move' && item.target);
+    // 调用封装块 / 调用标签 / 继续对局无法在对局中直接跳转，保留为普通条件节点，对局结束后再判定
+    const extractable = (item) => item.condition === 'move' && item.target && !item.call && !item.call_label && item.action !== 'resume';
+    const moves = conds.filter(extractable);
     if (!moves.length) return;
     // 链里混入胜负 / 第 N 步 / 选项等条件时，ELSE 无法在第 N 手立即判定，保持原有流程
-    const pure = conds.every((item) => (item.condition === 'move' && item.target) || item.kind === 'else');
+    const pure = conds.every((item) => extractable(item) || item.kind === 'else');
     let lastStep = 0;
     moves.forEach((item) => {
         const point = toBoardPoint(item.x, item.y);
@@ -920,9 +950,11 @@ class JQBJParser {
                 return { 'node': null, 'next': start + 1 };
             }
             const head = body.slice(0, arrow).trim();
-            const target = body.slice(arrow + 2).trim();
+            const parsedTarget = parseCondTarget(body.slice(arrow + 2));
+            const target = parsedTarget.target;
+            if (!target) this.error(line.lineIndex, '条件分支的目标不能为空。');
             if (/^else$/i.test(head)) {
-                return { 'node': { 'type': 'cond', 'kind': 'else', 'condition': null, 'target': target, 'indent': indent, 'lineStart': start, 'lineEnd': start + 1 }, 'next': start + 1 };
+                return { 'node': Object.assign({ 'type': 'cond', 'kind': 'else', 'condition': null, 'target': target, 'indent': indent, 'lineStart': start, 'lineEnd': start + 1 }, condTargetProps(parsedTarget)), 'next': start + 1 };
             }
             const kind = /^elif\b/i.test(head) ? 'elif' : 'if';
             const parsedCondition = parseCondHead(head.replace(/^(?:if|elif)\b\s*/i, ''));
@@ -935,7 +967,7 @@ class JQBJParser {
                 this.error(line.lineIndex, '条件「检测落子」必须位于「对局」块内，对局框外不可使用。');
                 return { 'node': null, 'next': start + 1 };
             }
-            return { 'node': Object.assign({ 'type': 'cond', 'kind': kind, 'target': target, 'indent': indent, 'lineStart': start, 'lineEnd': start + 1 }, parsedCondition.data), 'next': start + 1 };
+            return { 'node': Object.assign({ 'type': 'cond', 'kind': kind, 'target': target, 'indent': indent, 'lineStart': start, 'lineEnd': start + 1 }, condTargetProps(parsedTarget), parsedCondition.data), 'next': start + 1 };
         }
 
         this.error(line.lineIndex, `无法识别：${text}`);
@@ -1758,9 +1790,11 @@ class StoryScript {
                     const arrow = body.indexOf('->');
                     if (arrow < 0) { errors.push(`第 ${lineIndex + 1} 行条件分支缺少“-> 标签”：${text_}`); index += 1; continue; }
                     const head = body.slice(0, arrow).trim();
-                    const target = body.slice(arrow + 2).trim();
+                    const parsedTarget = parseCondTarget(body.slice(arrow + 2));
+                    const target = parsedTarget.target;
+                    if (!target) errors.push(`第 ${lineIndex + 1} 行条件分支的目标不能为空。`);
                     if (/^else$/i.test(head)) {
-                        push({ 'type': 'cond', 'kind': 'else', 'condition': null, 'target': target });
+                        push(Object.assign({ 'type': 'cond', 'kind': 'else', 'condition': null, 'target': target }, condTargetProps(parsedTarget)));
                         pending = null;
                         index += 1;
                         continue;
@@ -1774,7 +1808,7 @@ class StoryScript {
                         index += 1;
                         continue;
                     }
-                    push(Object.assign({ 'type': 'cond', 'kind': kind, 'target': target }, parsedCondition.data));
+                    push(Object.assign({ 'type': 'cond', 'kind': kind, 'target': target }, condTargetProps(parsedTarget), parsedCondition.data));
                     pending = null;
                     index += 1;
                     continue;
@@ -2001,8 +2035,15 @@ class StoryScript {
                 if (!node.target) result.push(`第 ${index + 1} 次调用标签缺少目标标签。`);
                 else if (!hasTarget(node.target)) result.push(`调用了不存在的标签：${node.target}`);
             } else if (node.type === 'cond') {
-                if (!node.target) result.push(`第 ${index + 1} 个条件分支缺少跳转标签。`);
-                else if (!hasTarget(node.target)) result.push(`条件分支指向了不存在的标签：${node.target}`);
+                if (node.action === 'resume') {
+                    // 继续对局无需目标
+                } else if (!node.target) {
+                    result.push(`第 ${index + 1} 个条件分支缺少目标标签或封装块。`);
+                } else if (node.call) {
+                    if (!defNames.has(node.target)) result.push(`条件分支调用了不存在的封装块：${node.target}`);
+                } else if (node.call_label) {
+                    if (!hasTarget(node.target)) result.push(`条件分支调用了不存在的标签：${node.target}`);
+                } else if (!hasTarget(node.target)) result.push(`条件分支指向了不存在的标签：${node.target}`);
             } else if (node.type === 'game') {
                 const config = node.config;
                 if (config.self_text && config.self === null) result.push(`对局“${node.title}”的“我方”不是黑/白：${config.self_text}`);
@@ -2194,8 +2235,9 @@ class StoryScript {
             else if (node.type === 'call_label') lines.push(lead + `调用标签 ${node.target}`);
             else if (node.type === 'jump') lines.push(lead + `-> ${node.target}`);
             else if (node.type === 'cond') {
-                if (node.kind === 'else') lines.push(lead + `% ELSE -> ${node.target}`);
-                else lines.push(lead + `% ${node.kind === 'elif' ? 'ELIF' : 'IF'} ${condToText(node)} -> ${node.target}`);
+                const target = node.call ? `调用 ${node.target}` : node.call_label ? `调用标签 ${node.target}` : node.action === 'resume' ? '继续对局' : node.target;
+                if (node.kind === 'else') lines.push(lead + `% ELSE -> ${target}`);
+                else lines.push(lead + `% ${node.kind === 'elif' ? 'ELIF' : 'IF'} ${condToText(node)} -> ${target}`);
             } else if (node.type === 'end') lines.push(lead + '结束');
             else if (node.type === 'resume') lines.push(lead + '继续对局');
             else if (node.type === 'game_end') lines.push(lead + '结束此对局');
@@ -2241,6 +2283,8 @@ class StoryRuntime {
         this.label_calls = [];
         this.defs = {};
         this.def_ranges = {};
+        // 条件链命中记录：同一缩进的 IF / ELIF 命中后，后续 ELIF / ELSE 不再执行
+        this.cond_hits = new Set();
         // 标签节点 -> 对应「结束标签」节点位置，用于「不顺序播放」标签的整块跳过
         this.label_ends = {};
         this.collect_defs();
@@ -2427,6 +2471,36 @@ class StoryRuntime {
     }
 
     /**
+     * @description: 找到当前条件节点所属条件链的起始位置（同缩进、连续的 IF/ELIF/ELSE）
+     * @param {number} index 条件节点位置
+     * @return {number} 条件链起始位置
+     */
+    cond_chain_start(index) {
+        const node = this.nodes[index];
+        if (!node) return index;
+        let start = index;
+        while (start > 0) {
+            const prev = this.nodes[start - 1];
+            if (!prev || prev.type !== 'cond' || prev.indent !== node.indent) break;
+            start -= 1;
+        }
+        return start;
+    }
+
+    /**
+     * @description: 进入封装块，执行到「结束定义 / 返回」时回到本行下一行
+     * @param {string} name 封装块名称
+     * @return {boolean} 封装块是否存在
+     */
+    enter_def(name) {
+        const def = this.defs[name];
+        if (!def || this.call_stack.length >= 64) return false;
+        this.call_stack.push(this.index + 1);
+        this.index = def.start + 1;
+        return true;
+    }
+
+    /**
      * @description: 选择某个选项并跳转
      * @param {number} option_index
      * @return {object}
@@ -2520,7 +2594,41 @@ class StoryRuntime {
         if (!node) return this.current();
         // 对局块内的「检测落子」条件已改为对局中即时触发，流程推进到此处时直接跳过
         if (node.consumed) return this.advance();
-        if (node.kind === 'else' || this.cond_matches(node)) return this.goto(node.target);
+        const chainStart = this.cond_chain_start(this.index);
+        // 新的 IF 开启一条条件链，清掉上一轮的命中记录
+        if (node.kind === 'if') this.cond_hits.delete(chainStart);
+        // 同缩进的前序 IF / ELIF 已命中时，ELIF / ELSE 不再执行
+        else if (this.cond_hits.has(chainStart)) return this.advance();
+        if (node.kind === 'else' || this.cond_matches(node)) {
+            this.cond_hits.add(chainStart);
+            // 目标为封装块：像「调用」一样进入，播完回到本行下一行
+            if (node.call) {
+                if (!this.enter_def(node.target)) return this.advance();
+                this.settle();
+                return this.current();
+            }
+            // 目标为标签：像「调用标签」一样进入，播到「结束标签」回到本行下一行
+            if (node.call_label) {
+                if (this.label_calls.length >= 64 || !Object.prototype.hasOwnProperty.call(this.labels, node.target)) return this.advance();
+                this.label_calls.push(this.index + 1);
+                this.enter_label(node.target);
+                this.settle();
+                return this.current();
+            }
+            // 目标为继续对局：停到其后的「继续对局」节点，由播放页回到棋盘
+            if (node.action === 'resume') {
+                for (let index = this.index + 1; index < this.nodes.length; index += 1) {
+                    const next = this.nodes[index];
+                    if (next && next.type === 'resume') {
+                        this.index = index;
+                        this.settle();
+                        return this.current();
+                    }
+                }
+                return this.advance();
+            }
+            return this.goto(node.target);
+        }
         return this.advance();
     }
 

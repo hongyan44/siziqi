@@ -59,6 +59,17 @@
         .editor-menu-box > .editor-row:first-child { border-color: #93c5fd; }
         .editor-option-box { display: flex; flex-direction: column; gap: .4rem; padding: .45rem .5rem .45rem .75rem; border-left: 3px solid #0d6efd; border-radius: .4rem; background: rgba(13, 110, 253, .05); }
         .editor-def-box { display: flex; flex-direction: column; gap: .45rem; padding: .5rem; border: 2px dashed #198754; border-radius: .75rem; background: rgba(25, 135, 84, .06); }
+        .editor-fold-btn { flex: 0 0 auto; width: 1.6rem; height: 1.6rem; padding: 0; line-height: 1; border: 1px solid var(--sl-color-neutral-300, #cbd5e1); border-radius: .35rem; background: #fff; color: var(--sl-color-neutral-600, #475569); font-size: .82rem; cursor: pointer; }
+        .editor-fold-btn:hover { border-color: var(--sl-color-primary-500, #3b82f6); color: var(--sl-color-primary-600, #2563eb); }
+        .editor-box-collapsed > .editor-row:not(:first-child) { display: none; }
+        .editor-box-collapsed > .editor-row:first-child { margin-bottom: 0; }
+        .editor-box-collapsed > .editor-row:first-child .editor-handle,
+        .editor-box-collapsed > .editor-row:first-child .editor-copy-check,
+        .editor-box-collapsed > .editor-row:first-child .editor-kind,
+        .editor-box-collapsed > .editor-row:first-child .editor-indent,
+        .editor-box-collapsed > .editor-row:first-child > .btn,
+        .editor-box-collapsed > .editor-row:first-child .editor-hint { display: none; }
+        .editor-box-collapsed > .editor-row:first-child .editor-fields > *:not([data-role='name']):not([data-role='title']):not([data-role='prompt']) { display: none; }
         .editor-indent { display: flex; flex-direction: column; gap: 1px; flex: 0 0 auto; }
         .editor-indent-btn { border: 1px solid var(--sl-color-neutral-300); border-radius: .25rem; background: #fff; color: var(--sl-color-neutral-600); font-size: .62rem; line-height: 1; padding: 1px 3px; cursor: pointer; }
         .editor-indent-btn:hover { border-color: var(--sl-color-primary-500); color: var(--sl-color-primary-700); }
@@ -102,6 +113,9 @@
         .jqbj-editor { display: flex; align-items: stretch; overflow: hidden; border: 1px solid rgba(111, 66, 193, .35); border-radius: .6rem; background: #fffdfd; }
         .jqbj-editor:focus-within { outline: 2px dashed #3b82f6; outline-offset: 2px; box-shadow: 0 0 0 3px rgba(59, 130, 246, .14); }
         .jqbj-gutter { flex: 0 0 auto; min-width: 2.6rem; padding: .85rem .5rem .85rem .35rem; overflow: hidden; border-right: 1px solid rgba(111, 66, 193, .16); background: rgba(111, 66, 193, .05); color: #9aa0b3; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; font-size: .86rem; line-height: 1.6; text-align: right; user-select: none; -webkit-user-select: none; }
+        .jqbj-gutter-toggle { display: flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 1.15rem; padding: 0; border: 0; border-right: 1px solid rgba(111, 66, 193, .16); background: rgba(111, 66, 193, .05); color: #9aa0b3; font-size: .95rem; line-height: 1; cursor: pointer; }
+        .jqbj-gutter-toggle:hover { background: rgba(111, 66, 193, .14); color: #6f42c1; }
+        .jqbj-editor.gutter-collapsed .jqbj-gutter { display: none; }
         .jqbj-gutter-inner { will-change: transform; }
         .jqbj-gutter-line { height: 1.6em; }
         .editor-jqbj-text { flex: 1 1 auto; width: auto; min-width: 0; min-height: 58vh; padding: .85rem; border: 0; border-radius: 0; background: transparent; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; font-size: .86rem; line-height: 1.6; tab-size: 2; resize: vertical; }
@@ -204,7 +218,7 @@
             <section id='admin_editor' class='card admin-panel shadow-sm mb-4 d-none'>
                 <div class='card-body p-3 p-md-4'>
                     <div class='d-flex flex-wrap align-items-center gap-2 mb-1'><sl-icon name='shield-lock' class='text-primary'></sl-icon><span class='fw-bold'>剧情编辑器</span><sl-badge variant='warning' pill>权限等级 2+</sl-badge></div>
-                    <p class='text-secondary small mb-3'>每行一个命令，拖动左侧手柄可调整顺序；点击某一行即成为当前行（蓝色荧光虚线边框），下方或右侧新增的命令会插入到该行之后。等级 2/3 的修改会提交投稿，等待等级 4 管理员审核；等级 4 可直接保存。</p>
+                    <p class='text-secondary small mb-3'>每行一个命令，拖动左侧手柄可调整顺序；点击某一行即成为当前行（蓝色荧光虚线边框），下方或右侧新增的命令会插入到该行之后。标签块 / 对局框 / 菜单块 / 封装块标题左侧的 ▾ 可折叠，折叠后只显示名称。等级 2/3 的修改会提交投稿，等待等级 4 管理员审核；等级 4 可直接保存。</p>
                     <div class='row g-2 align-items-end'>
                         <div class='col-12 col-sm-3 col-md-2'><sl-input id='input_level' type='number' min='1' max='9999' value='1' label='关卡序号' help-text='1 - 9999'></sl-input></div>
                         <div class='col-12 col-sm-9 col-md-4'><sl-input id='input_title' maxlength='20' label='关卡标题' placeholder='最多20个字符'></sl-input></div>
@@ -224,12 +238,13 @@
                     <div id='editor_empty' class='editor-empty text-secondary small mt-3'>还没有任何命令，点击下方或右侧的按钮开始编排。</div>
                     <div id='editor_jqbj' class='mt-3 d-none'>
                         <div id='jqbj_editor' class='jqbj-editor'>
+                            <button type='button' id='jqbj_gutter_toggle' class='jqbj-gutter-toggle' title='折叠行数栏' aria-label='折叠行数栏'>‹</button>
                             <div id='jqbj_gutter' class='jqbj-gutter' aria-hidden='true'><div id='jqbj_gutter_inner' class='jqbj-gutter-inner'></div></div>
                             <textarea id='jqbj_text' class='form-control editor-jqbj-text' spellcheck='false' wrap='off' placeholder='说 [角色|表情] 台词&#10;菜单 [角色|表情] 提示&#10;  选项 文字&#10;    说 台词&#10;结束菜单&#10;如果 变量 >= 3 与 非 已锁定&#10;  说 条件满足&#10;结束如果'></textarea>
                         </div>
                         <div id='jqbj_completion' class='jqbj-completion' hidden></div>
                         <div class='d-flex flex-wrap justify-content-between gap-2 mt-1'>
-                            <span class='small text-secondary'>支持 说 / 菜单 / 如果 / 重复 / 当 / 直到 / 设 / 赋值 / 对局 等完整语法，条件可用 与 / 或 / 非 和四则运算；按 <b>Tab</b> 可补全角色、表情、关键词、标签与变量（↑↓ 选择，Enter 确认，Esc 关闭）；切回拖动框模式时，高级语句会以只读代码行原样保留。</span>
+                            <span class='small text-secondary'>支持 说 / 菜单 / 如果 / 重复 / 当 / 直到 / 设 / 赋值 / 对局 等完整语法，条件可用 与 / 或 / 非 和四则运算；按 <b>Tab</b> 可补全角色、表情、关键词、标签与变量（↑↓ 选择，Enter 确认，Esc 关闭）；切回拖动框模式时，高级语句会以只读代码行原样保留。左侧行数栏可用最左侧的 ‹ 折叠、用 › 展开。</span>
                             <span id='jqbj_count' class='small text-secondary'></span>
                         </div>
                     </div>
@@ -269,7 +284,7 @@
                             <div>行首缩进 2 空格 = 1 级（Tab 按 2 空格计），可在每行左侧的 ⇤ / ⇥ 按钮调整；拖动框模式下缩进只影响排版，JQBJ 语言模式下缩进同时决定块结构（菜单 / 条件 / 循环 / 对局）。</div>
                             <div><code>? [角色|表情] 提示</code> 选择节点，紧跟若干 <code>- 选项 -&gt; 标签</code>；角色与表情可选（写法则同台词），留空时对话框显示「请选择」。</div>
                             <div><code>标签 名称</code> 或 <code>:名称</code> 定义标签（可加 <code>色=#...</code>，可用 <code>结束标签</code> 包住一段命令；加上 <code>不顺序播放</code> 后该标签块默认被顺序播放跳过，只有被 <code>调用标签</code> / <code>跳转</code> 进入时才播放）；<code>调用标签 名称</code> 像函数一样跳转，执行到该标签块的 <code>结束标签</code> 后自动返回；<code>-&gt; 标签</code> 跳转；<code>结束</code> 或 <code>剧终</code> 收尾。</div>
-                            <div><code>% IF 条件 -&gt; 标签</code> / <code>% ELIF 条件 -&gt; 标签</code> / <code>% ELSE -&gt; 标签</code> 条件分支：条件支持 <code>胜利 / 失败 / 平局</code>、<code>检测 在|不在 N 横,竖</code>（玩家第 N 手是否落在该点，只能写在「对局」块内）、<code>第 N 步</code>（玩家是否已下满 N 手）、<code>选项 序号或文字</code>（最近一次选择）；未命中则继续往下执行。</div>
+                            <div><code>% IF 条件 -&gt; 标签</code> / <code>% ELIF 条件 -&gt; 标签</code> / <code>% ELSE -&gt; 标签</code> 条件分支：条件支持 <code>胜利 / 失败 / 平局</code>、<code>检测 在|不在 N 横,竖</code>（玩家第 N 手是否落在该点，只能写在「对局」块内）、<code>第 N 步</code>（玩家是否已下满 N 手）、<code>选项 序号或文字</code>（最近一次选择）；目标支持 <code>跳转标签</code>、<code>-&gt; 调用标签 标签名</code>（播到结束标签后回到本行下一行）、<code>-&gt; 调用 封装块名</code>（播到结束定义后回到本行下一行）、<code>-&gt; 继续对局</code>、<code>-&gt; 结束</code>；未命中则继续往下执行。</div>
                             <div><code>* 对局 标题</code> 对局块开始：其后的配置、代码与对话都归入该对局，直到 <code>结束此对局</code> 为止（编辑器会把整块包进同一个蓝色圆角对局框）。</div>
                             <div><code>残局码=...</code> 初始盘面：粘贴残局页导出的残局码，棋盘将以该局面开局（同时继承其血量/回合数；可选，空则空盘 6/6 血）。残局码内若含作者定义的「引导落子点」，进入该对局后按序以红圈提示玩家落点。</div>
                             <div><code>结束对局=胜负|步数:12</code> 结束对局条件：<code>胜负</code> 表示分出胜负即结束（默认）；<code>步数:12</code> 表示进入本对局后第 12 手落子即结束，结果按平局处理（跳“平局”标签，未配置则继续往下）；<code>步数:0</code> 表示不要求落子，点击屏幕即结束本局（同样按平局处理）。（旧剧本的 <code>结束残局=...</code> 仍兼容。）</div>
@@ -496,6 +511,8 @@
         const COPY_CACHE_KEY = 'story_editor_copy';
         let copyMode = false;
         const copySelected = new Set();
+        // 折叠的容器框：键为「类型 + 同类序号」，切换编辑模式后仍保持折叠状态
+        const collapsedBoxes = new Set();
 
         // 等级 ≥ 2 可使用编辑器与角色管理器；等级 4 额外拥有删除与审核权限
         const isEditor = () => Boolean(storyAdmin && Number(storyAdmin.level) >= 2);
@@ -549,7 +566,7 @@
             }
             if (kind === 'mark') { row.type = command && command.type ? command.type : 'circle'; row.target = ''; row.color = ''; }
             if (kind === 'opacity') row.value = 60;
-            if (kind === 'cond') { row.mode = command && command.mode ? command.mode : 'if'; row.condition = row.mode === 'else' ? '' : 'win'; row.step = 1; row.cell = '5,5'; row.option = ''; row.negate = false; row.target = ''; }
+            if (kind === 'cond') { row.mode = command && command.mode ? command.mode : 'if'; row.condition = row.mode === 'else' ? '' : 'win'; row.step = 1; row.cell = '5,5'; row.option = ''; row.negate = false; row.targetKind = 'jump'; row.target = ''; }
             if (kind === 'detect') { row.step = 1; row.negate = false; row.cell = '5,5'; row.target = ''; }
             if (kind === 'stepdetect') { row.step = 1; row.target = ''; }
             return row;
@@ -600,7 +617,9 @@
         const condRowFromNode = (node) => {
             const mode = node.kind === 'elif' ? 'elif' : node.kind === 'else' ? 'else' : 'if';
             const condition = mode === 'else' ? '' : (node.condition || 'win');
-            const row = { 'kind': 'cond', 'mode': mode, 'condition': condition, 'target': node.target || '' };
+            const targetKind = node.call ? 'call' : node.call_label ? 'calllabel' : node.action === 'resume' ? 'resume' : (String(node.target || '').trim() === '结束' || String(node.target || '').trim() === '剧终') ? 'end' : 'jump';
+            const target = targetKind === 'resume' || targetKind === 'end' ? '' : (node.target || '');
+            const row = { 'kind': 'cond', 'mode': mode, 'condition': condition, 'targetKind': targetKind, 'target': target };
             if (condition === 'move') {
                 row.step = Math.max(1, Math.trunc(Number(node.step) || 1));
                 row.cell = node.cell_text || (node.x == null || node.y == null ? '5,5' : `${node.x},${node.y}`);
@@ -807,6 +826,25 @@
             return COND_TEXT[row.condition] || row.condition || '胜利';
         };
 
+        // 条件分支的目标类型：跳转标签 / 调用标签 / 调用封装块 / 继续对局 / 结束
+        const COND_TARGET_KINDS = [
+            { 'value': 'jump', 'label': '跳转标签' },
+            { 'value': 'calllabel', 'label': '调用标签' },
+            { 'value': 'call', 'label': '调用封装块' },
+            { 'value': 'resume', 'label': '继续对局' },
+            { 'value': 'end', 'label': '结束' }
+        ];
+        const condTargetKind = (row) => (COND_TARGET_KINDS.some((item) => item.value === row.targetKind) ? row.targetKind : 'jump');
+        const condTargetText = (row) => {
+            const kind = condTargetKind(row);
+            const value = String(row.target || '').trim();
+            if (kind === 'call') return `调用 ${value}`;
+            if (kind === 'calllabel') return `调用标签 ${value}`;
+            if (kind === 'resume') return '继续对局';
+            if (kind === 'end') return '结束';
+            return value;
+        };
+
         // 单行（含选择项的附属行）转成 DSL 文本行；depth 为结构层级，行内 indent 为手动缩进
         const rowLines = (row, depth, isLabelBlock) => {
             const lead = '  '.repeat(Math.max(0, Math.min(10, depth + (Number(row.indent) || 0))));
@@ -854,8 +892,9 @@
             }
             if (row.kind === 'opacity') return [`${lead}对话框不透明度=${clampOpacity(row.value)}`];
             if (row.kind === 'cond') {
-                if (row.mode === 'else') return [`${lead}% ELSE -> ${row.target}`];
-                return [`${lead}% ${row.mode === 'elif' ? 'ELIF' : 'IF'} ${condRowText(row)} -> ${row.target}`];
+                const target = condTargetText(row);
+                if (row.mode === 'else') return [`${lead}% ELSE -> ${target}`];
+                return [`${lead}% ${row.mode === 'elif' ? 'ELIF' : 'IF'} ${condRowText(row)} -> ${target}`];
             }
             if (row.kind === 'detect') return [`${lead}检测 ${row.negate ? '不在 ' : ''}${Math.max(1, Math.trunc(Number(row.step) || 1))} ${row.cell} -> ${row.target}`];
             if (row.kind === 'stepdetect') return [`${lead}检测步数 ${stepDetectValue(row.step)} -> ${row.target}`];
@@ -912,8 +951,9 @@
             }
             if (row.kind === 'opacity') return [`${lead}不透明度 ${Math.min(100, Math.max(0, Number.parseInt(row.value, 10) || 0))}`];
             if (row.kind === 'cond') {
-                if (row.mode === 'else') return [`${lead}% ELSE -> ${row.target}`];
-                return [`${lead}% ${row.mode === 'elif' ? 'ELIF' : 'IF'} ${condRowText(row)} -> ${row.target}`];
+                const target = condTargetText(row);
+                if (row.mode === 'else') return [`${lead}% ELSE -> ${target}`];
+                return [`${lead}% ${row.mode === 'elif' ? 'ELIF' : 'IF'} ${condRowText(row)} -> ${target}`];
             }
             if (row.kind === 'detect') return [`${lead}检测 ${row.negate ? '不在 ' : ''}${Math.max(1, Math.trunc(Number(row.step) || 1))} ${row.cell} -> ${row.target}`];
             if (row.kind === 'stepdetect') return [`${lead}检测步数 ${stepDetectValue(row.step)} -> ${row.target}`];
@@ -1124,7 +1164,17 @@
                     ${condition === 'option' ? `
                         <input class='form-control form-control-sm' data-role='condoption' style='width: 180px;' placeholder='选项序号或文字' value='${attr(row.option || '')}'>` : ''}
                 `}
-                <input class='form-control form-control-sm' data-role='target' style='flex: 1 1 200px;' placeholder='标签名或“结束”' value='${attr(row.target)}'>`;
+                <select class='form-select form-select-sm' data-role='targetkind' style='width: 132px;'>
+                    ${COND_TARGET_KINDS.map((item) => `<option value='${item.value}'${condTargetKind(row) === item.value ? ' selected' : ''}>${item.label}</option>`).join('')}
+                </select>
+                ${condTargetKind(row) === 'jump' ? `<input class='form-control form-control-sm' data-role='target' style='flex: 1 1 200px;' placeholder='标签名 / 结束' value='${attr(row.target)}'>
+                <span class='editor-hint'>命中后跳转到该标签</span>` : ''}
+                ${condTargetKind(row) === 'calllabel' ? `<input class='form-control form-control-sm' data-role='target' style='flex: 1 1 200px;' placeholder='标签名' value='${attr(row.target)}'>
+                <span class='editor-hint'>命中后进入该标签，播到「结束标签」回到本行下一行</span>` : ''}
+                ${condTargetKind(row) === 'call' ? `<input class='form-control form-control-sm' data-role='target' style='flex: 1 1 200px;' placeholder='封装块名称' value='${attr(row.target)}'>
+                <span class='editor-hint'>命中后进入封装块，播到「结束定义」回到本行下一行</span>` : ''}
+                ${condTargetKind(row) === 'resume' ? `<span class='editor-hint'>命中后回到「继续对局」节点，接着下棋</span>` : ''}
+                ${condTargetKind(row) === 'end' ? `<span class='editor-hint'>命中后直接结束剧情</span>` : ''}`;
             }
             if (row.kind === 'detect') return `
                 <select class='form-select form-select-sm' data-role='detectnegate' style='width: 150px;'>
@@ -1148,7 +1198,10 @@
         // 窄屏缩进单位减半，避免多层嵌套后行内容被挤出屏幕
         const indentOffset = (level) => `${level * (window.innerWidth < 768 ? 8 : 16)}px`;
 
-        const buildRowEl = (row, index) => {
+        // 容器框能否折叠：标签块（成对）、对局框、菜单块、封装块
+        const foldableRow = (row, index) => Boolean(row) && (row.kind === 'game' || row.kind === 'menu' || row.kind === 'def' || (row.kind === 'label' && labelBlockIndexes(rows).has(index)));
+
+        const buildRowEl = (row, index, options = {}) => {
             const node = document.createElement('div');
             node.className = `editor-row${row.kind === 'raw' ? ' editor-row-raw' : ''}`;
             node.dataset.index = String(index);
@@ -1156,7 +1209,11 @@
             const canIndent = !['game', 'menu', 'option', 'def', 'label_end', 'game_end', 'choice_end', 'def_end', 'raw'].includes(row.kind);
             const indent = Math.max(0, Math.min(6, Number(row.indent) || 0));
             if (canIndent && indent) node.style.marginLeft = indentOffset(indent);
+            const foldBtn = options.foldable
+                ? `<button type='button' class='editor-fold-btn' data-role='fold' title='${options.collapsed ? '展开' : '折叠'}' aria-expanded='${options.collapsed ? 'false' : 'true'}'>${options.collapsed ? '▸' : '▾'}</button>`
+                : '';
             node.innerHTML = `
+                ${foldBtn}
                 <label class='editor-copy-check' title='勾选该行用于复制'><input type='checkbox' data-role='copy-check'${copySelected.has(row) ? ' checked' : ''}></label>
                 <span class='editor-handle' title='拖动排序'>⋮⋮</span>
                 ${canIndent ? `<div class='editor-indent'>
@@ -1177,6 +1234,7 @@
             // 按嵌套结构渲染：标签块 / 对局框 / 菜单块 / 封装块 会开启容器，选项是隐式子容器
             const stack = [];
             const labelBlocks = labelBlockIndexes(rows);
+            const foldCounts = new Map();
             rows.forEach((row, index) => {
                 if (row.kind === 'option' && stack.length && stack[stack.length - 1].kind === 'option') stack.pop();
                 const parent = stack.length ? stack[stack.length - 1].node : container;
@@ -1186,8 +1244,16 @@
                     else if (row.kind === 'menu') box.className = 'editor-menu-box';
                     else if (row.kind === 'def') box.className = 'editor-def-box';
                     else { box.className = 'editor-label-box'; applyLabelColor(box, row.color); }
+                    // 折叠键：类型 + 同类序号，重渲染、改名与模式切换后仍可保持折叠
+                    const foldBase = row.kind;
+                    const foldOrdinal = foldCounts.get(foldBase) || 0;
+                    foldCounts.set(foldBase, foldOrdinal + 1);
+                    const foldKey = `${foldBase}:${foldOrdinal}`;
+                    const collapsed = collapsedBoxes.has(foldKey);
+                    box.dataset.foldKey = foldKey;
+                    if (collapsed) box.classList.add('editor-box-collapsed');
                     parent.append(box);
-                    box.append(buildRowEl(row, index));
+                    box.append(buildRowEl(row, index, { 'foldable': true, 'collapsed': collapsed }));
                     stack.push({ 'node': box, 'kind': row.kind });
                     return;
                 }
@@ -1225,7 +1291,11 @@
         const rebuildRow = (index) => {
             const container = $('editor_rows');
             const old = container.querySelector(`.editor-row[data-index='${index}']`);
-            const fresh = buildRowEl(rows[index], index);
+            const box = old && old.closest ? old.closest('.editor-game-box, .editor-label-box, .editor-menu-box, .editor-def-box') : null;
+            const fresh = buildRowEl(rows[index], index, {
+                'foldable': foldableRow(rows[index], index),
+                'collapsed': box ? box.classList.contains('editor-box-collapsed') : false,
+            });
             if (old) old.replaceWith(fresh);
             else container.append(fresh);
             applyCurrentHighlight();
@@ -1462,6 +1532,12 @@
                 return;
             }
             if (role === 'condmode') { context.row.mode = control.value; rebuildRow(context.index); return; }
+            if (role === 'targetkind') {
+                context.row.targetKind = control.value;
+                if (control.value === 'resume' || control.value === 'end') context.row.target = '';
+                rebuildRow(context.index);
+                return;
+            }
             if (role === 'condnegate') { context.row.negate = control.value === 'not'; return; }
             if (role === 'detectnegate') { context.row.negate = control.value === 'not'; return; }
             if (role === 'cond') {
@@ -1479,6 +1555,16 @@
             const role = control.dataset.role;
             const context = rowContext(event);
             if (!context) return;
+            if (role === 'fold') {
+                const box = context.node.closest('.editor-game-box, .editor-label-box, .editor-menu-box, .editor-def-box');
+                const key = box ? box.dataset.foldKey : '';
+                if (key) {
+                    if (collapsedBoxes.has(key)) collapsedBoxes.delete(key);
+                    else collapsedBoxes.add(key);
+                    renderRows();
+                }
+                return;
+            }
             if (role === 'remove') {
                 const removed = context.row;
                 rows.splice(context.index, 1);
@@ -1947,7 +2033,13 @@
                     if (row.color && !normalizeHex(row.color)) errors.push(`第 ${index + 1} 行标签颜色无效：${row.color}（应形如 #6f42c1）。`);
                 }
                 if (row.kind === 'calllabel' && !String(row.target || '').trim()) errors.push(`第 ${index + 1} 行「调用标签」缺少目标标签。`);
-                if ((row.kind === 'jump' || row.kind === 'cond') && !String(row.target || '').trim()) errors.push(`第 ${index + 1} 行跳转标签为空。`);
+                if (row.kind === 'jump' && !String(row.target || '').trim()) errors.push(`第 ${index + 1} 行跳转标签为空。`);
+                if (row.kind === 'cond') {
+                    const targetKind = condTargetKind(row);
+                    const target = String(row.target || '').trim();
+                    if ((targetKind === 'jump' || targetKind === 'calllabel' || targetKind === 'call') && !target) errors.push(`第 ${index + 1} 行条件分支的目标为空。`);
+                    if (targetKind === 'call' && target && !defNames.has(target)) errors.push(`第 ${index + 1} 行条件分支调用了不存在的封装块：${target}`);
+                }
                 if (row.kind === 'stepdetect') {
                     const step = Math.trunc(Number(row.step));
                     if (!Number.isInteger(step) || step < 0) errors.push(`第 ${index + 1} 行「检测步数」的步数无效：${row.step}（应为 0 或更大的整数，0 表示点击屏幕立即跳转）。`);
@@ -2355,6 +2447,23 @@
         const jqbjCompletion = { 'items': [], 'index': 0, 'start': 0, 'end': 0 };
         const jqbjPopup = $('jqbj_completion');
         const jqbjTextarea = $('jqbj_text');
+
+        // 行数栏折叠：折叠后按钮留在最左侧，点击即可展开
+        let jqbjGutterCollapsed = false;
+        const jqbjGutterToggle = $('jqbj_gutter_toggle');
+        const applyJQBJGutterCollapse = () => {
+            $('jqbj_editor').classList.toggle('gutter-collapsed', jqbjGutterCollapsed);
+            jqbjGutterToggle.textContent = jqbjGutterCollapsed ? '›' : '‹';
+            jqbjGutterToggle.title = jqbjGutterCollapsed ? '展开行数栏' : '折叠行数栏';
+            jqbjGutterToggle.setAttribute('aria-label', jqbjGutterToggle.title);
+            jqbjGutterToggle.setAttribute('aria-expanded', jqbjGutterCollapsed ? 'false' : 'true');
+        };
+        jqbjGutterToggle.addEventListener('click', () => {
+            jqbjGutterCollapsed = !jqbjGutterCollapsed;
+            applyJQBJGutterCollapse();
+            jqbjTextarea.focus();
+        });
+        applyJQBJGutterCollapse();
 
         // 行号栏：按逻辑行渲染，随文本框纵向滚动同步位移
         var jqbjGutterLines = -1;

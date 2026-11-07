@@ -343,6 +343,35 @@ const shape = (script) => StoryScript.parse(script).nodes.map((node) => {
     console.log('PASS: IF/ELIF 扩展条件往返');
 }
 
+// 13.1) 条件目标类型：跳转标签 / 调用标签 / 调用封装块 / 继续对局 / 结束
+{
+    const script = [
+        '定义 奖励',
+        '  [导员ZERO] 奖励',
+        '结束定义',
+        '标签 支线 不顺序播放',
+        '  [导员ZERO] 支线',
+        '结束标签',
+        '% IF 胜利 -> 甲',
+        '% ELIF 失败 -> 调用标签 支线',
+        '% ELIF 平局 -> 调用 奖励',
+        '% ELIF 第 3 步 -> 继续对局',
+        '% ELSE -> 结束',
+        ':甲',
+        '结束',
+    ].join('\n');
+    editor.load(script);
+    const conds = editor.state().rows.filter((row) => row.kind === 'cond');
+    assert.deepEqual(conds.map((row) => row.targetKind), ['jump', 'calllabel', 'call', 'resume', 'end'], '应还原条件目标类型');
+    assert.equal(conds[0].target, '甲', '跳转标签应保留标签名');
+    assert.equal(conds[1].target, '支线', '调用标签应保留标签名');
+    assert.equal(conds[2].target, '奖励', '调用封装块应保留封装块名');
+    const out = editor.rowsToScript();
+    assert.equal(out, script, `条件目标类型应无损往返：\n${out}`);
+    assert.deepEqual(StoryScript.parse(out).errors, [], '往返后的条件链应仍可解析');
+    console.log('PASS: 条件目标类型往返');
+}
+
 // 14) 标签「不顺序播放」：行模型与两种序列化都能无损往返
 {
     const script = [

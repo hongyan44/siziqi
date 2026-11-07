@@ -19,3 +19,6 @@ outputs/
 /.workbuddy/
 /刷草相关代码.md
 /\[a-zA-Z_$\]+
+
+# 线上启动脚本（含明文管理密码，禁止上传 GitHub）
+/4ascend-online/start-online.sh
