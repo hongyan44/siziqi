@@ -256,6 +256,10 @@
         // 检测落子：按玩家自己的落子手数计数（玩家第一手=1），按条目索引去重
         let playerMoveCount = 0;
         let triggeredDetections = new Set();
+        // 检测步数：按对局总手数计数（玩家第一手=1、AI 应手=2…），按条目索引去重
+        let triggeredStepDetections = new Set();
+        // 检测步数=0：对局初始化完成后，点击屏幕即可跳转（不需要落子）
+        let stepZeroReady = false;
         let gameNodeIndex = 0;
         let pendingResume = null;
         let pendingConfirm = null;
@@ -1095,6 +1099,8 @@
             await renderMove(move[0], move[1], source, generation);
             // 检测落子：玩家自己的第 N 手一落下就判定，先于结算/胜负，保证“绝杀手”也能触发
             await runDetections(source, move);
+            // 检测步数：总手数达到目标步数立即跳转标签，同样先于结算
+            await runStepDetections();
             if (gameOver || generation !== gameGeneration) return true;
             const ended = await settleRound(generation);
             if (ended || gameOver) return true;
@@ -1139,19 +1145,54 @@
             }
         };
 
-        // 检测落子：玩家自己的第 N 手落在指定交叉点时，暂停本局并跳转到标签播放剧情；
+        // 检测落子：玩家自己的第 N 手落在（或不在）指定交叉点时，暂停本局并跳转到标签播放剧情；
         // 标签内容播到「继续对局」时回到棋盘（作者也可在标签内继续跳转）
         const runDetections = async (source, move) => {
             if (source !== 'player' || !move) return;
             const entries = (currentConfig && currentConfig.detections) || [];
-            const hitIndex = entries.findIndex((item, index) => (
-                item && item.target && !triggeredDetections.has(index)
-                && Number(item.step) === playerMoveCount && item.x === move[0] && item.y === move[1]
-            ));
+            const hitIndex = entries.findIndex((item, index) => {
+                if (!item || !item.target || triggeredDetections.has(index)) return false;
+                if (Number(item.step) !== playerMoveCount) return false;
+                // 条件链尾的 ELSE：该手所有「检测」条件都未命中时立即跳转
+                if (item.fallback) return true;
+                const at = item.x === move[0] && item.y === move[1];
+                // 「不在」：该手没有落在指定交叉点时触发
+                return item.negate ? !at : at;
+            });
             if (hitIndex < 0) return;
             const hit = entries[hitIndex];
             if (!Object.prototype.hasOwnProperty.call(runtime.labels, hit.target)) return;
             triggeredDetections.add(hitIndex);
+            await new Promise((resolve) => {
+                pendingResume = resolve;
+                mode = 'dialogue';
+                setDialogueVisible(true);
+                runtime.goto(hit.target);
+                renderNode();
+            });
+        };
+
+        // 检测步数=0：是否存在尚未触发的「点击屏幕立即跳转」条目
+        const hasPendingZeroStep = () => {
+            const entries = (currentConfig && currentConfig.step_detections) || [];
+            return entries.some((item, index) => (
+                item && item.target && Number(item.step) === 0 && !triggeredStepDetections.has(index)
+            ));
+        };
+
+        // 检测步数：对局总手数达到目标步数时立即暂停本局并跳转标签（仅对局块内可用）
+        // targetStep=0 表示无需落子，由点击屏幕触发
+        const runStepDetections = async (targetStep) => {
+            const entries = (currentConfig && currentConfig.step_detections) || [];
+            const step = targetStep === undefined ? moves.length : Number(targetStep);
+            const hitIndex = entries.findIndex((item, index) => {
+                if (!item || !item.target || triggeredStepDetections.has(index)) return false;
+                return Number(item.step) === step;
+            });
+            if (hitIndex < 0) return;
+            const hit = entries[hitIndex];
+            if (!Object.prototype.hasOwnProperty.call(runtime.labels, hit.target) && hit.target !== '结束' && hit.target !== '剧终') return;
+            triggeredStepDetections.add(hitIndex);
             await new Promise((resolve) => {
                 pendingResume = resolve;
                 mode = 'dialogue';
@@ -1235,6 +1276,12 @@
         boardCanvas.addEventListener('pointerdown', (event) => {
             event.preventDefault();
             if (mode !== 'game') return;
+            // 检测步数=0：点击棋盘即跳转标签，不落子
+            if (stepZeroReady && !running && hasPendingZeroStep()) {
+                clearPendingConfirm();
+                runStepDetections(0).catch((error) => console.error('检测步数跳转失败。', error));
+                return;
+            }
             if (endByClick) { clearPendingConfirm(); concludeGame(null); return; }
             const [x, y] = pointFromEvent(event);
             if (x >= 0 && x < 9 && y >= 0 && y < 9) handleBoardPress(x, y);
@@ -1245,7 +1292,29 @@
             return Array.from({ length: 81 }, (_, index) => values[(8 - Math.floor(index / 9)) * 9 + (index % 9)]);
         };
 
+        // 页面初始 DOM 自带的画布：重建对局时保留，不随旧实例一起移除
+        const STATIC_BOARD_CANVASES = new Set(['canvas_board', 'canvas_stone_fill', 'canvas_stone_ascend', 'canvas_plant', 'canvas_view_turn', 'canvas_view_ascend', 'canvas_view_move', 'canvas_guide']);
+        // 新一轮「对局」开始前回收上一局：停掉仍在盘旋的「打」，移除旧实例动态创建的图层，
+        // 再按残局码重建棋盘，保证棋盘回到残局码的最初状态。
+        const disposeBoard = () => {
+            if (!ui) return;
+            if (typeof ui.set_turn_flash === 'function') ui.set_turn_flash(false);
+            try { ui.clear(); } catch (error) { console.warn('回收上一局棋盘失败。', error); }
+            ui = null;
+            if (guideFrame) { cancelAnimationFrame(guideFrame); guideFrame = 0; }
+            guide = null;
+            const board = $('board_wrap') ? $('board_wrap').querySelector('.story-board') : null;
+            if (board) Array.from(board.querySelectorAll('canvas')).forEach((canvas) => {
+                if (!STATIC_BOARD_CANVASES.has(canvas.id)) canvas.remove();
+            });
+            if (guideCanvas && guideCanvas.getContext) {
+                const ctx = guideCanvas.getContext('2d');
+                if (ctx && guideCanvas.width && guideCanvas.height) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, guideCanvas.width, guideCanvas.height); }
+            }
+        };
+
         const createGame = (config, archiveData) => {
+            disposeBoard();
             const boardSize = getBoardSize();
             ui = new GameCanvas(boardCanvas, $('canvas_stone_fill'), $('canvas_stone_ascend'), $('canvas_plant'), $('canvas_view_turn'), $('canvas_view_ascend'), $('canvas_view_move'), 9, 9, .41, .12, .062, boardSize);
             const saved = (archiveData && archiveData.snapshot) || {};
@@ -1343,8 +1412,17 @@
         // 结束对局=步数:0 时无需落子，点击屏幕任意位置直接结束本局
         document.addEventListener('click', () => {
             if (mode !== 'game' || gameOver || !endByClick) return;
+            // 同时配置「检测步数 0」时优先执行剧情跳转，本局暂不结束
+            if (hasPendingZeroStep()) return;
             clearPendingConfirm();
             concludeGame(null);
+        });
+
+        // 检测步数=0：无需落子，点击屏幕任意位置立即跳转到目标标签
+        document.addEventListener('click', () => {
+            if (!stepZeroReady || running || mode !== 'game' || gameOver || !hasPendingZeroStep()) return;
+            clearPendingConfirm();
+            runStepDetections(0).catch((error) => console.error('检测步数跳转失败。', error));
         });
 
         const startGame = async (node) => {
@@ -1358,7 +1436,9 @@
             const generation = ++gameGeneration;
             running = true; gameOver = false; moves = []; bookedWhite = null;
             triggeredEvents = new Set(); lastMovePicked = false; gameNodeIndex = runtime.index; pendingResume = null;
-            playerMoveCount = 0; triggeredDetections = new Set();
+            playerMoveCount = 0; triggeredDetections = new Set(); triggeredStepDetections = new Set();
+            // 初始化完成前不响应「点击屏幕跳转」，避免开场点击直接触发
+            stepZeroReady = false;
             // 每局重新记录玩家落子历史，让「检测落子 / 第 N 步」按本局手数判定
             if (runtime) runtime.player_moves = [];
             // 结束残局=步数:N -> 本局第 N 手落子后结束；步数:0 -> 不落子，点击屏幕结束；胜负 或未配置 -> 分出胜负才结束
@@ -1384,10 +1464,12 @@
             if (generation !== gameGeneration) return;
             running = false;
             renderInfo();
-            if (endByClick) { setStatus('点击屏幕结束本局。', 'primary'); return; }
+            if (endByClick) { stepZeroReady = true; setStatus('点击屏幕结束本局。', 'primary'); return; }
             setStatus(state.turn_player === selfPlayer ? '轮到你落子。' : '对手 AI 先手...', 'primary');
             await runAiTurns(generation);
-            if (!gameOver && generation === gameGeneration) setStatus(state.turn_player === selfPlayer ? '轮到你落子。' : '对手 AI 回合。', 'primary');
+            if (generation !== gameGeneration) return;
+            stepZeroReady = true;
+            if (!gameOver) setStatus(state.turn_player === selfPlayer ? '轮到你落子。' : '对手 AI 回合。', 'primary');
         };
 
         // 页面尺寸变化时：角色框立即跟随对话框高度，先用缓存的压缩图填充；框大于压缩图时再取原图按新框像素重压

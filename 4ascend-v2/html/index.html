@@ -318,13 +318,18 @@
             z-index: 1200;
         }
 
-        /* 好友赠礼与二次确认弹窗需浮在背包之上，避免从背包内赠送时被面板遮挡 */
+        /* 好友赠礼与二次确认弹窗需浮在背包之上，避免从背包内赠送时被面板遮挡。
+           sl-dialog 宿主为 display:contents，直接写 z-index 不生效，需覆盖内部层级变量。 */
         #dialog_gift_friend {
-            z-index: 1300;
+            --sl-z-index-dialog: 1300;
+        }
+
+        #dialog_friend_gift_pick {
+            --sl-z-index-dialog: 1400;
         }
 
         #dialog_gift_confirm {
-            z-index: 1500;
+            --sl-z-index-dialog: 1500;
         }
 
         .backpack-body {
@@ -1776,17 +1781,19 @@
                     <div id='friend_chat_view' class='friend-detail-pane d-none'>
                         <div class='d-flex align-items-center justify-content-between gap-2 pb-2 border-bottom'>
                             <span id='span_friend_chat_title' class='fw-bold text-truncate'>聊天</span>
-                            <sl-button id='button_friend_chat_profile' size='small' variant='default' outline>
-                                <sl-icon slot='prefix' name='person'></sl-icon>资料
-                            </sl-button>
+                            <div class='d-flex align-items-center gap-2'>
+                                <sl-button id='button_friend_chat_gift' size='small' variant='default' outline title='赠送好友赠礼'>
+                                    <sl-icon slot='prefix' name='gift'></sl-icon>赠礼
+                                </sl-button>
+                                <sl-button id='button_friend_chat_profile' size='small' variant='default' outline>
+                                    <sl-icon slot='prefix' name='person'></sl-icon>资料
+                                </sl-button>
+                            </div>
                         </div>
                         <div id='div_friend_chat_list' class='friend-chat-list my-2'></div>
                         <div class='d-flex align-items-center gap-2 friend-chat-composer'>
                             <sl-input id='input_friend_chat' class='flex-grow-1' placeholder='输入消息…'
                                 maxlength='1000'></sl-input>
-                            <sl-button id='button_friend_chat_gift' variant='default' outline circle title='赠送好友赠礼'>
-                                <sl-icon name='gift'></sl-icon>
-                            </sl-button>
                             <sl-button id='button_friend_chat_send' variant='primary'>发送</sl-button>
                         </div>
                     </div>

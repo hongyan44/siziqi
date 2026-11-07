@@ -53,8 +53,8 @@
         .editor-rows { display: flex; flex-direction: column; gap: .45rem; }
         .editor-game-box { display: flex; flex-direction: column; gap: .45rem; padding: .5rem; border: 2px solid var(--sl-color-primary-600, #2563eb); border-radius: .75rem; background: rgba(59, 130, 246, .06); }
         .editor-game-box > .editor-row:first-child { border-color: var(--sl-color-primary-300, #93c5fd); }
-        .editor-box { display: flex; flex-direction: column; gap: .45rem; padding: .5rem; border: 2px solid var(--box-color, #6f42c1); border-radius: .75rem; background: rgba(111, 66, 193, .05); }
-        .editor-box > .editor-row:first-child { border-color: var(--box-color, #6f42c1); }
+        .editor-label-box { display: flex; flex-direction: column; gap: .45rem; padding: .5rem; border: 2px solid var(--label-color, #6f42c1); border-radius: .75rem; background: rgba(111, 66, 193, .05); }
+        .editor-label-box > .editor-row:first-child { border-color: var(--label-color, #6f42c1); }
         .editor-menu-box { display: flex; flex-direction: column; gap: .45rem; padding: .5rem; border: 2px solid #0d6efd; border-radius: .75rem; background: rgba(13, 110, 253, .06); }
         .editor-menu-box > .editor-row:first-child { border-color: #93c5fd; }
         .editor-option-box { display: flex; flex-direction: column; gap: .4rem; padding: .45rem .5rem .45rem .75rem; border-left: 3px solid #0d6efd; border-radius: .4rem; background: rgba(13, 110, 253, .05); }
@@ -133,7 +133,7 @@
             .editor-kind { width: 88px; flex: 0 0 auto; }
             .editor-jqbj-text { min-height: 62vh; font-size: .82rem; }
             .jqbj-gutter { font-size: .82rem; }
-            .editor-box, .editor-game-box, .editor-menu-box, .editor-def-box { padding: .35rem; gap: .35rem; }
+            .editor-label-box, .editor-game-box, .editor-menu-box, .editor-def-box { padding: .35rem; gap: .35rem; }
             .editor-option-box { padding: .35rem .4rem; }
             .level-grid { grid-template-columns: repeat(1, minmax(0, 1fr)); gap: .55rem; }
             .level-card { min-height: 92px; }
@@ -265,21 +265,21 @@
                             <div>条件表达式支持 <code>与 / 或 / 非</code>（别名 <code>&amp;&amp; / || / !</code>）、括号和 <code>+ - * / %</code> 四则运算，例如 <code>如果 (分数 + 5) * 2 &gt; 目标 与 非 已锁定</code>；中文运算符需用空格或括号分隔；优先级为 括号 &gt; 算术 &gt; 比较 &gt; 非 &gt; 与 &gt; 或。</div>
                             <div><code>重复 N 次 ... 结束重复</code> / <code>当 条件 ... 结束当</code> / <code>直到 条件 ... 结束直到</code> / <code>跳出</code> / <code>继续</code></div>
                             <div><code>对局 标题 ... 结束对局</code>，块内可用 <code>如果胜利</code> / <code>如果失败</code> / <code>如果平局</code> 编写结果分支；台词中的 <code>${变量名}</code> 会在播放时替换为变量值。</div>
-                            <div><code>{ 标题 色=#6f42c1</code> 分组框开始，<code>}</code> 关闭：把成段命令收进同一个彩色框，可嵌套、颜色可自定义；分组框只用于编辑器编排，播放时自动跳过。</div>
+                            <div><code>标签 名称 色=#6f42c1 ... 结束标签</code> 标签块：标签既能作为跳转目标，也能像旧分组框一样把成段命令收进彩色圆角框，可嵌套、颜色可自定义；旧剧本的 <code>{ 标题</code> / <code>}</code> / <code>框 … 结束框</code> 读取时自动转换为标签块，保存时不再输出框语法。</div>
                             <div>行首缩进 2 空格 = 1 级（Tab 按 2 空格计），可在每行左侧的 ⇤ / ⇥ 按钮调整；拖动框模式下缩进只影响排版，JQBJ 语言模式下缩进同时决定块结构（菜单 / 条件 / 循环 / 对局）。</div>
                             <div><code>? [角色|表情] 提示</code> 选择节点，紧跟若干 <code>- 选项 -&gt; 标签</code>；角色与表情可选（写法则同台词），留空时对话框显示「请选择」。</div>
-                            <div><code>:标签</code> 标签定义；<code>-&gt; 标签</code> 跳转；<code>结束</code> 或 <code>剧终</code> 收尾。</div>
-                            <div><code>% IF 条件 -&gt; 标签</code> / <code>% ELIF 条件 -&gt; 标签</code> / <code>% ELSE -&gt; 标签</code> 条件分支：条件支持 <code>胜利 / 失败 / 平局</code>、<code>检测 N 横,竖</code>（玩家第 N 手是否落在该点）、<code>第 N 步</code>（玩家是否已下满 N 手）、<code>选项 序号或文字</code>（最近一次选择）；未命中则继续往下执行。</div>
+                            <div><code>标签 名称</code> 或 <code>:名称</code> 定义标签（可加 <code>色=#...</code>，可用 <code>结束标签</code> 包住一段命令；加上 <code>不顺序播放</code> 后该标签块默认被顺序播放跳过，只有被 <code>调用标签</code> / <code>跳转</code> 进入时才播放）；<code>调用标签 名称</code> 像函数一样跳转，执行到该标签块的 <code>结束标签</code> 后自动返回；<code>-&gt; 标签</code> 跳转；<code>结束</code> 或 <code>剧终</code> 收尾。</div>
+                            <div><code>% IF 条件 -&gt; 标签</code> / <code>% ELIF 条件 -&gt; 标签</code> / <code>% ELSE -&gt; 标签</code> 条件分支：条件支持 <code>胜利 / 失败 / 平局</code>、<code>检测 在|不在 N 横,竖</code>（玩家第 N 手是否落在该点，只能写在「对局」块内）、<code>第 N 步</code>（玩家是否已下满 N 手）、<code>选项 序号或文字</code>（最近一次选择）；未命中则继续往下执行。</div>
                             <div><code>* 对局 标题</code> 对局块开始：其后的配置、代码与对话都归入该对局，直到 <code>结束此对局</code> 为止（编辑器会把整块包进同一个蓝色圆角对局框）。</div>
                             <div><code>残局码=...</code> 初始盘面：粘贴残局页导出的残局码，棋盘将以该局面开局（同时继承其血量/回合数；可选，空则空盘 6/6 血）。残局码内若含作者定义的「引导落子点」，进入该对局后按序以红圈提示玩家落点。</div>
                             <div><code>结束对局=胜负|步数:12</code> 结束对局条件：<code>胜负</code> 表示分出胜负即结束（默认）；<code>步数:12</code> 表示进入本对局后第 12 手落子即结束，结果按平局处理（跳“平局”标签，未配置则继续往下）；<code>步数:0</code> 表示不要求落子，点击屏幕即结束本局（同样按平局处理）。（旧剧本的 <code>结束残局=...</code> 仍兼容。）</div>
                             <div><code>结束后=结果|继续</code> 对局结束表现：对局结束不显示结算页；<code>结果</code>（默认）按胜负跳转对应标签；<code>继续</code> 不跳胜负标签，直接进入下一段剧情。常与 <code>结束对局=步数:12</code> 搭配，用打满步数来收束剧情战斗。</div>
                             <div><code>结束此对局</code> 对局块结束标记：与上一个 <code>* 对局</code> 之间的所有行同属一个对局框，本身不参与播放（运行时直接跳过）。</div>
-                            <div><code>步数对话=3:标签A|落子5,5:标签B|拿起:标签C|AI拿起:标签D</code> 对话触发条件：多条用 <code>|</code> 分隔，支持四类触发——第 N 手落子（如 <code>3:标签</code>）、棋盘指定位置落子（<code>落子5,5:标签</code>）、我方拿起棋子（<code>拿起:标签</code>）、AI 拿起棋子（<code>AI拿起:标签</code>）。触发后暂停本局并跳转到该标签播放对话。</div>
-                            <div><code>检测 1 4,4 -&gt; 标签</code> 检测玩家落子：玩家自己的第 1 手落在 <code>4,4</code> 时，暂停本局并跳转到该标签播放剧情（坐标先横后竖，1-9，左下原点，5,5 为正中心）；标签内容末尾写 <code>继续对局</code> 回到棋盘。只能写在「对局」块内。</div>
+                            <div><code>检测步数 6 -&gt; 标签</code> 检测步数：对局总手数达到 6 时立即暂停本局并跳转到该标签（玩家第一手=1、AI 应手=2…），只能写在「对局」块内；填 <code>0</code> 表示不需要落子，点击屏幕立即跳转；标签末尾写 <code>继续对局</code> 回到棋盘。旧剧本的 <code>步数对话=...</code> 仍兼容播放。</div>
+                            <div><code>检测 1 4,4 -&gt; 标签</code> 检测玩家落子：玩家自己的第 1 手落在 <code>4,4</code> 时，暂停本局并跳转到该标签播放剧情（坐标先横后竖，1-9，左下原点，5,5 为正中心）；<code>检测 不在 1 4,4 -&gt; 标签</code> 表示第 1 手没有落在该点时触发；省略「在 / 不在」时按「在」处理。标签内容末尾写 <code>继续对局</code> 回到棋盘。只能写在「对局」块内。</div>
                             <div><code>刷草计划=3:5,5;6,5|9:3,3</code> 定时刷草：<code>回合:坐标;坐标</code> 表示“在第几回合、于哪些点刷几株草”，多条用 <code>|</code> 分隔；回合数即界面 Turns，坐标为 <code>横,竖</code>（1-9，左下原点，5,5 为正中心）。被占用或已是二草的点会自动跳过。</div>
                             <div><code>我方=黑|白</code> 玩家执子；<code>先手=黑|白</code>；<code>胜利/失败/平局=标签</code> 对局结果跳转。</div>
-                            <div><code>继续对局</code> 用于“步数对话”或“检测落子”所跳转的标签末尾，表示回到当前对局继续下棋。</div>
+                            <div><code>继续对局</code> 用于“检测落子”或“检测步数”所跳转的标签末尾，表示回到当前对局继续下棋。</div>
                             <div class='mt-1'><code>@ 箭头 锚点</code> 红色动态箭头，指向界面区域；<code>@ 圈 5,5</code> 红色旋转虚线圈，指向棋盘交叉点（坐标 1-9，先横后竖，5,5 为正中心）；<code>@ 清除</code> 清除当前标注。</div>
                             <div><code>对话框不透明度=60</code> 设置整篇剧情的对话框背景不透明度（0-100，单位 %，默认 60）；写在任意位置均可，播放时自动跳过。</div>
                             <div>箭头锚点：<code>名字 / 棋子颜色 / 生命值 / 信息 / 刷草点 / 棋盘 / 我方 / 对手</code>，或直接写元素 id（如 <code>#game_p1_card</code>）。</div>
@@ -417,16 +417,17 @@
             if (event.key === 'Escape' && !storySettingsPanel.classList.contains('d-none')) setStorySettingsOpen(false);
         });
 
-        // 新增分组框的默认配色（按顺序循环，可在行内自定义）
-        const BOX_COLORS = ['#6f42c1', '#0d6efd', '#198754', '#fd7e14', '#dc3545', '#0dcaf0'];
-        // 分组框快捷配色：与「昵称单色颜色」取色器同款
-        const BOX_SWATCH_COLORS = ['#2563eb', '#dc2626', '#16a34a', '#7c3aed', '#ea580c', '#0f766e'];
-        let boxColorIndex = 0;
-        const nextBoxColor = () => { const color = BOX_COLORS[boxColorIndex % BOX_COLORS.length]; boxColorIndex += 1; return color; };
+        // 新增标签的默认配色（按顺序循环，可在行内自定义）
+        const LABEL_COLORS = ['#6f42c1', '#0d6efd', '#198754', '#fd7e14', '#dc3545', '#0dcaf0'];
+        // 标签快捷配色：与「昵称单色颜色」取色器同款
+        const LABEL_SWATCH_COLORS = ['#2563eb', '#dc2626', '#16a34a', '#7c3aed', '#ea580c', '#0f766e'];
+        let labelColorIndex = 0;
+        const nextLabelColor = () => { const color = LABEL_COLORS[labelColorIndex % LABEL_COLORS.length]; labelColorIndex += 1; return color; };
 
         const ROW_KINDS = [
-            { 'value': 'box', 'label': '框' },
-            { 'value': 'box_end', 'label': '结束框' },
+            { 'value': 'label', 'label': '标签' },
+            { 'value': 'label_end', 'label': '结束标签' },
+            { 'value': 'calllabel', 'label': '调用标签' },
             { 'value': 'say', 'label': '台词' },
             { 'value': 'choice', 'label': '选择' },
             { 'value': 'menu', 'label': '菜单块' },
@@ -436,7 +437,6 @@
             { 'value': 'def_end', 'label': '结束封装' },
             { 'value': 'call', 'label': '调用封装' },
             { 'value': 'return', 'label': '返回' },
-            { 'value': 'label', 'label': '标签' },
             { 'value': 'jump', 'label': '跳转' },
             { 'value': 'game', 'label': '对局' },
             { 'value': 'game_end', 'label': '结束此对局' },
@@ -445,16 +445,21 @@
             { 'value': 'opacity', 'label': '对话框透明' },
             { 'value': 'cond', 'label': '条件分支' },
             { 'value': 'detect', 'label': '检测落子' },
+            { 'value': 'stepdetect', 'label': '检测步数' },
             { 'value': 'resume', 'label': '继续对局' },
             { 'value': 'end', 'label': '结束' },
         ];
 
-        // 下方固定命令栏：文字 -> 行模型
+        // 下方固定命令栏：文字 -> 行模型（前 8 项为最常用命令）
         const COMMANDS = [
-            { 'label': '添加框', 'icon': 'bounding-box', 'kind': 'box', 'focus': 'title' },
-            { 'label': '结束框', 'icon': 'box-arrow-in-down', 'kind': 'box_end' },
+            { 'label': '添加标签', 'icon': 'bookmark', 'kind': 'label', 'focus': 'name' },
+            { 'label': '结束标签', 'icon': 'bookmark-dash', 'kind': 'label_end' },
             { 'label': '添加台词', 'icon': 'chat-left-text', 'kind': 'say', 'focus': 'text' },
             { 'label': '添加选择', 'icon': 'list-ul', 'kind': 'choice' },
+            { 'label': '调用标签', 'icon': 'arrow-repeat', 'kind': 'calllabel', 'focus': 'target' },
+            { 'label': '对局设置', 'icon': 'grid-3x3', 'kind': 'game', 'block': true },
+            { 'label': '检测落子', 'icon': 'bullseye', 'kind': 'detect', 'focus': 'detectstep' },
+            { 'label': '检测步数', 'icon': '123', 'kind': 'stepdetect', 'focus': 'detectstep' },
             { 'label': '添加菜单块', 'icon': 'list-task', 'kind': 'menu', 'block': true, 'focus': 'prompt' },
             { 'label': '添加选项', 'icon': 'plus-square', 'kind': 'option', 'menuInsert': true, 'focus': 'text' },
             { 'label': '结束选择', 'icon': 'signpost-2', 'kind': 'choice_end' },
@@ -462,15 +467,11 @@
             { 'label': '结束封装', 'icon': 'box-arrow-in-down-right', 'kind': 'def_end' },
             { 'label': '调用封装', 'icon': 'arrow-repeat', 'kind': 'call', 'focus': 'target' },
             { 'label': '返回', 'icon': 'arrow-return-left', 'kind': 'return' },
-            { 'label': '添加标签', 'icon': 'bookmark', 'kind': 'label', 'focus': 'name' },
             { 'label': '添加跳转', 'icon': 'signpost-2', 'kind': 'jump', 'focus': 'target' },
             { 'label': '添加标注', 'icon': 'vector-pen', 'kind': 'mark', 'type': 'arrow', 'focus': 'target' },
             { 'label': '对话框透明度', 'icon': 'circle-half', 'kind': 'opacity', 'focus': 'opacity' },
-            { 'label': '对局设置', 'icon': 'grid-3x3', 'kind': 'game', 'block': true },
             { 'label': '结束此对局', 'icon': 'grid-3x3-gap', 'kind': 'game_end' },
             { 'label': '结束对局条件', 'icon': 'hourglass-split', 'kind': 'config', 'key': '结束对局' },
-            { 'label': '步数触发对话', 'icon': 'chat-square-dots', 'kind': 'config', 'key': '步数对话' },
-            { 'label': '检测落子', 'icon': 'bullseye', 'kind': 'detect', 'focus': 'detectstep' },
             { 'label': '继续对局', 'icon': 'arrow-return-left', 'kind': 'resume' },
             { 'label': '结束', 'icon': 'flag', 'kind': 'end' },
             { 'label': 'IF', 'icon': 'signpost-split', 'kind': 'cond', 'mode': 'if' },
@@ -513,9 +514,14 @@
             const number = Math.round(Number(value));
             return Number.isFinite(number) ? Math.max(0, Math.min(100, number)) : 60;
         };
-        const applyBoxColor = (node, color) => {
+        // 检测步数允许 0（0 表示不需要落子，点击屏幕立即跳转），非法值回退 1
+        const stepDetectValue = (value) => {
+            const step = Math.trunc(Number(value));
+            return Number.isFinite(step) && step >= 0 ? step : 1;
+        };
+        const applyLabelColor = (node, color) => {
             const hex = normalizeHex(color) || '#6f42c1';
-            node.style.setProperty('--box-color', hex);
+            node.style.setProperty('--label-color', hex);
             node.style.borderColor = hex;
             node.style.background = `${hex}10`;
         };
@@ -528,12 +534,11 @@
             if (kind === 'choice') { row.character = ''; row.expression = ''; row.prompt = ''; row.options = [{ 'text': '', 'target': '' }]; }
             if (kind === 'menu') { row.character = ''; row.expression = ''; row.prompt = ''; }
             if (kind === 'option') { row.text = ''; row.target = ''; }
-            if (kind === 'choice_end' || kind === 'def_end' || kind === 'return') { /* 无字段，仅作结构标记 */ }
+            if (kind === 'choice_end' || kind === 'def_end' || kind === 'return' || kind === 'label_end') { /* 无字段，仅作结构标记 */ }
             if (kind === 'def') row.name = '';
             if (kind === 'call') row.target = '';
-            if (kind === 'box') { row.title = ''; row.color = nextBoxColor(); }
-            if (kind === 'box_end') { /* 无字段，仅作分组框结束标记 */ }
-            if (kind === 'label') row.name = '';
+            if (kind === 'label') { row.name = ''; row.color = nextLabelColor(); row.manual = false; }
+            if (kind === 'calllabel') row.target = '';
             if (kind === 'jump') row.target = '';
             if (kind === 'game') row.title = '';
             if (kind === 'game_end') { /* 无字段，仅作对局块结束标记 */ }
@@ -544,25 +549,39 @@
             }
             if (kind === 'mark') { row.type = command && command.type ? command.type : 'circle'; row.target = ''; row.color = ''; }
             if (kind === 'opacity') row.value = 60;
-            if (kind === 'cond') { row.mode = command && command.mode ? command.mode : 'if'; row.condition = row.mode === 'else' ? '' : 'win'; row.step = 1; row.cell = '5,5'; row.option = ''; row.target = ''; }
-            if (kind === 'detect') { row.step = 1; row.cell = '5,5'; row.target = ''; }
+            if (kind === 'cond') { row.mode = command && command.mode ? command.mode : 'if'; row.condition = row.mode === 'else' ? '' : 'win'; row.step = 1; row.cell = '5,5'; row.option = ''; row.negate = false; row.target = ''; }
+            if (kind === 'detect') { row.step = 1; row.negate = false; row.cell = '5,5'; row.target = ''; }
+            if (kind === 'stepdetect') { row.step = 1; row.target = ''; }
             return row;
         };
 
-        // 计算每行的结构层级（所属分组框 / 对局框的嵌套深度），用于缩进还原与输出
+        // 找到与「结束标签」配对的标签行；未配对的标签保持为普通标记，兼容旧剧本
+        const labelBlockIndexes = (list) => {
+            const paired = new Set();
+            const stack = [];
+            (list || []).forEach((row, index) => {
+                if (!row) return;
+                if (row.kind === 'label') stack.push(index);
+                else if (row.kind === 'label_end' && stack.length) paired.add(stack.pop());
+            });
+            return paired;
+        };
+
+        // 计算每行的结构层级（所属标签块 / 对局框的嵌套深度），用于缩进还原与输出
         const lastKindIndex = (stack, kind) => {
             for (let index = stack.length - 1; index >= 0; index -= 1) if (stack[index] === kind) return index;
             return -1;
         };
         const walkRowStructure = (list, visit) => {
             const stack = [];
+            const labelBlocks = labelBlockIndexes(list);
             (list || []).forEach((row, index) => {
                 // 「选项」是隐式容器：遇到下一个选项或「结束选择」时自动结束上一个选项
                 if (row.kind === 'option' && stack.length && stack[stack.length - 1] === 'option') stack.pop();
                 let depth = stack.length;
                 let closeIndex = -1;
-                if (row.kind === 'box_end' || row.kind === 'game_end' || row.kind === 'def_end') {
-                    const kind = row.kind === 'box_end' ? 'box' : row.kind === 'game_end' ? 'game' : 'def';
+                if (row.kind === 'label_end' || row.kind === 'game_end' || row.kind === 'def_end') {
+                    const kind = row.kind === 'label_end' ? 'label' : row.kind === 'game_end' ? 'game' : 'def';
                     closeIndex = lastKindIndex(stack, kind);
                     depth = closeIndex >= 0 ? closeIndex : Math.max(0, stack.length - 1);
                 } else if (row.kind === 'choice_end') {
@@ -571,9 +590,9 @@
                     depth = closeIndex >= 0 ? closeIndex : Math.max(0, stack.length - 1);
                 }
                 visit(row, index, depth, stack.length);
-                if (row.kind === 'box' || row.kind === 'game' || row.kind === 'menu' || row.kind === 'def') stack.push(row.kind);
+                if ((row.kind === 'label' && labelBlocks.has(index)) || row.kind === 'game' || row.kind === 'menu' || row.kind === 'def') stack.push(row.kind);
                 else if (row.kind === 'option') stack.push('option');
-                else if (row.kind === 'box_end' || row.kind === 'game_end' || row.kind === 'def_end' || row.kind === 'choice_end') { if (closeIndex >= 0) stack.length = closeIndex; }
+                else if (row.kind === 'label_end' || row.kind === 'game_end' || row.kind === 'def_end' || row.kind === 'choice_end') { if (closeIndex >= 0) stack.length = closeIndex; }
             });
         };
 
@@ -585,6 +604,7 @@
             if (condition === 'move') {
                 row.step = Math.max(1, Math.trunc(Number(node.step) || 1));
                 row.cell = node.cell_text || (node.x == null || node.y == null ? '5,5' : `${node.x},${node.y}`);
+                row.negate = Boolean(node.negate);
             } else if (condition === 'step') {
                 row.step = Math.max(1, Math.trunc(Number(node.step) || 1));
             } else if (condition === 'option') {
@@ -643,12 +663,17 @@
                         push({ 'kind': 'def_end' }, node.indent);
                         return;
                     }
-                    if (node.type === 'box') {
-                        push({ 'kind': 'box', 'title': node.title, 'color': node.color || nextBoxColor() }, node.indent);
-                        convert(node.body);
-                        push({ 'kind': 'box_end' }, node.indent);
+                    if (node.type === 'label') {
+                        // 旧分组框兼容：无颜色的旧框沿用编辑器默认色；普通标签保留原样以支持无损往返
+                        const color = node.color || (node.legacy_box ? nextLabelColor() : '');
+                        push({ 'kind': 'label', 'name': node.name, 'color': color, 'manual': Boolean(node.manual) }, node.indent);
+                        if (node.body) {
+                            convert(node.body);
+                            push({ 'kind': 'label_end' }, node.indent);
+                        }
                         return;
                     }
+                    if (node.type === 'call_label') { push({ 'kind': 'calllabel', 'target': node.target }, node.indent); return; }
                     if (node.type === 'game') {
                         push({ 'kind': 'game', 'title': node.title }, node.indent);
                         (node.configs || []).forEach((config) => {
@@ -658,13 +683,13 @@
                         });
                         (node.branches || []).forEach((branch) => rawRow(branch));
                         (node.detections || []).forEach((detector) => convert([detector]));
+                        (node.step_detections || []).forEach((detector) => convert([Object.assign({}, detector, { 'type': 'step_detect' })]));
                         convert(node.body);
                         push({ 'kind': 'game_end' }, node.indent);
                         return;
                     }
-                    if (node.type === 'label') { push({ 'kind': 'label', 'name': node.name }, node.indent); return; }
-                    if (node.type === 'detect') {
-                        push({ 'kind': 'detect', 'step': node.step, 'cell': node.cell_text, 'target': node.target || '' }, node.indent);
+                    if (node.type === 'detect' || node.type === 'step_detect') {
+                        push({ 'kind': node.type === 'step_detect' ? 'stepdetect' : 'detect', 'step': node.step, 'negate': Boolean(node.negate), 'cell': node.cell_text || '5,5', 'target': node.target || '' }, node.indent);
                         return;
                     }
                     if (node.type === 'jump') { push({ 'kind': 'jump', 'target': node.target }, node.indent); return; }
@@ -725,13 +750,13 @@
                 else if (node.type === 'def_end') row = { 'kind': 'def_end' };
                 else if (node.type === 'call') row = { 'kind': 'call', 'target': node.target || '' };
                 else if (node.type === 'return') row = { 'kind': 'return' };
-                else if (node.type === 'label') row = { 'kind': 'label', 'name': node.name || '' };
+                else if (node.type === 'label') row = { 'kind': 'label', 'name': node.name || '', 'color': node.color || '', 'manual': Boolean(node.manual) };
+                else if (node.type === 'label_end') row = { 'kind': 'label_end' };
+                else if (node.type === 'call_label') row = { 'kind': 'calllabel', 'target': node.target || '' };
                 else if (node.type === 'jump') row = { 'kind': 'jump', 'target': node.target || '' };
                 else if (node.type === 'end') row = { 'kind': 'end' };
                 else if (node.type === 'resume') row = { 'kind': 'resume' };
                 else if (node.type === 'game_end') row = { 'kind': 'game_end' };
-                else if (node.type === 'box') row = { 'kind': 'box', 'title': node.title || '', 'color': node.color || '' };
-                else if (node.type === 'box_end') row = { 'kind': 'box_end' };
                 else if (node.type === 'cond') row = condRowFromNode(node);
                 else if (node.type === 'mark') row = {
                     'kind': 'mark',
@@ -748,6 +773,7 @@
                     if (config.end_text) list.push({ 'kind': 'config', 'key': '结束对局', 'value': config.end_text });
                     if (config.post_text) list.push({ 'kind': 'config', 'key': '结束后', 'value': config.post_text });
                     if (config.dialogues_text) list.push({ 'kind': 'config', 'key': '步数对话', 'value': config.dialogues_text, 'triggers': parseTriggerEntries(config.dialogues_text) });
+                    (config.step_detections || []).forEach((detector) => list.push({ 'kind': 'stepdetect', 'step': detector.step, 'target': detector.target || '' }));
                     if (config.points_text) list.push({ 'kind': 'config', 'key': '刷草点', 'value': config.points_text });
                     if (config.schedule_text) list.push({ 'kind': 'config', 'key': '刷草计划', 'value': config.schedule_text });
                     if (config.self_text) list.push({ 'kind': 'config', 'key': '我方', 'value': config.self_text });
@@ -775,14 +801,14 @@
 
         // 条件行 → 条件文本（与 % IF / % ELIF 的解析规则一致）
         const condRowText = (row) => {
-            if (row.condition === 'move') return `检测 ${Math.max(1, Math.trunc(Number(row.step) || 1))} ${String(row.cell || '5,5').trim()}`;
+            if (row.condition === 'move') return `检测 ${row.negate ? '不在 ' : ''}${Math.max(1, Math.trunc(Number(row.step) || 1))} ${String(row.cell || '5,5').trim()}`;
             if (row.condition === 'step') return `第 ${Math.max(1, Math.trunc(Number(row.step) || 1))} 步`;
             if (row.condition === 'option') return `选项 ${String(row.option || '').trim()}`;
             return COND_TEXT[row.condition] || row.condition || '胜利';
         };
 
         // 单行（含选择项的附属行）转成 DSL 文本行；depth 为结构层级，行内 indent 为手动缩进
-        const rowLines = (row, depth) => {
+        const rowLines = (row, depth, isLabelBlock) => {
             const lead = '  '.repeat(Math.max(0, Math.min(10, depth + (Number(row.indent) || 0))));
             if (row.kind === 'say') return [lead + (row.expression ? `[${row.character}|${row.expression}] ${row.text}` : `[${row.character}] ${row.text}`)];
             if (row.kind === 'choice') {
@@ -804,12 +830,16 @@
             if (row.kind === 'def_end') return [`${lead}结束定义`];
             if (row.kind === 'call') return [`${lead}调用 ${row.target}`];
             if (row.kind === 'return') return [`${lead}返回`];
-            if (row.kind === 'label') return [`${lead}:${row.name}`];
+            if (row.kind === 'label') {
+                const manual = row.manual ? ' 不顺序播放' : '';
+                if (isLabelBlock || row.color || row.manual) return [`${lead}标签 ${row.name}${row.color ? ` 色=${row.color}` : ''}${manual}`];
+                return [`${lead}:${row.name}`];
+            }
+            if (row.kind === 'label_end') return [`${lead}结束标签`];
+            if (row.kind === 'calllabel') return [`${lead}调用标签 ${row.target}`];
             if (row.kind === 'jump') return [`${lead}-> ${row.target}`];
             if (row.kind === 'game') return [`${lead}* ${row.title}`];
             if (row.kind === 'game_end') return [`${lead}结束此对局`];
-            if (row.kind === 'box') return [`${lead}框${row.title ? ` ${row.title}` : ''}${row.color ? ` 色=${row.color}` : ''}`];
-            if (row.kind === 'box_end') return [`${lead}结束框`];
             if (row.kind === 'config') {
                 const value = row.key === '步数对话' ? stringifyTriggerEntries(rowTriggers(row)) : row.value;
                 return [`${lead}${row.key}=${value}`];
@@ -827,14 +857,16 @@
                 if (row.mode === 'else') return [`${lead}% ELSE -> ${row.target}`];
                 return [`${lead}% ${row.mode === 'elif' ? 'ELIF' : 'IF'} ${condRowText(row)} -> ${row.target}`];
             }
-            if (row.kind === 'detect') return [`${lead}检测 ${Math.max(1, Math.trunc(Number(row.step) || 1))} ${row.cell} -> ${row.target}`];
+            if (row.kind === 'detect') return [`${lead}检测 ${row.negate ? '不在 ' : ''}${Math.max(1, Math.trunc(Number(row.step) || 1))} ${row.cell} -> ${row.target}`];
+            if (row.kind === 'stepdetect') return [`${lead}检测步数 ${stepDetectValue(row.step)} -> ${row.target}`];
             if (row.kind === 'raw') return String(row.code || '').split('\n').map((line) => (line ? lead + line : ''));
             return [];
         };
 
         const rowsToScript = (list = rows) => {
             const lines = [];
-            walkRowStructure(list, (row, index, depth) => { lines.push(...rowLines(row, depth)); });
+            const blocks = labelBlockIndexes(list);
+            walkRowStructure(list, (row, index, depth) => { lines.push(...rowLines(row, depth, blocks.has(index))); });
             return lines.join('\n');
         };
 
@@ -858,12 +890,12 @@
             if (row.kind === 'def_end') return [`${lead}结束定义`];
             if (row.kind === 'call') return [`${lead}调用 ${row.target}`];
             if (row.kind === 'return') return [`${lead}返回`];
-            if (row.kind === 'label') return [`${lead}标签 ${row.name}`];
+            if (row.kind === 'label') return [`${lead}标签 ${row.name}${row.color ? ` 色=${row.color}` : ''}${row.manual ? ' 不顺序播放' : ''}`];
+            if (row.kind === 'label_end') return [`${lead}结束标签`];
+            if (row.kind === 'calllabel') return [`${lead}调用标签 ${row.target}`];
             if (row.kind === 'jump') return [`${lead}跳转 ${row.target}`];
             if (row.kind === 'game') return [`${lead}对局 ${row.title}`];
             if (row.kind === 'game_end') return [`${lead}结束对局`];
-            if (row.kind === 'box') return [`${lead}{${row.title ? ` ${row.title}` : ''}${row.color ? ` 色=${row.color}` : ''}`];
-            if (row.kind === 'box_end') return [`${lead}}`];
             if (row.kind === 'config') {
                 const value = row.key === '步数对话'
                     ? (window.StoryExports && window.StoryExports.dialoguesToText ? window.StoryExports.dialoguesToText(row.triggers || []) : row.value)
@@ -883,7 +915,8 @@
                 if (row.mode === 'else') return [`${lead}% ELSE -> ${row.target}`];
                 return [`${lead}% ${row.mode === 'elif' ? 'ELIF' : 'IF'} ${condRowText(row)} -> ${row.target}`];
             }
-            if (row.kind === 'detect') return [`${lead}检测 ${Math.max(1, Math.trunc(Number(row.step) || 1))} ${row.cell} -> ${row.target}`];
+            if (row.kind === 'detect') return [`${lead}检测 ${row.negate ? '不在 ' : ''}${Math.max(1, Math.trunc(Number(row.step) || 1))} ${row.cell} -> ${row.target}`];
+            if (row.kind === 'stepdetect') return [`${lead}检测步数 ${stepDetectValue(row.step)} -> ${row.target}`];
             if (row.kind === 'raw') return String(row.code || '').split('\n').map((line) => (line ? lead + line : ''));
             return [];
         };
@@ -988,7 +1021,19 @@
                 <input class='form-control form-control-sm' data-role='target' style='flex: 1 1 240px;' placeholder='封装块名称' value='${attr(row.target)}'>
                 <span class='editor-hint'>执行到本行时进入同名封装块，播完回到本行下一行</span>`;
             if (row.kind === 'return') return `<span class='editor-hint'>提前结束当前封装块并返回调用点（块尾「结束定义」也会自动返回）</span>`;
-            if (row.kind === 'label') return `<input class='form-control form-control-sm' data-role='name' style='flex: 1 1 220px;' placeholder='标签名（跳转目标）' value='${attr(row.name)}'>`;
+            if (row.kind === 'label') return `
+                <input class='form-control form-control-sm' data-role='name' style='flex: 1 1 220px;' placeholder='标签名（跳转/调用目标）' value='${attr(row.name)}'>
+                <select class='form-select form-select-sm' data-role='playmode' style='width: 138px;' title='播放方式'>
+                    <option value='seq'${row.manual ? '' : ' selected'}>顺序播放</option>
+                    <option value='call'${row.manual ? ' selected' : ''}>仅调用时播放</option>
+                </select>
+                <div class='editor-swatches'>${LABEL_SWATCH_COLORS.map((item) => `<span class='editor-swatch${normalizeHex(row.color) === item ? ' active' : ''}' data-role='swatch' data-color='${item}' style='background: ${item};' title='${item}'></span>`).join('')}</div>
+                <input type='color' class='editor-color' data-role='color' value='${attr((normalizeHex(row.color) || '#6f42c1').slice(0, 7))}' title='标签颜色'>
+                <span class='editor-hint'>标签可改色、可被「跳转 / 调用标签」进入；与「结束标签」配对时形成标签块；选「仅调用时播放」后顺序播放会整块跳过</span>`;
+            if (row.kind === 'label_end') return `<span class='editor-hint'>标签块结束标记：被「调用标签」进入时执行到这里自动返回；顺序播放时直接跳过</span>`;
+            if (row.kind === 'calllabel') return `
+                <input class='form-control form-control-sm' data-role='target' style='flex: 1 1 240px;' placeholder='标签名' value='${attr(row.target)}'>
+                <span class='editor-hint'>像函数一样调用标签：执行到对应「结束标签」后回到本行下一行</span>`;
             if (row.kind === 'jump') return `<input class='form-control form-control-sm' data-role='target' style='flex: 1 1 220px;' placeholder='标签名或“结束”' value='${attr(row.target)}'>`;
             if (row.kind === 'game') return `<input class='form-control form-control-sm' data-role='title' style='flex: 1 1 260px;' placeholder='对局标题' value='${attr(row.title)}'><span class='editor-hint'>本行开启一个对局框，块内可继续添加配置、代码与对话</span>`;
             if (row.kind === 'game_end') return `<span class='editor-hint'>对局块结束标记：本行以上的内容（对局标题、残局码与块内代码/对话）都属于同一个蓝色对局框</span>`;
@@ -1066,8 +1111,13 @@
                         <option value='option'${condition === 'option' ? ' selected' : ''}>用户选择选项</option>
                     </select>
                     ${condition === 'move' ? `
+                        <select class='form-select form-select-sm' data-role='condnegate' style='width: 150px;'>
+                            <option value='at'${row.negate ? '' : ' selected'}>检查在选点落子</option>
+                            <option value='not'${row.negate ? ' selected' : ''}>检查不在选点落子</option>
+                        </select>
                         <input type='number' min='1' max='999' step='1' class='form-control form-control-sm' data-role='condstep' style='width: 92px;' placeholder='第几手' value='${attr(Math.max(1, Math.trunc(Number(row.step) || 1)))}'>
-                        <input class='form-control form-control-sm' data-role='condcell' style='width: 116px;' placeholder='5,5' value='${attr(row.cell || '5,5')}'>` : ''}
+                        <input class='form-control form-control-sm' data-role='condcell' style='width: 116px;' placeholder='5,5' value='${attr(row.cell || '5,5')}'>
+                        <span class='editor-hint'>只能在对局框内使用</span>` : ''}
                     ${condition === 'step' ? `
                         <input type='number' min='1' max='999' step='1' class='form-control form-control-sm' data-role='condstep' style='width: 92px;' placeholder='第几手' value='${attr(Math.max(1, Math.trunc(Number(row.step) || 1)))}'>
                         <span class='editor-hint'>玩家已下满该手数时命中</span>` : ''}
@@ -1077,23 +1127,21 @@
                 <input class='form-control form-control-sm' data-role='target' style='flex: 1 1 200px;' placeholder='标签名或“结束”' value='${attr(row.target)}'>`;
             }
             if (row.kind === 'detect') return `
+                <select class='form-select form-select-sm' data-role='detectnegate' style='width: 150px;'>
+                    <option value='at'${row.negate ? '' : ' selected'}>检查在选点落子</option>
+                    <option value='not'${row.negate ? ' selected' : ''}>检查不在选点落子</option>
+                </select>
                 <input type='number' min='1' max='999' step='1' class='form-control form-control-sm' data-role='detectstep' style='width: 92px;' placeholder='第几手' value='${attr(Math.max(1, Math.trunc(Number(row.step) || 1)))}'>
                 <input class='form-control form-control-sm' data-role='detectcell' style='width: 116px;' placeholder='5,5' value='${attr(row.cell || '5,5')}'>
                 <span class='editor-hint'>→</span>
                 <input class='form-control form-control-sm' data-role='detecttarget' style='flex: 1 1 200px;' placeholder='标签名' value='${attr(row.target || '')}'>
-                <span class='editor-hint'>玩家自己的第 N 手落在该交叉点时暂停本局并跳转到标签；坐标先横后竖（1-9）</span>`;
-
-
-
-
-
-            if (row.kind === 'box') return `
-                <input class='form-control form-control-sm' data-role='title' style='flex: 1 1 220px; min-width: 120px;' placeholder='分组框标题（可留空）' value='${attr(row.title)}'>
-                <div class='editor-swatches'>${BOX_SWATCH_COLORS.map((item) => `<span class='editor-swatch${normalizeHex(row.color) === item ? ' active' : ''}' data-role='swatch' data-color='${item}' style='background: ${item};' title='${item}'></span>`).join('')}</div>
-                <input type='color' class='editor-color' data-role='color' value='${attr((normalizeHex(row.color) || '#6f42c1').slice(0, 7))}' title='分组框颜色'>
-                <span class='editor-hint'>框内的行会包进这个彩色分组框；分组框只用于编排，播放时自动跳过</span>`;
-            if (row.kind === 'box_end') return `<span class='editor-hint'>分组框结束标记：与最近一个「框」配对，本身不参与播放</span>`;
-            if (row.kind === 'resume') return `<span class='editor-hint'>步数对话播完后回到当前对局继续下棋</span>`;
+                <span class='editor-hint'>玩家自己的第 N 手落在（或不在）该交叉点时暂停本局并跳转到标签；坐标先横后竖（1-9）</span>`;
+            if (row.kind === 'stepdetect') return `
+                <input type='number' min='0' max='999' step='1' class='form-control form-control-sm' data-role='detectstep' style='width: 92px;' placeholder='第几手（0=点击屏幕）' value='${attr(stepDetectValue(row.step))}'>
+                <span class='editor-hint'>→</span>
+                <input class='form-control form-control-sm' data-role='detecttarget' style='flex: 1 1 200px;' placeholder='标签名' value='${attr(row.target || '')}'>
+                <span class='editor-hint'>对局总手数达到该步数时立即跳转到标签（玩家第一手=1、AI 应手=2…）；填 0 表示无需落子，点击屏幕立即跳转；只能写在对局框内</span>`;
+            if (row.kind === 'resume') return `<span class='editor-hint'>检测落子 / 检测步数跳转的剧情播完后，回到当前对局继续下棋</span>`;
             return `<span class='editor-hint'>剧情到此结束</span>`;
         };
 
@@ -1104,11 +1152,10 @@
             const node = document.createElement('div');
             node.className = `editor-row${row.kind === 'raw' ? ' editor-row-raw' : ''}`;
             node.dataset.index = String(index);
-            // 分组框/对局框/菜单块/封装块/选项本身是容器，不参与手动缩进
-            const canIndent = !['box', 'game', 'menu', 'option', 'def', 'box_end', 'game_end', 'choice_end', 'def_end', 'raw'].includes(row.kind);
+            // 标签块/对局框/菜单块/封装块/选项本身是容器，不参与手动缩进
+            const canIndent = !['game', 'menu', 'option', 'def', 'label_end', 'game_end', 'choice_end', 'def_end', 'raw'].includes(row.kind);
             const indent = Math.max(0, Math.min(6, Number(row.indent) || 0));
             if (canIndent && indent) node.style.marginLeft = indentOffset(indent);
-            if (row.kind === 'box') node.style.borderColor = normalizeHex(row.color) || '#6f42c1';
             node.innerHTML = `
                 <label class='editor-copy-check' title='勾选该行用于复制'><input type='checkbox' data-role='copy-check'${copySelected.has(row) ? ' checked' : ''}></label>
                 <span class='editor-handle' title='拖动排序'>⋮⋮</span>
@@ -1127,17 +1174,18 @@
         const renderRows = () => {
             const container = $('editor_rows');
             container.innerHTML = '';
-            // 按嵌套结构渲染：框 / 对局框 / 菜单块 / 封装块 会开启容器，选项是隐式子容器
+            // 按嵌套结构渲染：标签块 / 对局框 / 菜单块 / 封装块 会开启容器，选项是隐式子容器
             const stack = [];
+            const labelBlocks = labelBlockIndexes(rows);
             rows.forEach((row, index) => {
                 if (row.kind === 'option' && stack.length && stack[stack.length - 1].kind === 'option') stack.pop();
                 const parent = stack.length ? stack[stack.length - 1].node : container;
-                if (row.kind === 'box' || row.kind === 'game' || row.kind === 'menu' || row.kind === 'def') {
+                if ((row.kind === 'label' && labelBlocks.has(index)) || row.kind === 'game' || row.kind === 'menu' || row.kind === 'def') {
                     const box = document.createElement('div');
                     if (row.kind === 'game') box.className = 'editor-game-box';
                     else if (row.kind === 'menu') box.className = 'editor-menu-box';
                     else if (row.kind === 'def') box.className = 'editor-def-box';
-                    else { box.className = 'editor-box'; applyBoxColor(box, row.color); }
+                    else { box.className = 'editor-label-box'; applyLabelColor(box, row.color); }
                     parent.append(box);
                     box.append(buildRowEl(row, index));
                     stack.push({ 'node': box, 'kind': row.kind });
@@ -1159,8 +1207,8 @@
                     stack.length = closeIndex;
                     return;
                 }
-                if (row.kind === 'box_end' || row.kind === 'game_end' || row.kind === 'def_end') {
-                    const kind = row.kind === 'box_end' ? 'box' : row.kind === 'game_end' ? 'game' : 'def';
+                if (row.kind === 'label_end' || row.kind === 'game_end' || row.kind === 'def_end') {
+                    const kind = row.kind === 'label_end' ? 'label' : row.kind === 'game_end' ? 'game' : 'def';
                     const closeIndex = lastKindIndex(stack.map((item) => item.kind), kind);
                     if (closeIndex < 0) { parent.append(buildRowEl(row, index)); return; }
                     stack[closeIndex].node.append(buildRowEl(row, index));
@@ -1298,11 +1346,10 @@
             const context = rowContext(event);
             if (!context) return;
             const role = control.dataset.role;
-            if (role === 'color' && context.row.kind === 'box') {
+            if (role === 'color' && context.row.kind === 'label') {
                 context.row.color = control.value;
-                const box = context.node.closest('.editor-box');
-                if (box) applyBoxColor(box, control.value);
-                context.node.style.borderColor = normalizeHex(control.value) || '#6f42c1';
+                const box = context.node.closest('.editor-label-box');
+                if (box) applyLabelColor(box, control.value);
                 const hex = normalizeHex(control.value);
                 context.node.querySelectorAll('.editor-swatch').forEach((node) => node.classList.toggle('active', node.dataset.color === hex));
                 return;
@@ -1328,7 +1375,13 @@
                 syncRowTriggers(context.row);
                 return;
             }
-            if (role === 'detectstep' || role === 'condstep') { context.row.step = Math.max(1, Math.trunc(Number(control.value) || 0) || 1); return; }
+            if (role === 'detectstep') {
+                // 检测步数允许 0；检测落子的步数仍从 1 起
+                const step = Math.max(0, Math.trunc(Number(control.value) || 0));
+                context.row.step = context.row.kind === 'stepdetect' ? step : Math.max(1, step);
+                return;
+            }
+            if (role === 'condstep') { context.row.step = Math.max(1, Math.trunc(Number(control.value) || 0) || 1); return; }
             if (role === 'detectcell') { context.row.cell = control.value; return; }
             if (role === 'detecttarget') { context.row.target = control.value; return; }
             if (role === 'condcell') { context.row.cell = control.value; return; }
@@ -1395,6 +1448,7 @@
                 return;
             }
             if (role === 'aftermode') { context.row.value = control.value; return; }
+            if (role === 'playmode') { context.row.manual = control.value === 'call'; return; }
             if (role === 'endmode') {
                 const input = context.node.querySelector('[data-role=endsteps]');
                 context.row.value = endValue(control.value, input ? input.value : 0);
@@ -1408,6 +1462,8 @@
                 return;
             }
             if (role === 'condmode') { context.row.mode = control.value; rebuildRow(context.index); return; }
+            if (role === 'condnegate') { context.row.negate = control.value === 'not'; return; }
+            if (role === 'detectnegate') { context.row.negate = control.value === 'not'; return; }
             if (role === 'cond') {
                 context.row.condition = control.value;
                 if (control.value === 'move' && !String(context.row.cell || '').trim()) context.row.cell = '5,5';
@@ -1439,12 +1495,11 @@
                 context.node.style.marginLeft = next ? indentOffset(next) : '';
                 return;
             }
-            if (role === 'swatch' && context.row.kind === 'box') {
+            if (role === 'swatch' && context.row.kind === 'label') {
                 const color = control.dataset.color || '';
                 context.row.color = color;
-                const box = context.node.closest('.editor-box');
-                if (box) applyBoxColor(box, color);
-                context.node.style.borderColor = normalizeHex(color) || '#6f42c1';
+                const box = context.node.closest('.editor-label-box');
+                if (box) applyLabelColor(box, color);
                 const input = context.node.querySelector("[data-role='color']");
                 if (input) input.value = (normalizeHex(color) || '#6f42c1').slice(0, 7);
                 context.node.querySelectorAll('.editor-swatch').forEach((node) => node.classList.toggle('active', node.dataset.color === color));
@@ -1861,7 +1916,7 @@
 
         const safeLevelNo = (value) => Math.min(9999, Math.max(1, Number.parseInt(value, 10) || 1));
 
-        // 行级预检：对局配置行必须紧跟在“对局”行之后；分组框必须成对且颜色合法
+        // 行级预检：对局配置行必须紧跟在“对局”行之后；标签块必须成对且颜色合法
         const rowErrors = () => {
             const errors = [];
             const defNames = new Set();
@@ -1887,8 +1942,17 @@
                     if (!target) errors.push(`第 ${index + 1} 行调用封装缺少名称。`);
                     else if (!defNames.has(target)) errors.push(`第 ${index + 1} 行调用了不存在的封装块：${target}`);
                 }
-                if (row.kind === 'label' && !String(row.name || '').trim()) errors.push(`第 ${index + 1} 行标签名为空。`);
+                if (row.kind === 'label') {
+                    if (!String(row.name || '').trim()) errors.push(`第 ${index + 1} 行标签名为空。`);
+                    if (row.color && !normalizeHex(row.color)) errors.push(`第 ${index + 1} 行标签颜色无效：${row.color}（应形如 #6f42c1）。`);
+                }
+                if (row.kind === 'calllabel' && !String(row.target || '').trim()) errors.push(`第 ${index + 1} 行「调用标签」缺少目标标签。`);
                 if ((row.kind === 'jump' || row.kind === 'cond') && !String(row.target || '').trim()) errors.push(`第 ${index + 1} 行跳转标签为空。`);
+                if (row.kind === 'stepdetect') {
+                    const step = Math.trunc(Number(row.step));
+                    if (!Number.isInteger(step) || step < 0) errors.push(`第 ${index + 1} 行「检测步数」的步数无效：${row.step}（应为 0 或更大的整数，0 表示点击屏幕立即跳转）。`);
+                    if (!String(row.target || '').trim()) errors.push(`第 ${index + 1} 行「检测步数」缺少目标标签（应形如 检测步数 4 -> 标签）。`);
+                }
                 if (row.kind === 'game' && !String(row.title || '').trim()) errors.push(`第 ${index + 1} 行对局标题为空。`);
                 if (row.kind === 'detect') {
                     const step = Math.trunc(Number(row.step));
@@ -1920,17 +1984,16 @@
                     });
                 }
             });
-            const boxStack = [];
+            const labelStack = [];
+            const labelBlocks = labelBlockIndexes(rows);
             rows.forEach((row, index) => {
-                if (row.kind === 'box') {
-                    if (row.color && !normalizeHex(row.color)) errors.push(`第 ${index + 1} 行「框」颜色无效：${row.color}（应形如 #6f42c1）。`);
-                    boxStack.push(index);
-                } else if (row.kind === 'box_end') {
-                    if (!boxStack.length) errors.push(`第 ${index + 1} 行「结束框」没有对应的「框」。`);
-                    else boxStack.pop();
+                if (row.kind === 'label') labelStack.push(index);
+                else if (row.kind === 'label_end') {
+                    if (!labelStack.length) errors.push(`第 ${index + 1} 行「结束标签」没有对应的「标签」。`);
+                    else if (!labelBlocks.has(labelStack[labelStack.length - 1])) errors.push(`第 ${index + 1} 行「结束标签」没有对应的「标签」。`);
+                    else labelStack.pop();
                 }
             });
-            if (boxStack.length) errors.push(`第 ${boxStack[boxStack.length - 1] + 1} 行「框」缺少「结束框」。`);
             const menuStack = [];
             const defStack = [];
             let defDepth = 0;
@@ -1960,6 +2023,19 @@
                 if (row.kind === 'game') gameStack.push(index);
                 else if (row.kind === 'game_end' && gameStack.length) gameStack.pop();
                 if (row.kind === 'detect' && !gameStack.length) errors.push(`第 ${index + 1} 行「检测落子」必须位于「对局」块内。`);
+                if (row.kind === 'stepdetect' && !gameStack.length) errors.push(`第 ${index + 1} 行「检测步数」必须位于「对局」块内。`);
+                if (row.kind === 'cond' && row.mode !== 'else' && row.condition === 'move' && !gameStack.length) errors.push(`第 ${index + 1} 行条件「检测落子」必须位于「对局」块内，对局框外不可使用。`);
+            });
+            return errors;
+        };
+
+        // 分组框语法已停用：旧剧本仍可读取播放，但禁止再保存带「框 / { }」的文本到服务器
+        const legacyBoxErrors = (script) => {
+            const errors = [];
+            String(script || '').split('\n').forEach((line, index) => {
+                if (/^\s*(?:框(?:\s|$)|\{|\}|结束框\s*$|框结束\s*$)/.test(line)) {
+                    errors.push(`第 ${index + 1} 行仍使用已停用的分组框语法，请改用「标签 … 结束标签」。`);
+                }
             });
             return errors;
         };
@@ -1969,7 +2045,7 @@
             if (editorMode === 'jqbj') {
                 const script = $('jqbj_text').value;
                 if (!script.trim()) return ['请先在 JQBJ 文本框中输入剧本。'];
-                return window.StoryExports.StoryScript.validate(script);
+                return legacyBoxErrors(script).concat(window.StoryExports.StoryScript.validate(script));
             }
             const pre = rowErrors();
             if (pre.length) return pre;
@@ -2263,14 +2339,14 @@
         // 角色/表情取自「角色管理」；标签/变量从当前文本实时提取；关键词为 JQBJ 语句。
         const JQBJ_COMPLETION_WORDS = [
             ['说', '对话'], ['菜单', '对话'], ['选项', '对话'], ['结束菜单', '对话'],
-            ['标签', '流程'], ['跳转', '流程'], ['结束', '流程'], ['剧终', '流程'],
+            ['标签', '流程'], ['结束标签', '流程'], ['调用标签', '流程'], ['跳转', '流程'], ['结束', '流程'], ['剧终', '流程'],
             ['如果', '条件'], ['否则如果', '条件'], ['否则', '条件'], ['结束如果', '条件'],
             ['重复', '循环'], ['结束重复', '循环'], ['当', '循环'], ['结束当', '循环'],
             ['直到', '循环'], ['结束直到', '循环'], ['跳出', '循环'], ['继续', '循环'],
             ['设', '变量'], ['赋值', '变量'],
             ['对局', '对局'], ['结束对局', '对局'], ['如果胜利', '对局'], ['如果失败', '对局'],
             ['如果平局', '对局'], ['继续对局', '对局'], ['结束条件', '对局'], ['结束后', '对局'],
-            ['检测', '对局'], ['检测落子', '对局'],
+            ['检测', '对局'], ['检测落子', '对局'], ['检测步数', '对局'],
             ['我方', '对局'], ['先手', '对局'], ['残局码', '对局'], ['步数对话', '对局'], ['刷草计划', '对局'],
             ['不透明度', '表现'], ['标注', '表现'], ['箭头', '表现'], ['圈', '表现'],
             ['清除', '表现'],
@@ -2594,8 +2670,6 @@
         // ==================== 快捷栏插入（JQBJ 语言模式）====================
         // 语言模式下右侧快捷栏不再操作行模型，而是把对应语句插入到光标处
         const JQBJ_SNIPPETS = {
-            'box': '{ 标题 色=#6f42c1\n  # 在这里写框内内容\n}',
-            'box_end': '}',
             'say': '说 [角色|表情] 台词',
             'choice': '? [角色|表情] 提示\n  - 选项文字 -> 标签',
             'menu': '菜单 [角色|表情] 提示\n  选项 文字\n    说 [角色|表情] 台词\n结束菜单',
@@ -2605,12 +2679,15 @@
             'def_end': '结束定义',
             'call': '调用 名称',
             'return': '返回',
-            'label': '标签 名称',
+            'label': '标签 名称 色=#6f42c1',
+            'label_end': '结束标签',
+            'calllabel': '调用标签 标签',
             'jump': '跳转 标签',
             'opacity': '不透明度 60',
             'game': '对局 标题\n  说 [角色|表情] 台词\n结束对局',
             'game_end': '结束对局',
             'detect': '检测 1 5,5 -> 标签',
+            'stepdetect': '检测步数 3 -> 标签',
             'cond': '% IF 胜利 -> 标签',
             'resume': '继续对局',
             'end': '结束',

@@ -37,9 +37,9 @@ const storyCharacters = [
     { 'name': '导员ZERO', 'expressions': [{ 'name': '微笑' }, { 'name': '严肃' }] },
     { 'name': 'Zero', 'expressions': [] },
 ];
-const nextBoxColor = () => '#6f42c1';
+const nextLabelColor = () => '#6f42c1';
 const build = (characters) => new Function(
-    'window', 'StoryScript', 'COND_TEXT', 'storyCharacters', 'nextBoxColor', 'lastFace',
+    'window', 'StoryScript', 'COND_TEXT', 'storyCharacters', 'nextLabelColor', 'lastFace',
     `let rows = [];
 ${code}
 return {
@@ -50,7 +50,7 @@ return {
     load: (script) => { const list = rowsFromScript(script); rows = list; return list; },
     state: () => ({ rows, lastFace }),
 };`
-)(globalThis.window, StoryScript, COND_TEXT, characters, nextBoxColor, { 'character': '', 'expression': '' });
+)(globalThis.window, StoryScript, COND_TEXT, characters, nextLabelColor, { 'character': '', 'expression': '' });
 
 const editor = build(storyCharacters);
 const roundTrip = (script) => { editor.load(script); return editor.rowsToScript(); };
@@ -58,29 +58,41 @@ const roundTrip = (script) => { editor.load(script); return editor.rowsToScript(
 const shape = (script) => StoryScript.parse(script).nodes.map((node) => {
     const base = { 'type': node.type, 'indent': node.indent };
     if (node.type === 'say') return { ...base, 'speaker': node.speaker, 'expression': node.expression, 'text': node.text };
-    if (node.type === 'box') return { ...base, 'title': node.title, 'color': node.color };
     if (node.type === 'game') return { ...base, 'title': node.title, 'config_raw': node.config_raw };
-    if (node.type === 'label') return { ...base, 'name': node.name };
+    if (node.type === 'label') return { ...base, 'name': node.name, 'color': node.color || '', 'block': Boolean(node.body) };
     if (node.type === 'jump') return { ...base, 'target': node.target };
     return base;
 });
 
-// 1) 分组框 + 嵌套 + 手动缩进：往返后语义与缩进完全一致
+// 1) 标签块 + 嵌套 + 手动缩进：往返后语义与缩进完全一致
 {
     const script = [
-        '框 序章 色=#6f42c1',
+        '标签 序章 色=#6f42c1',
         '  [导员ZERO] 开场白',
-        '  框 回忆 色=#0d6efd',
+        '  标签 回忆 色=#0d6efd',
         '    [导员ZERO|微笑] 很久以前……',
-        '  结束框',
+        '  结束标签',
         '    [导员ZERO] 手动缩进的台词',
-        '结束框',
+        '结束标签',
         '[导员ZERO] 回到主线',
     ].join('\n');
     const out = roundTrip(script);
     assert.equal(out, script, `应无损往返：\n${out}`);
     assert.deepEqual(shape(out), shape(script));
-    console.log('PASS: 分组框嵌套 + 手动缩进往返');
+    console.log('PASS: 标签块嵌套 + 手动缩进往返');
+}
+
+// 1.1) 旧分组框兼容：读取为标签块，保存时不再输出框语法
+{
+    const script = [
+        '框 序章 色=#6f42c1',
+        '  [导员ZERO] 开场白',
+        '结束框',
+    ].join('\n');
+    const out = roundTrip(script);
+    assert.equal(out, ['标签 1 色=#6f42c1', '  [导员ZERO] 开场白', '结束标签'].join('\n'), `旧框应转换为标签块：\n${out}`);
+    assert.ok(!/[{}]|框/.test(out), '保存结果不应包含框语法');
+    console.log('PASS: 旧分组框转标签块');
 }
 
 // 2) 旧剧本（对局配置 2 空格、无分组框）往返后缩进保持不变
@@ -101,14 +113,15 @@ const shape = (script) => StoryScript.parse(script).nodes.map((node) => {
     console.log('PASS: 旧剧本往返');
 }
 
-// 3) 分组框颜色归一化（3 位缩写展开）与默认色兜底
+// 3) 标签颜色保留（3 位缩写）与结束标签还原
 {
-    editor.load('框 A 色=#abc\n结束框');
+    editor.load('标签 A 色=#abc\n结束标签');
     const rows = editor.state().rows;
     assert.equal(rows[0].color, '#abc', '解析应保留原始颜色写法');
+    assert.equal(rows[1].kind, 'label_end', '应还原结束标签行');
     const out = editor.rowsToScript();
     assert.ok(out.includes('色=#abc'), `应保留颜色：${out}`);
-    console.log('PASS: 分组框颜色往返');
+    console.log('PASS: 标签颜色往返');
 }
 
 // 4) 新台词默认角色：沿用上一次台词的角色/表情；表情无效时回退代表图
@@ -270,14 +283,41 @@ const shape = (script) => StoryScript.parse(script).nodes.map((node) => {
     console.log('PASS: 检测落子行往返');
 }
 
+// 12b) 检测步数 0：无需落子，点击屏幕立即跳转；行模型应保留 0 并无损往返
+{
+    const script = [
+        '对局 教学',
+        '  检测步数 0 -> 开场',
+        '结束对局',
+        '标签 开场',
+        '说 [导员ZERO|微笑] 点击屏幕继续。',
+        '继续对局',
+        '结束标签',
+    ].join('\n');
+    editor.load(script);
+    const rows = editor.state().rows;
+    const stepRow = rows.find((row) => row.kind === 'stepdetect');
+    assert.ok(stepRow, '应还原检测步数行');
+    assert.equal(stepRow.step, 0, '检测步数 0 应保留');
+    const jqbj = editor.rowsToJQBJ();
+    assert.ok(jqbj.includes('检测步数 0 -> 开场'), `检测步数 0 应无损往返：${jqbj}`);
+    const parsed = StoryScript.parse(jqbj);
+    assert.deepEqual(parsed.errors, [], '检测步数 0 往返后应仍可解析');
+    const game = parsed.nodes.find((node) => node.type === 'game');
+    assert.deepEqual(game.config.step_detections, [{ 'step': 0, 'target': '开场' }], '往返后检测步数仍应为 0');
+    console.log('PASS: 检测步数 0 行模型往返');
+}
+
 // 13) IF / ELIF 扩展条件：行模型还原与 JQBJ 往返
 {
     const script = [
-        '% IF 胜利 -> 甲',
-        '% ELIF 检测 1 4,4 -> 乙',
-        '% ELIF 第 3 步 -> 丙',
-        '% ELIF 选项 2 -> 丁',
-        '% ELSE -> 戊',
+        '对局 教学',
+        '  % IF 胜利 -> 甲',
+        '  % ELIF 检测 1 4,4 -> 乙',
+        '  % ELIF 第 3 步 -> 丙',
+        '  % ELIF 选项 2 -> 丁',
+        '  % ELSE -> 戊',
+        '结束对局',
         '标签 甲',
         '结束',
         '标签 乙',
@@ -301,6 +341,26 @@ const shape = (script) => StoryScript.parse(script).nodes.map((node) => {
     assert.equal(out, script, `IF/ELIF 条件应无损往返：\n${out}`);
     assert.deepEqual(StoryScript.parse(out).errors, [], '往返后的条件链应仍可解析');
     console.log('PASS: IF/ELIF 扩展条件往返');
+}
+
+// 14) 标签「不顺序播放」：行模型与两种序列化都能无损往返
+{
+    const script = [
+        '标签 回忆 色=#6f42c1 不顺序播放',
+        '  说 [导员ZERO] 只被调用时播放',
+        '结束标签',
+        '说 [导员ZERO] 主线',
+    ].join('\n');
+    editor.load(script);
+    const labelRow = editor.state().rows.find((row) => row.kind === 'label');
+    assert.equal(labelRow.manual, true, '应还原「不顺序播放」选项');
+    assert.equal(editor.rowsToJQBJ(), script, `JQBJ 应无损往返：\n${editor.rowsToJQBJ()}`);
+    const legacy = editor.rowsToScript();
+    assert.ok(legacy.includes('不顺序播放'), `旧式序列化也应保留选项：${legacy}`);
+    editor.load('标签 回忆 色=#6f42c1\n  说 [导员ZERO] 顺序播放\n结束标签');
+    assert.equal(editor.state().rows.find((row) => row.kind === 'label').manual, false, '默认应为顺序播放');
+    assert.ok(!editor.rowsToJQBJ().includes('不顺序播放'), '默认不应输出选项');
+    console.log('PASS: 标签不顺序播放行模型往返');
 }
 
 console.log('story-editor-rows: ALL PASS');

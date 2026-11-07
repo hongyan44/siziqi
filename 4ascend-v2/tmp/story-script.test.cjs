@@ -580,7 +580,7 @@ const TYPES = ['say', 'choice', 'label', 'say', 'game', 'label', 'say', 'end', '
     console.log('PASS: 选择节点角色表情');
 }
 
-// 34) 分组框：解析 / 颜色 / 缩进 / 运行时跳过
+// 34) 旧分组框兼容：读取时自动转为带颜色的标签块，运行时跳过，保存不再输出框语法
 {
     const src = [
         '框 开场 色=#6f42c1',
@@ -593,38 +593,33 @@ const TYPES = ['say', 'choice', 'label', 'say', 'game', 'label', 'say', 'end', '
         '结束',
     ].join('\n');
     const parsed = StoryScript.parse(src);
-    assert.deepEqual(parsed.errors, [], '分组框不应产生解析错误');
+    assert.deepEqual(parsed.errors, [], '旧分组框不应产生解析错误');
     assert.deepEqual(
         parsed.nodes.map((n) => n.type),
-        ['box', 'say', 'box', 'say', 'box_end', 'box_end', 'say', 'end'],
-        '分组框与结束框应是独立节点'
+        ['label', 'say', 'label', 'say', 'label_end', 'label_end', 'say', 'end'],
+        '分组框应转换为标签块'
     );
-    assert.equal(parsed.nodes[0].title, '开场');
+    assert.equal(parsed.nodes[0].name, '1', '旧框按出现顺序命名为 1、2…（忽略原框标题）');
     assert.equal(parsed.nodes[0].color, '#6f42c1');
-    assert.equal(parsed.nodes[2].title, '分支');
+    assert.equal(parsed.nodes[2].name, '2');
     assert.equal(parsed.nodes[2].color, '#dc3545');
-    assert.equal(parsed.nodes[1].indent, 1, '第二行应记录 1 级缩进');
-    assert.equal(parsed.nodes[3].indent, 2, '嵌套框内的台词应记录 2 级缩进');
-    assert.equal(parsed.nodes[4].indent, 1, '结束框也应记录缩进');
-    assert.deepEqual(StoryScript.validate(src), [], '分组框剧本应校验通过');
+    assert.deepEqual(StoryScript.validate(src), [], '旧分组框剧本应校验通过');
 
-    // 运行时把分组框当普通节点跳过
+    // 运行时把标签 / 结束标签当普通节点跳过
     const rt = new StoryRuntime(parsed);
-    assert.equal(rt.current().type, 'box');
-    assert.equal(rt.advance().text, '开场白', 'box 之后应到达台词');
-    assert.equal(rt.advance().type, 'box');
+    assert.equal(rt.current().type, 'say');
+    assert.equal(rt.current().text, '开场白', '标签之后应到达台词');
     assert.equal(rt.advance().text, '分支白');
-    assert.equal(rt.advance().type, 'box_end');
-    assert.equal(rt.advance().type, 'box_end');
-    assert.equal(rt.advance().text, '收尾', '结束框之后应能继续推进');
+    assert.equal(rt.advance().text, '收尾', '结束标签之后应能继续推进');
 
-    // stringify 保留标题、颜色与缩进
+    // stringify 只输出标签语法，不再出现框
     const out = StoryScript.stringify(parsed);
-    assert.ok(out.includes('{ 开场 色=#6f42c1'), `框应还原：${out}`);
-    assert.ok(out.includes('  { 分支 色=#dc3545'), `嵌套框应带缩进还原：${out}`);
-    assert.ok(out.includes('  }'), `结束框应带缩进还原：${out}`);
+    assert.ok(out.includes('标签 1 色=#6f42c1'), `标签应还原：${out}`);
+    assert.ok(out.includes('标签 2 色=#dc3545'), `嵌套标签应还原：${out}`);
+    assert.ok(out.includes('结束标签'), `结束标签应还原：${out}`);
+    assert.ok(!/[{}\u6846]/.test(out.replace(/结束标签/g, '')), `不应再输出框语法：${out}`);
     assert.deepEqual(StoryScript.validate(out), [], '还原后应校验通过');
-    console.log('PASS: 分组框解析/缩进/还原');
+    console.log('PASS: 旧分组框兼容转换/跳过/还原');
 }
 
 // 35) 分组框：颜色非法 / 结束框缺失或多余
@@ -1055,6 +1050,96 @@ const TYPES = ['say', 'choice', 'label', 'say', 'game', 'label', 'say', 'end', '
         assert.ok(StoryScript.validate(script).some((e) => e.includes(keyword)), `${keyword} 应报错：${StoryScript.validate(script)}`);
     });
     console.log('PASS: JQBJ v0.4 变量/逻辑/数值比较');
+}
+
+// 48) 标签块：颜色 / 调用标签（类似函数）/ 结束标签返回
+{
+    const src = [
+        '[A] 开始',
+        '调用标签 子流程',
+        '[A] 归来',
+        '结束',
+        '标签 子流程 色=#0d6efd',
+        '[A] 子流程内',
+        '结束标签',
+        '',
+    ].join('\n');
+    const parsed = StoryScript.parse(src);
+    assert.deepEqual(parsed.errors, [], '标签块不应产生解析错误');
+    assert.deepEqual(
+        parsed.nodes.map((n) => n.type),
+        ['say', 'call_label', 'say', 'end', 'label', 'say', 'label_end'],
+        '标签块应编译为 标签 … 结束标签 序列'
+    );
+    assert.equal(parsed.nodes[4].name, '子流程');
+    assert.equal(parsed.nodes[4].color, '#0d6efd');
+    assert.equal(parsed.nodes[4].block, true);
+    assert.deepEqual(StoryScript.validate(src), [], '标签块剧本应校验通过');
+
+    const rt = new StoryRuntime(parsed);
+    assert.equal(rt.current().text, '开始');
+    assert.equal(rt.advance().text, '子流程内', '调用标签应进入标签块');
+    assert.equal(rt.advance().text, '归来', '遇到结束标签应返回调用处下一行');
+
+    // 颜色非法 / 调用不存在的标签
+    assert.ok(StoryScript.validate('标签 A 色=red\n[A] hi\n结束标签\n结束').some((e) => e.includes('颜色无效')), '标签颜色非法应报错');
+    assert.ok(StoryScript.validate('调用标签 不存在\n结束').some((e) => e.includes('不存在的标签')), '调用不存在的标签应报错');
+    assert.ok(StoryScript.validate('结束标签\n结束').some((e) => e.includes('没有对应')), '多余结束标签应报错');
+    console.log('PASS: 标签块/调用标签/结束标签');
+}
+
+// 49) 检测步数：只允许对局块内，解析 / 校验 / 还原
+{
+    const src = [
+        '[A] 开始',
+        '* 对局 测试',
+        '  检测步数 3 -> 第三步',
+        '  检测步数 5 -> 第五步',
+        '结束对局',
+        '结束',
+        '标签 第三步',
+        '[A] 三',
+        '继续对局',
+        '结束标签',
+        '标签 第五步',
+        '[A] 五',
+        '继续对局',
+        '结束标签',
+        '',
+    ].join('\n');
+    const parsed = StoryScript.parse(src);
+    assert.deepEqual(parsed.errors, [], '检测步数不应产生解析错误');
+    const game = parsed.nodes.find((n) => n.type === 'game');
+    assert.deepEqual(game.config.step_detections, [
+        { 'step': 3, 'target': '第三步' },
+        { 'step': 5, 'target': '第五步' },
+    ], '检测步数应按顺序解析');
+    assert.deepEqual(StoryScript.validate(src), [], '检测步数剧本应校验通过');
+
+    const out = StoryScript.stringify(parsed);
+    assert.ok(out.includes('检测步数 3 -> 第三步'), `检测步数应还原：${out}`);
+    assert.deepEqual(StoryScript.validate(out), [], '还原后应校验通过');
+
+    assert.ok(StoryScript.validate('检测步数 3 -> x\n结束').some((e) => e.includes('只能写在「对局」块内')), '对局块外的检测步数应报错');
+    // 检测步数 0：无需落子，点击屏幕立即跳转
+    const zeroSrc = [
+        '* 对局 测试',
+        '  检测步数 0 -> 第零步',
+        '结束对局',
+        '标签 第零步',
+        '[A] 点击屏幕开始',
+        '继续对局',
+        '结束标签',
+    ].join('\n');
+    const zeroParsed = StoryScript.parse(zeroSrc);
+    assert.deepEqual(zeroParsed.errors, [], '检测步数 0 不应产生解析错误');
+    const zeroGame = zeroParsed.nodes.find((n) => n.type === 'game');
+    assert.deepEqual(zeroGame.config.step_detections, [{ 'step': 0, 'target': '第零步' }], '检测步数 0 应保留');
+    assert.deepEqual(StoryScript.validate(zeroSrc), [], '检测步数 0 剧本应校验通过');
+    const zeroOut = StoryScript.stringify(zeroParsed);
+    assert.ok(zeroOut.includes('检测步数 0 -> 第零步'), `检测步数 0 应还原：${zeroOut}`);
+    assert.ok(StoryScript.validate('* 对局 x\n  检测步数 3 x\n结束对局\n结束').some((e) => e.includes('检测步数')), '缺少箭头应报错');
+    console.log('PASS: 检测步数解析/校验/还原');
 }
 
 console.log('story-script: ALL PASS');

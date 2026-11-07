@@ -17,8 +17,8 @@ const END_TARGETS = ['结束', '剧终'];
 const RESUME_KEYWORDS = ['继续对局', '返回对局'];
 // 对局块结束标记：编辑器据此把「* 对局」到本行之间的内容包进同一个对局框
 const GAME_END_KEYWORDS = ['结束此对局'];
-// 分组框：仅用于编辑器分区（可自定义颜色），播放时按普通节点跳过
-const BOX_COLOR_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+// 标签：可自定义颜色，可作为跳转/调用目标；「结束标签」标记标签块结束
+const LABEL_COLOR_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
 
 // 条件分支：% IF 条件 -> 标签 / % ELIF 条件 -> 标签 / % ELSE -> 标签
 // 条件支持：胜利 / 失败 / 平局、检测 N 横,竖、第 N 步、选项 序号或文字
@@ -36,14 +36,16 @@ const parseCondHead = (raw) => {
     if (!head) return { 'error': '条件为空' };
     const key = COND_MAP[head] || COND_MAP[head.toLowerCase()];
     if (key) return { 'data': { 'condition': key } };
-    let match = /^检测\s+(\d+)\s+(\d+)\s*,\s*(\d+)$/.exec(head);
+    // 检测 在/不在 N 横,竖：省略“在/不在”时按「在」处理，兼容旧剧本
+    let match = /^检测\s+(?:(在|不在)\s+)?(\d+)\s+(\d+)\s*,\s*(\d+)$/.exec(head);
     if (match) {
-        const step = Math.trunc(Number(match[1]));
-        const across = Number(match[2]);
-        const down = Number(match[3]);
+        const negate = match[1] === '不在';
+        const step = Math.trunc(Number(match[2]));
+        const across = Number(match[3]);
+        const down = Number(match[4]);
         if (!(step >= 1)) return { 'error': '「检测」的步数必须是 1 或更大的整数' };
         if (!toBoardPoint(across, down)) return { 'error': `「检测」坐标无效：${across},${down}（应为 1-9 的 横,竖）` };
-        return { 'data': { 'condition': 'move', 'step': step, 'x': across, 'y': down, 'cell_text': `${across},${down}` } };
+        return { 'data': { 'condition': 'move', 'step': step, 'x': across, 'y': down, 'negate': negate, 'cell_text': `${across},${down}` } };
     }
     match = /^第\s*(\d+)\s*步(?:落子)?$/.exec(head);
     if (match) {
@@ -58,7 +60,7 @@ const parseCondHead = (raw) => {
         if (!option) return { 'error': '「选项」不能为空（可写选项序号或选项文字）' };
         return { 'data': { 'condition': 'option', 'option': option } };
     }
-    return { 'error': `条件无效：${head}（可用 胜利 / 失败 / 平局 / 检测 N 横,竖 / 第 N 步 / 选项 序号或文字）` };
+    return { 'error': `条件无效：${head}（可用 胜利 / 失败 / 平局 / 检测 在|不在 N 横,竖 / 第 N 步 / 选项 序号或文字）` };
 };
 
 /**
@@ -70,11 +72,46 @@ const condToText = (node) => {
     if (!node) return '';
     if (node.condition === 'move') {
         const cell = node.cell_text || `${node.x},${node.y}`;
-        return `检测 ${Math.max(1, Math.trunc(Number(node.step) || 1))} ${cell}`;
+        return `检测 ${node.negate ? '不在 ' : ''}${Math.max(1, Math.trunc(Number(node.step) || 1))} ${cell}`;
     }
     if (node.condition === 'step') return `第 ${Math.max(1, Math.trunc(Number(node.step) || 1))} 步`;
     if (node.condition === 'option') return `选项 ${node.option}`;
     return COND_TEXT[node.condition] || node.condition;
+};
+
+/**
+ * @description: 把连续的条件链（IF / ELIF / ELSE）里的「检测落子」抽成对局内即时触发
+ * 命中某手时立即暂停本局并跳到对应标签；链尾 ELSE 在该手所有检测条件都未命中时立即跳转
+ * @param {object[]} chain 连续的条件节点
+ * @param {object[]} detections 对局检测触发列表（会被追加）
+ */
+const collectMoveCondTriggers = (chain, detections) => {
+    if (!Array.isArray(chain) || !chain.length || !Array.isArray(detections)) return;
+    const conds = chain.filter((item) => item && item.type === 'cond');
+    const moves = conds.filter((item) => item.condition === 'move' && item.target);
+    if (!moves.length) return;
+    // 链里混入胜负 / 第 N 步 / 选项等条件时，ELSE 无法在第 N 手立即判定，保持原有流程
+    const pure = conds.every((item) => (item.condition === 'move' && item.target) || item.kind === 'else');
+    let lastStep = 0;
+    moves.forEach((item) => {
+        const point = toBoardPoint(item.x, item.y);
+        detections.push({
+            'step': item.step, 'negate': Boolean(item.negate), 'x': point ? point[0] : null, 'y': point ? point[1] : null,
+            'cell_text': item.cell_text, 'target': item.target, 'from_cond': true,
+        });
+        item.consumed = true;
+        lastStep = Math.max(lastStep, Math.max(1, Math.trunc(Number(item.step) || 1)));
+    });
+    const elseNode = pure ? conds.find((item) => item.kind === 'else' && item.target) : null;
+    if (elseNode) {
+        detections.push({
+            'step': lastStep, 'negate': false, 'x': null, 'y': null, 'cell_text': '',
+            'target': elseNode.target, 'from_cond': true, 'fallback': true,
+        });
+        elseNode.consumed = true;
+    }
+    // 兜底触发排在同手的检测条件之后，保证明确命中的检测优先
+    detections.sort((left, right) => (left.fallback ? 1 : 0) - (right.fallback ? 1 : 0));
 };
 
 const SIDE_BLACK = 'black';
@@ -305,7 +342,7 @@ const dialoguesToText = (dialogues) => (dialogues || []).map((entry) => {
 // 新语法：说 / 菜单 / 如果 / 重复 / 当 / 直到 / 设 / 赋值 / 跳出 / 继续 / 对局 等。
 // v0.4：条件支持 与 / 或 / 非、括号、四则运算与数值比较。
 const JQBJ_VERSION = 'v0.4';
-const JQBJ_DETECT = /^(?:说(?:\s|$)|菜单(?:\s|$)|选项(?:\s|$)|结束菜单$|如果(?:\s|$)|否则如果(?:\s|$)|否则$|结束如果$|重复(?:\s|$)|当(?:\s|$)|直到(?:\s|$)|结束重复$|结束当$|结束直到$|跳出$|继续$|设(?:\s|$)|赋值(?:\s|$)|对局(?:\s|$)|结束对局$|标签(?:\s|$)|跳转(?:\s|$)|标注(?:\s|$)|不透明度(?:\s|$)|如果胜利$|如果失败$|如果平局$|检测(?:\s|$)|\{|\})/;
+const JQBJ_DETECT = /^(?:说(?:\s|$)|菜单(?:\s|$)|选项(?:\s|$)|结束菜单$|如果(?:\s|$)|否则如果(?:\s|$)|否则$|结束如果$|重复(?:\s|$)|当(?:\s|$)|直到(?:\s|$)|结束重复$|结束当$|结束直到$|跳出$|继续$|设(?:\s|$)|赋值(?:\s|$)|对局(?:\s|$)|结束对局$|标签(?:\s|$)|结束标签$|调用标签(?:\s|$)|跳转(?:\s|$)|标注(?:\s|$)|不透明度(?:\s|$)|如果胜利$|如果失败$|如果平局$|检测步数(?:\s|$)|检测(?:\s|$)|\{|\})/;
 const JQBJ_NAME_RE = /^[A-Za-z_\u4e00-\u9fa5][A-Za-z0-9_\u4e00-\u9fa5]*$/;
 const JQBJ_OUTCOME_TEXT = { 'win': '胜利', 'lose': '失败', 'draw': '平局' };
 const JQBJ_OUTCOME_KEY = { '胜利': 'win', '失败': 'lose', '平局': 'draw' };
@@ -317,6 +354,7 @@ const jqbjIsClosing = (text) => (
     || text === '结束菜单' || text === '结束选择'
     || text === '结束重复' || text === '结束当' || text === '结束直到'
     || text === '结束定义' || text === '}' || text === '结束框' || text === '框结束'
+    || text === '结束标签'
     || GAME_END_KEYWORDS.includes(text) || text === '结束对局'
 );
 
@@ -506,6 +544,20 @@ class JQBJExprParser {
 
 const parseJQBJExpr = (text) => new JQBJExprParser(jqbjTokenize(text)).parse();
 
+// 解析标签声明：名称 + 可选 色=#rrggbb / 不顺序播放；名称允许包含空格
+const jqbjLabelParts = (raw) => {
+    let color = '';
+    let manual = false;
+    const names = [];
+    String(raw == null ? '' : raw).trim().split(/\s+/).filter(Boolean).forEach((token) => {
+        const colorToken = /^色\s*[=:]\s*(.+)$/.exec(token);
+        if (colorToken) color = colorToken[1];
+        else if (token === '不顺序播放') manual = true;
+        else names.push(token);
+    });
+    return { 'name': names.join(' ').trim(), 'color': color, 'manual': manual };
+};
+
 /**
  * @description: JQBJ v0.4 解析器：先构造语法树（供编辑器还原拖动框），再编译为运行时节点
  */
@@ -515,7 +567,9 @@ class JQBJParser {
         this.errors = [];
         this.nodes = [];
         this.labels = {};
-        this.seq = { 'if': 0, 'loop': 0, 'menu': 0, 'game': 0 };
+        this.seq = { 'if': 0, 'loop': 0, 'menu': 0, 'game': 0, 'box': 0 };
+        // 当前解析位置所处的「对局」块深度：条件「检测落子」只允许写在对局块内
+        this.gameDepth = 0;
         this.lines = source.split('\n').map((line, lineIndex) => {
             const expanded = line.replace(/\t/g, '  ');
             const trimmed = expanded.trim();
@@ -525,6 +579,14 @@ class JQBJParser {
                 'indent': Math.min(20, Math.floor((expanded.length - expanded.trimStart().length) / 2)),
                 'lineIndex': lineIndex,
             };
+        });
+        // 预扫描所有显式标签名，旧分组框转标签时避免命名冲突
+        this.usedLabelNames = new Set();
+        this.lines.forEach((line) => {
+            const label = /^标签(?:\s+([\s\S]*))?$/.exec(line.text);
+            const colon = /^:([^\s]+)$/.exec(line.text);
+            const name = label ? jqbjLabelParts(label[1] || '').name : (colon ? colon[1] : '');
+            if (name) this.usedLabelNames.add(name);
         });
     }
 
@@ -539,8 +601,10 @@ class JQBJParser {
             if (node.type === 'game') {
                 node.config = normalizeGameConfig(node.config_raw);
                 node.config.detections = Array.isArray(node.detections) ? node.detections : [];
+                node.config.step_detections = Array.isArray(node.step_detections) ? node.step_detections : [];
                 delete node.config_raw;
                 delete node.detections;
+                delete node.step_detections;
             }
             if (node.type === 'mark' && node.kind === 'circle') node.cell = parseCell(node.target);
         });
@@ -706,6 +770,10 @@ class JQBJParser {
             this.error(line.lineIndex, `「${text}」只能写在「对局」块内。`);
             return { 'node': null, 'next': start + 1 };
         }
+        if (/^检测步数(?:\s|$)/.test(text)) {
+            this.error(line.lineIndex, '「检测步数」只能写在「对局」块内。');
+            return { 'node': null, 'next': start + 1 };
+        }
         if (/^检测(?:\s|$)/.test(text)) {
             this.error(line.lineIndex, '「检测」只能写在「对局」块内。');
             return { 'node': null, 'next': start + 1 };
@@ -724,30 +792,51 @@ class JQBJParser {
             };
         }
 
-        // 分组框：{ 标题 色=#6f42c1 … }（仅编辑器分组；兼容旧的「框 / 结束框」写法）
+        // 旧分组框：{ 标题 色=#6f42c1 … } / 框 … 结束框
+        // 分组框逻辑已移除；读取旧剧本时自动转换为带颜色的标签块，保存时不再输出框语法。
         if (/^\{/.test(text) || /^框(?:\s|$)/.test(text)) {
             const endIndex = this.findEnd(start + 1, end, indent, ['}', '结束框', '框结束']);
             if (endIndex < 0) this.error(line.lineIndex, '分组框缺少「}」。');
             const bodyEnd = endIndex < 0 ? this.implicitEnd(start + 1, end, indent) : endIndex;
-            const tokens = text.replace(/^(?:框|\{)/, '').trim().split(/\s+/).filter(Boolean);
-            let color = null;
-            const titleParts = [];
-            tokens.forEach((token) => {
-                const matched = token.match(/^色=(.+)$/);
-                if (matched) { color = matched[1].trim(); return; }
-                titleParts.push(token);
-            });
+            const { 'color': boxColor } = jqbjLabelParts(text.replace(/^(?:框|\{)/, ''));
+            // 旧框按出现顺序命名为 1、2、3…（忽略原框标题）
+            const ordinal = this.seq.box += 1;
+            let name = String(ordinal);
+            let suffix = 1;
+            while (this.usedLabelNames.has(name)) name = `${ordinal}_${suffix += 1}`;
+            this.usedLabelNames.add(name);
             return {
-                'node': { 'type': 'box', 'title': titleParts.join(' '), 'color': color, 'body': this.parseBlock(start + 1, bodyEnd), 'indent': indent, 'lineStart': start, 'lineEnd': bodyEnd + 1 },
+                'node': { 'type': 'label', 'name': name, 'color': boxColor || null, 'body': this.parseBlock(start + 1, bodyEnd), 'legacy_box': true, 'indent': indent, 'lineStart': start, 'lineEnd': bodyEnd + 1 },
                 'next': bodyEnd + 1,
             };
         }
 
         // 标签 / 跳转
         if (/^标签(?:\s|$)/.test(text) || text.startsWith(':')) {
-            const name = text.replace(/^标签\s*/, '').replace(/^:/, '').trim();
-            if (!name) this.error(line.lineIndex, '标签缺少名称。');
-            return { 'node': { 'type': 'label', 'name': name, 'indent': indent, 'lineStart': start, 'lineEnd': start + 1 }, 'next': start + 1 };
+            const isColon = text.startsWith(':');
+            const { 'name': labelName, 'color': labelColor, 'manual': labelManual } = isColon
+                ? { 'name': text.slice(1).trim(), 'color': '', 'manual': false }
+                : jqbjLabelParts(text.replace(/^标签\s*/, ''));
+            if (!labelName) this.error(line.lineIndex, '标签缺少名称。');
+            const endIndex = isColon ? -1 : this.findEnd(start + 1, end, indent, ['结束标签']);
+            if (endIndex >= 0) {
+                this.usedLabelNames.add(labelName);
+                return {
+                    'node': {
+                        'type': 'label', 'name': labelName, 'color': labelColor || null, 'manual': labelManual,
+                        'body': this.parseBlock(start + 1, endIndex), 'indent': indent,
+                        'lineStart': start, 'lineEnd': endIndex + 1,
+                    },
+                    'next': endIndex + 1,
+                };
+            }
+            this.usedLabelNames.add(labelName);
+            return { 'node': { 'type': 'label', 'name': labelName, 'color': labelColor || null, 'manual': labelManual, 'indent': indent, 'lineStart': start, 'lineEnd': start + 1 }, 'next': start + 1 };
+        }
+        if (/^调用标签(?:\s|$)/.test(text)) {
+            const target = text.slice(4).trim();
+            if (!target) this.error(line.lineIndex, '调用标签缺少目标标签。');
+            return { 'node': { 'type': 'call_label', 'target': target, 'indent': indent, 'lineStart': start, 'lineEnd': start + 1 }, 'next': start + 1 };
         }
         if (/^跳转(?:\s|$)/.test(text) || text.startsWith('->')) {
             const target = text.replace(/^跳转\s*/, '').replace(/^->/, '').trim();
@@ -839,6 +928,11 @@ class JQBJParser {
             const parsedCondition = parseCondHead(head.replace(/^(?:if|elif)\b\s*/i, ''));
             if (parsedCondition.error) {
                 this.error(line.lineIndex, parsedCondition.error);
+                return { 'node': null, 'next': start + 1 };
+            }
+            // 条件「检测落子」只允许写在「对局」块内
+            if (parsedCondition.data.condition === 'move' && !this.gameDepth) {
+                this.error(line.lineIndex, '条件「检测落子」必须位于「对局」块内，对局框外不可使用。');
                 return { 'node': null, 'next': start + 1 };
             }
             return { 'node': Object.assign({ 'type': 'cond', 'kind': kind, 'target': target, 'indent': indent, 'lineStart': start, 'lineEnd': start + 1 }, parsedCondition.data), 'next': start + 1 };
@@ -943,12 +1037,14 @@ class JQBJParser {
     parseGame(start, end) {
         const line = this.lines[start];
         const title = line.text.replace(/^对局\s*/, '').replace(/^\*\s*/, '').replace(/^对局\s*/, '').trim();
+        this.gameDepth += 1;
         let endIndex = this.findEnd(start + 1, end, line.indent, ['结束对局', ...GAME_END_KEYWORDS]);
         if (endIndex < 0) endIndex = this.implicitEnd(start + 1, end, line.indent);
         const configs = [];
         const configRaw = {};
         const branches = [];
         const detections = [];
+        const stepDetections = [];
         const body = [];
         let branchIndent = -1;
         let index = start + 1;
@@ -963,7 +1059,7 @@ class JQBJParser {
                     let next = index + 1;
                     while (next < endIndex) {
                         const sibling = this.lines[next];
-                        if (sibling.text && sibling.indent === branchIndent && (/^(如果胜利|如果失败|如果平局)$/.test(sibling.text) || /^检测(?:\s|$)/.test(sibling.text))) break;
+                        if (sibling.text && sibling.indent === branchIndent && (/^(如果胜利|如果失败|如果平局)$/.test(sibling.text) || /^检测步数(?:\s|$)/.test(sibling.text) || /^检测(?:\s|$)/.test(sibling.text))) break;
                         next += 1;
                     }
                     branches.push({ 'outcome': outcome, 'body': this.parseBlock(index + 1, next), 'indent': item.indent, 'lineStart': index, 'lineEnd': next });
@@ -979,25 +1075,46 @@ class JQBJParser {
                 index += 1;
                 continue;
             }
-            // 检测 N 横,竖 -> 标签：玩家自己的第 N 手落在该交叉点时，暂停本局并跳转标签
-            const detect = /^检测\s+(\d+)\s+(\d+)\s*,\s*(\d+)\s*->\s*([\s\S]+)$/.exec(item.text);
+            // 检测步数 N -> 标签：对局总手数达到 N 时立即跳转标签（只允许写在对局块内）
+            const stepDetect = /^检测步数\s+(\d+)\s*->\s*([\s\S]+)$/.exec(item.text);
+            if (stepDetect) {
+                const step = Math.trunc(Number(stepDetect[1]));
+                const target = stepDetect[2].trim();
+                // 0 表示无需落子，点击屏幕立即跳转；其余按总手数判定
+                if (!(step >= 0)) this.error(item.lineIndex, '「检测步数」的步数必须是 0 或更大的整数。');
+                if (!target) this.error(item.lineIndex, '「检测步数」缺少“-> 标签”。');
+                stepDetections.push({
+                    'type': 'step', 'step': step >= 0 ? step : 0, 'target': target,
+                    'indent': item.indent, 'lineStart': index, 'lineEnd': index + 1,
+                });
+                index += 1;
+                continue;
+            }
+            if (/^检测步数(?:\s|$)/.test(item.text)) {
+                this.error(item.lineIndex, '「检测步数」缺少“-> 标签”（应形如 检测步数 4 -> 标签）。');
+                index += 1;
+                continue;
+            }
+            // 检测 [在|不在] N 横,竖 -> 标签：玩家自己的第 N 手落在（或不在）该交叉点时，暂停本局并跳转标签
+            const detect = /^检测\s+(?:(在|不在)\s+)?(\d+)\s+(\d+)\s*,\s*(\d+)\s*->\s*([\s\S]+)$/.exec(item.text);
             if (detect) {
-                const step = Math.trunc(Number(detect[1]));
-                const across = Number(detect[2]);
-                const down = Number(detect[3]);
-                const target = detect[4].trim();
+                const negate = detect[1] === '不在';
+                const step = Math.trunc(Number(detect[2]));
+                const across = Number(detect[3]);
+                const down = Number(detect[4]);
+                const target = detect[5].trim();
                 if (!(step >= 1)) this.error(item.lineIndex, '「检测」的步数必须是 1 或更大的整数。');
                 if (!toBoardPoint(across, down)) this.error(item.lineIndex, `「检测」坐标无效：${across},${down}（应为 1-9 的 横,竖）。`);
                 if (!target) this.error(item.lineIndex, '「检测」缺少“-> 标签”。');
                 detections.push({
-                    'type': 'detect', 'step': step >= 1 ? step : 1, 'cell_text': `${across},${down}`,
+                    'type': 'detect', 'step': step >= 1 ? step : 1, 'negate': negate, 'cell_text': `${across},${down}`,
                     'x': across, 'y': down, 'target': target, 'indent': item.indent, 'lineStart': index, 'lineEnd': index + 1,
                 });
                 index += 1;
                 continue;
             }
             if (/^检测(?:\s|$)/.test(item.text)) {
-                this.error(item.lineIndex, '「检测」缺少“-> 标签”（应形如 检测 1 4,4 -> 标签）。');
+                this.error(item.lineIndex, '「检测」缺少“-> 标签”（应形如 检测 1 4,4 -> 标签 / 检测 不在 1 4,4 -> 标签）。');
                 index += 1;
                 continue;
             }
@@ -1006,9 +1123,10 @@ class JQBJParser {
             body.push(parsed.node);
             index = Math.max(index + 1, parsed.next);
         }
+        this.gameDepth = Math.max(0, this.gameDepth - 1);
         return {
             'node': {
-                'type': 'game', 'title': title, 'configs': configs, 'config_raw': configRaw, 'branches': branches, 'detections': detections, 'body': body,
+                'type': 'game', 'title': title, 'configs': configs, 'config_raw': configRaw, 'branches': branches, 'detections': detections, 'step_detections': stepDetections, 'body': body,
                 'indent': line.indent, 'lineStart': start, 'lineEnd': endIndex + 1,
             },
             'next': endIndex + 1,
@@ -1024,7 +1142,7 @@ class JQBJParser {
     emitLabel(name, indent, auto) {
         if (Object.prototype.hasOwnProperty.call(this.labels, name)) this.errors.push(`标签重复：${name}`);
         this.labels[name] = this.nodes.length;
-        this.nodes.push({ 'type': 'label', 'name': name, 'auto': auto || 'jqbj', 'indent': indent });
+        this.nodes.push({ 'type': 'label', 'name': name, 'auto': auto === undefined ? 'jqbj' : auto, 'indent': indent });
     }
 
     compileList(list, ctx) {
@@ -1132,7 +1250,7 @@ class JQBJParser {
             const seq = this.seq.game;
             this.seq.game += 1;
             const endLabel = `__jqbj_game_${seq}_end`;
-            const gameNode = { 'type': 'game', 'title': node.title, 'config_raw': Object.assign({}, node.config_raw), 'detections': [], 'indent': indent };
+            const gameNode = { 'type': 'game', 'title': node.title, 'config_raw': Object.assign({}, node.config_raw), 'detections': [], 'step_detections': [], 'indent': indent };
             this.nodes.push(gameNode);
             this.emitAutoJump(endLabel, indent);
             const seen = new Set();
@@ -1148,13 +1266,27 @@ class JQBJParser {
             (node.detections || []).forEach((detector) => {
                 const point = toBoardPoint(detector.x, detector.y);
                 gameNode.detections.push({
-                    'step': detector.step, 'x': point ? point[0] : null, 'y': point ? point[1] : null,
+                    'step': detector.step, 'negate': Boolean(detector.negate), 'x': point ? point[0] : null, 'y': point ? point[1] : null,
                     'cell_text': detector.cell_text, 'target': detector.target,
                 });
             });
+            (node.step_detections || []).forEach((detector) => {
+                gameNode.step_detections.push({ 'step': detector.step, 'target': detector.target });
+            });
             this.emitLabel(endLabel, indent, 'game_end');
             this.nodes.push({ 'type': 'game_end', 'indent': indent });
+            // 记录对局块内的语句，供 stringify 还原时放回「对局」块内
+            const bodyStart = this.nodes.length;
             this.compileList(node.body, ctx);
+            gameNode.body_nodes = this.nodes.slice(bodyStart);
+            // 对局块内的「检测落子」条件改为即时触发：玩家第 N 手落下（或未落在该点）时
+            // 立即暂停本局并跳转到该条件的标签；链尾 ELSE 在同手未命中时同样立即跳转
+            let condChain = [];
+            gameNode.body_nodes.forEach((bodyNode) => {
+                if (bodyNode && bodyNode.type === 'cond') { condChain.push(bodyNode); return; }
+                collectMoveCondTriggers(condChain.splice(0), gameNode.detections);
+            });
+            collectMoveCondTriggers(condChain, gameNode.detections);
             return;
         }
         if (node.type === 'def') {
@@ -1165,14 +1297,17 @@ class JQBJParser {
             this.nodes.push({ 'type': 'def_end', 'name': node.name, 'indent': indent });
             return;
         }
-        if (node.type === 'box') {
-            this.nodes.push({ 'type': 'box', 'title': node.title, 'color': node.color, 'indent': indent });
-            this.compileList(node.body, ctx);
-            this.nodes.push({ 'type': 'box_end', 'indent': indent });
-            return;
-        }
         if (node.type === 'label') {
-            if (node.name) this.emitLabel(node.name, indent, '');
+            if (node.name) {
+                this.emitLabel(node.name, indent, null);
+                this.nodes[this.nodes.length - 1].color = node.color || null;
+                this.nodes[this.nodes.length - 1].block = Boolean(node.body);
+                this.nodes[this.nodes.length - 1].manual = Boolean(node.manual);
+            }
+            if (node.body) {
+                this.compileList(node.body, ctx);
+                this.nodes.push({ 'type': 'label_end', 'indent': indent });
+            }
             return;
         }
         if (node.type === 'declare' || node.type === 'assign') {
@@ -1379,7 +1514,11 @@ const validateJQBJTree = (tree) => {
                 defDepth -= 1;
                 return;
             }
-            if (node.type === 'box') { walk(node.body); return; }
+            if (node.type === 'label') {
+                if (node.color && !LABEL_COLOR_RE.test(node.color)) errors.push(`${lineOf(node)}标签“${node.name}”的颜色无效：${node.color}（应形如 #6f42c1）。`);
+                walk(node.body);
+                return;
+            }
             if (node.type === 'game') {
                 const seen = new Set();
                 node.branches.forEach((branch) => {
@@ -1389,6 +1528,9 @@ const validateJQBJTree = (tree) => {
                 });
                 (node.detections || []).forEach((detector) => {
                     if (!detector.target) errors.push(`${lineOf(node)}对局“${node.title}”的「检测」缺少跳转标签。`);
+                });
+                (node.step_detections || []).forEach((detector) => {
+                    if (!detector.target) errors.push(`${lineOf(node)}对局“${node.title}”的「检测步数」缺少跳转标签。`);
                 });
                 walk(node.body);
             }
@@ -1424,6 +1566,15 @@ class StoryScript {
             };
         });
         let menuSeq = 0;
+        // 当前解析位置所处的「对局」块深度：条件「检测落子」只允许写在对局块内
+        let gameDepth = 0;
+        // 旧分组框转标签时使用：预收集已有标签名，避免命名冲突
+        const legacyLabelNames = new Set();
+        lines.forEach((line) => {
+            const matched = /^:([^\s]+)$/.exec(line.text);
+            if (matched) legacyLabelNames.add(matched[1]);
+        });
+        let legacyBoxSeq = 0;
 
         // 选择提示可携带角色表情：? [角色|表情] 提示
         const parseChoiceHeader = (body) => {
@@ -1448,7 +1599,7 @@ class StoryScript {
                     if (line.indent === indent) return index;
                     continue;
                 }
-                if (line.text === '结束定义' || line.text === '结束框' || line.text === '框结束' || GAME_END_KEYWORDS.includes(line.text)) return -1;
+                if (line.text === '结束定义' || line.text === '结束框' || line.text === '框结束' || line.text === '结束标签' || GAME_END_KEYWORDS.includes(line.text)) return -1;
             }
             return -1;
         };
@@ -1617,6 +1768,12 @@ class StoryScript {
                     const kind = /^elif\b/i.test(head) ? 'elif' : 'if';
                     const parsedCondition = parseCondHead(head.replace(/^(?:if|elif)\b\s*/i, ''));
                     if (parsedCondition.error) { errors.push(`第 ${lineIndex + 1} 行${parsedCondition.error}`); index += 1; continue; }
+                    // 条件「检测落子」只允许写在「对局」块内
+                    if (parsedCondition.data.condition === 'move' && !gameDepth) {
+                        errors.push(`第 ${lineIndex + 1} 行条件「检测落子」必须位于「对局」块内，对局框外不可使用。`);
+                        index += 1;
+                        continue;
+                    }
                     push(Object.assign({ 'type': 'cond', 'kind': kind, 'target': target }, parsedCondition.data));
                     pending = null;
                     index += 1;
@@ -1678,6 +1835,7 @@ class StoryScript {
 
                 if (text_.startsWith('*')) {
                     pending = push({ 'type': 'game', 'title': text_.slice(1).trim(), 'config_raw': {} });
+                    gameDepth += 1;
                     index += 1;
                     continue;
                 }
@@ -1686,27 +1844,29 @@ class StoryScript {
                 if (GAME_END_KEYWORDS.includes(text_)) {
                     push({ 'type': 'game_end' });
                     pending = null;
+                    gameDepth = Math.max(0, gameDepth - 1);
                     index += 1;
                     continue;
                 }
 
-                // 分组框：框 标题 色=#6f42c1 / 结束框（仅编辑器分区，播放时跳过）
+                // 旧分组框：框 标题 色=#6f42c1 / 结束框
+                // 兼容旧剧本：读取时自动转换为带颜色的标签块，播放时按普通标签跳过。
                 if (text_ === '结束框' || text_ === '框结束') {
-                    push({ 'type': 'box_end' });
+                    push({ 'type': 'label_end' });
                     pending = null;
                     index += 1;
                     continue;
                 }
                 if (/^框(?:\s|$)/.test(text_)) {
-                    const tokens = text_.slice(1).trim().split(/\s+/).filter(Boolean);
-                    let color = null;
-                    const titleParts = [];
-                    tokens.forEach((token) => {
-                        const matched = token.match(/^色=(.+)$/);
-                        if (matched) { color = matched[1].trim(); return; }
-                        titleParts.push(token);
-                    });
-                    push({ 'type': 'box', 'title': titleParts.join(' '), 'color': color });
+                    const { 'color': boxColor } = jqbjLabelParts(text_.slice(1));
+                    // 旧框按出现顺序命名为 1、2、3…（忽略原框标题）
+                    legacyBoxSeq += 1;
+                    let name = String(legacyBoxSeq);
+                    let suffix = 1;
+                    while (legacyLabelNames.has(name)) name = `${legacyBoxSeq}_${suffix += 1}`;
+                    legacyLabelNames.add(name);
+                    labels[name] = nodes.length;
+                    push({ 'type': 'label', 'name': name, 'color': boxColor || null, 'block': true });
                     pending = null;
                     index += 1;
                     continue;
@@ -1772,10 +1932,33 @@ class StoryScript {
 
         parseRange(0, lines.length);
 
+        // 旧语法：把对局块内的「检测落子」条件抽成即时触发（与 JQBJ 解析器保持一致）
+        const oldGameStack = [];
+        let oldCondChain = [];
+        const flushOldCondChain = () => {
+            const game = oldGameStack[oldGameStack.length - 1];
+            if (game && oldCondChain.length) {
+                if (!Array.isArray(game.detections)) game.detections = [];
+                collectMoveCondTriggers(oldCondChain, game.detections);
+            }
+            oldCondChain = [];
+        };
+        nodes.forEach((node) => {
+            if (node.type === 'game') { flushOldCondChain(); oldGameStack.push(node); return; }
+            if (node.type === 'game_end') { flushOldCondChain(); oldGameStack.pop(); return; }
+            if (node.type === 'cond' && oldGameStack.length) { oldCondChain.push(node); return; }
+            flushOldCondChain();
+        });
+        flushOldCondChain();
+
         nodes.forEach((node) => {
             if (node.type === 'game') {
                 node.config = normalizeGameConfig(node.config_raw);
+                node.config.detections = Array.isArray(node.detections) ? node.detections : [];
+                node.config.step_detections = Array.isArray(node.step_detections) ? node.step_detections : [];
                 delete node.config_raw;
+                delete node.detections;
+                delete node.step_detections;
                 return;
             }
             if (node.type === 'mark' && node.kind === 'circle') node.cell = parseCell(node.target);
@@ -1814,6 +1997,9 @@ class StoryScript {
                 if (!node.name) result.push(`第 ${index + 1} 个封装块缺少名称。`);
             } else if (node.type === 'jump') {
                 if (!hasTarget(node.target)) result.push(`跳转指向了不存在的标签：${node.target}`);
+            } else if (node.type === 'call_label') {
+                if (!node.target) result.push(`第 ${index + 1} 次调用标签缺少目标标签。`);
+                else if (!hasTarget(node.target)) result.push(`调用了不存在的标签：${node.target}`);
             } else if (node.type === 'cond') {
                 if (!node.target) result.push(`第 ${index + 1} 个条件分支缺少跳转标签。`);
                 else if (!hasTarget(node.target)) result.push(`条件分支指向了不存在的标签：${node.target}`);
@@ -1834,8 +2020,14 @@ class StoryScript {
                     if (!hasTarget(item.target)) result.push(`对局“${node.title}”的对话触发指向了不存在的标签：${item.target}`);
                 });
                 (config.detections || []).forEach((item) => {
+                    // 由对局块内条件行抽出的即时触发，坐标/标签沿用条件本身，这里不重复校验
+                    if (item.from_cond) return;
                     if (item.x == null || item.y == null) result.push(`对局“${node.title}”的检测落子坐标无效：${item.cell_text || ''}（应形如 5,5，取值 1-9）`);
                     if (!hasTarget(item.target)) result.push(`对局“${node.title}”的检测落子指向了不存在的标签：${item.target}`);
+                });
+                (config.step_detections || []).forEach((item) => {
+                    if (!(item.step >= 0)) result.push(`对局“${node.title}”的检测步数必须是 0 或更大的整数。`);
+                    if (!hasTarget(item.target)) result.push(`对局“${node.title}”的检测步数指向了不存在的标签：${item.target}`);
                 });
             } else if (node.type === 'mark') {
                 if (node.kind === 'arrow') {
@@ -1850,18 +2042,18 @@ class StoryScript {
             }
         });
 
-        // 分组框：颜色合法且必须成对出现
-        const boxStack = [];
+        // 标签：颜色必须合法；标签块（带「结束标签」）必须成对出现，单独标签保持旧写法兼容
+        const labelStack = [];
         nodes.forEach((node, index) => {
-            if (node.type === 'box') {
-                if (node.color && !BOX_COLOR_RE.test(node.color)) result.push(`第 ${index + 1} 个框的颜色无效：${node.color}（应形如 #6f42c1）`);
-                boxStack.push(index);
-            } else if (node.type === 'box_end') {
-                if (!boxStack.length) result.push(`第 ${index + 1} 个「}」没有对应的「{」。`);
-                else boxStack.pop();
+            if (node.type === 'label') {
+                if (node.color && !LABEL_COLOR_RE.test(node.color)) result.push(`第 ${index + 1} 个标签的颜色无效：${node.color}（应形如 #6f42c1）`);
+                if (node.block) labelStack.push(index);
+            } else if (node.type === 'label_end') {
+                if (!labelStack.length) result.push(`第 ${index + 1} 个「结束标签」没有对应的「标签」。`);
+                else labelStack.pop();
             }
         });
-        if (boxStack.length) result.push(`第 ${boxStack[boxStack.length - 1] + 1} 个「{」缺少「}」。`);
+        if (labelStack.length) result.push(`第 ${labelStack[labelStack.length - 1] + 1} 个标签块缺少「结束标签」。`);
 
         // 封装块与结构化菜单块：必须成对出现，「返回」只能在封装块内使用
         const defStack = [];
@@ -1924,7 +2116,8 @@ class StoryScript {
         const nodes = (parsed && parsed.nodes) || [];
         const lines = [];
         const emitted = new Set();
-        const boxIndents = [];
+        // 标签块结束标记按配对标签的缩进输出，兼容旧分组框不规则缩进
+        const labelIndents = [];
         let indentFloor = 0;
         const padAt = (indent) => '  '.repeat(Math.max(indentFloor, 0, Math.min(10, Math.trunc(Number(indent) || 0))));
         const pad = (node) => padAt(node.indent);
@@ -1978,9 +2171,27 @@ class StoryScript {
                 if (config.lose) lines.push(`${configLead}失败=${config.lose}`);
                 if (config.draw) lines.push(`${configLead}平局=${config.draw}`);
                 (config.detections || []).forEach((item) => {
-                    lines.push(`${configLead}检测 ${Math.max(1, Math.trunc(Number(item.step) || 1))} ${item.cell_text || ''} -> ${item.target}`);
+                    // 条件行抽出的即时触发由下方的对局块内语句还原，避免重复输出
+                    if (item.from_cond) return;
+                    lines.push(`${configLead}检测 ${item.negate ? '不在 ' : ''}${Math.max(1, Math.trunc(Number(item.step) || 1))} ${item.cell_text || ''} -> ${item.target}`);
                 });
-            } else if (node.type === 'label') lines.push(lead + `:${node.name}`);
+                (config.step_detections || []).forEach((item) => {
+                    const step = Number.isFinite(Math.trunc(Number(item.step))) ? Math.max(0, Math.trunc(Number(item.step))) : 1;
+                    lines.push(`${configLead}检测步数 ${step} -> ${item.target}`);
+                });
+                // 对局块内的语句（含「检测落子」条件）必须还原在「对局」块内，否则会因作用域校验失败
+                if (Array.isArray(node.body_nodes) && node.body_nodes.length) emitList(node.body_nodes);
+            } else if (node.type === 'label') {
+                // 纯跳转标记沿用旧写法 :名称；带颜色/标签块才输出新「标签 … 结束标签」语法
+                if (node.color || node.block || node.manual) {
+                    lines.push(lead + `标签 ${node.name}${node.color ? ` 色=${node.color}` : ''}${node.manual ? ' 不顺序播放' : ''}`);
+                    if (node.block) labelIndents.push(Math.max(indentFloor, Math.min(10, Math.trunc(Number(node.indent) || 0))));
+                } else lines.push(lead + `:${node.name}`);
+            } else if (node.type === 'label_end') {
+                const level = labelIndents.length ? labelIndents.pop() : Math.max(indentFloor, Math.min(10, Math.trunc(Number(node.indent) || 0)));
+                lines.push('  '.repeat(level) + '结束标签');
+            }
+            else if (node.type === 'call_label') lines.push(lead + `调用标签 ${node.target}`);
             else if (node.type === 'jump') lines.push(lead + `-> ${node.target}`);
             else if (node.type === 'cond') {
                 if (node.kind === 'else') lines.push(lead + `% ELSE -> ${node.target}`);
@@ -1988,15 +2199,6 @@ class StoryScript {
             } else if (node.type === 'end') lines.push(lead + '结束');
             else if (node.type === 'resume') lines.push(lead + '继续对局');
             else if (node.type === 'game_end') lines.push(lead + '结束此对局');
-            else if (node.type === 'box') {
-                boxIndents.push(node.indent);
-                lines.push(lead + `{${node.title ? ` ${node.title}` : ''}${node.color ? ` 色=${node.color}` : ''}`);
-            }
-            else if (node.type === 'box_end') {
-                // 右大括号与对应的左大括号同缩进，保证文本回填后仍能通过校验
-                const openIndent = boxIndents.length ? boxIndents.pop() : node.indent;
-                lines.push(padAt(openIndent) + '}');
-            }
             else if (node.type === 'setting') {
                 lines.push(lead + `${STORY_SETTING_KEYS[0]}=${node.value == null ? DEFAULT_DIALOGUE_OPACITY : node.value}`);
             }
@@ -2035,8 +2237,12 @@ class StoryRuntime {
         this.loop_state = Object.create(null);
         // 封装块调用栈：保存每次「调用」之后的返回位置
         this.call_stack = [];
+        // 标签调用栈：保存每次「调用标签」之后的返回位置，遇到「结束标签」时返回
+        this.label_calls = [];
         this.defs = {};
         this.def_ranges = {};
+        // 标签节点 -> 对应「结束标签」节点位置，用于「不顺序播放」标签的整块跳过
+        this.label_ends = {};
         this.collect_defs();
         this.settle();
     }
@@ -2047,6 +2253,7 @@ class StoryRuntime {
      */
     collect_defs() {
         const stack = [];
+        const labelStack = [];
         this.nodes.forEach((node, index) => {
             if (!node) return;
             if (node.type === 'def') stack.push({ 'name': node.name, 'start': index });
@@ -2055,6 +2262,8 @@ class StoryRuntime {
                 this.def_ranges[entry.start] = index;
                 if (!Object.prototype.hasOwnProperty.call(this.defs, entry.name)) this.defs[entry.name] = { 'start': entry.start, 'end': index };
             }
+            if (node.type === 'label' && node.block) labelStack.push(index);
+            else if (node.type === 'label_end' && labelStack.length) this.label_ends[labelStack.pop()] = index;
         });
     }
 
@@ -2068,43 +2277,55 @@ class StoryRuntime {
             if (guard++ > 200000) break;
             const node = this.nodes[this.index];
             if (!node) break;
-            if (node.type === 'label') { this.index++; continue; }
-            // 剧情级设置（如对话框不透明度）只在播放前读取，不参与剧情推进
-            if (node.type === 'setting') { this.index++; continue; }
-            if (node.type === 'declare') { this.declare_var(node); this.index++; continue; }
-            if (node.type === 'assign') { this.assign_var(node); this.index++; continue; }
-            if (node.type === 'if') {
-                if (this.eval_condition(node.cond) && Object.prototype.hasOwnProperty.call(this.labels, node.target)) {
-                    this.index = this.labels[node.target];
+            if (node.type === 'label') {
+                // 「不顺序播放」的标签只在被跳转/调用时进入，顺序播放时整块跳过
+                if (node.manual) {
+                    const blockEnd = this.label_ends[this.index];
+                    this.index = typeof blockEnd === 'number' ? blockEnd + 1 : this.index + 1;
                     continue;
                 }
                 this.index++;
                 continue;
             }
+            if (node.type === 'label_end') {
+                if (this.label_calls.length) { this.index = this.label_calls.pop(); continue; }
+                this.index++;
+                continue;
+            }
+            // 剧情级设置（如对话框不透明度）只在播放前读取，不参与剧情推进
+            if (node.type === 'setting') { this.index++; continue; }
+            if (node.type === 'declare') { this.declare_var(node); this.index++; continue; }
+            if (node.type === 'assign') { this.assign_var(node); this.index++; continue; }
+            if (node.type === 'if') {
+                if (this.eval_condition(node.cond) && this.enter_label(node.target)) continue;
+                this.index++;
+                continue;
+            }
             if (node.type === 'while') {
-                this.index = this.labels[this.eval_condition(node.cond) ? node.body : node.end];
+                this.enter_label(this.eval_condition(node.cond) ? node.body : node.end);
                 continue;
             }
             if (node.type === 'until') {
-                this.index = this.labels[this.eval_condition(node.cond) ? node.end : node.body];
+                this.enter_label(this.eval_condition(node.cond) ? node.end : node.body);
                 continue;
             }
             if (node.type === 'repeat') {
                 const count = Math.max(0, Math.min(10000, Math.floor(Number(this.value_of(node.count_raw)) || 0)));
                 this.loop_state[node.loop_id] = { 'i': 0, 'count': count };
-                this.index = count <= 0 ? this.labels[node.end] : this.index + 1;
+                if (count <= 0) this.enter_label(node.end);
+                else this.index++;
                 continue;
             }
             if (node.type === 'repeat_end') {
                 const state = this.loop_state[node.loop_id];
                 if (!state) { this.index++; continue; }
                 state.i += 1;
-                if (state.i < state.count) this.index = this.labels[node.body];
+                if (state.i < state.count) this.enter_label(node.body);
                 else { delete this.loop_state[node.loop_id]; this.index++; }
                 continue;
             }
             if (node.type === 'break' || node.type === 'continue') {
-                this.index = Object.prototype.hasOwnProperty.call(this.labels, node.target) ? this.labels[node.target] : this.index + 1;
+                if (!this.enter_label(node.target)) this.index++;
                 continue;
             }
             if (node.type === 'def') {
@@ -2125,6 +2346,12 @@ class StoryRuntime {
                 this.index = def.start + 1;
                 continue;
             }
+            if (node.type === 'call_label') {
+                if (this.label_calls.length >= 64 || !Object.prototype.hasOwnProperty.call(this.labels, node.target)) { this.index++; continue; }
+                this.label_calls.push(this.index + 1);
+                this.enter_label(node.target);
+                continue;
+            }
             if (node.type === 'return') {
                 if (this.call_stack.length) { this.index = this.call_stack.pop(); continue; }
                 this.index++;
@@ -2132,7 +2359,7 @@ class StoryRuntime {
             }
             // 结构化菜单自动生成的“跳到块尾”由状态机直接执行，不暴露给播放页
             if (node.type === 'jump' && node.auto) {
-                if (Object.prototype.hasOwnProperty.call(this.labels, node.target)) { this.index = this.labels[node.target]; continue; }
+                if (this.enter_label(node.target)) continue;
                 this.index++;
                 continue;
             }
@@ -2143,6 +2370,17 @@ class StoryRuntime {
 
     skip_labels() {
         while (this.index < this.nodes.length && this.nodes[this.index].type === 'label') this.index++;
+    }
+
+    /**
+     * @description: 进入标签体（跳过标签节点本身）；「不顺序播放」的标签被跳转/调用时仍会正常播放
+     * @param {string} name
+     * @return {boolean} 标签是否存在
+     */
+    enter_label(name) {
+        if (!Object.prototype.hasOwnProperty.call(this.labels, name)) return false;
+        this.index = this.labels[name] + 1;
+        return true;
     }
 
     /**
@@ -2182,7 +2420,7 @@ class StoryRuntime {
             return this.current();
         }
         if (Object.prototype.hasOwnProperty.call(this.labels, name)) {
-            this.index = this.labels[name];
+            this.enter_label(name);
             this.settle();
         }
         return this.current();
@@ -2226,7 +2464,10 @@ class StoryRuntime {
             const move = this.player_moves[Math.max(0, Number(node.step || 1) - 1)];
             // 条件里的坐标是作者坐标（1-9，先横后竖），落子记录是棋盘坐标（0-8，左上原点）
             const point = toBoardPoint(node.x, node.y);
-            return Array.isArray(move) && !!point && move[0] === point[0] && move[1] === point[1];
+            if (!Array.isArray(move) || !point) return false;
+            const at = move[0] === point[0] && move[1] === point[1];
+            // 「不在」：该手已落下且没有落在指定交叉点时命中
+            return node.negate ? !at : at;
         }
         if (condition === 'step') {
             return this.player_moves.length >= Math.max(1, Number(node.step || 1));
@@ -2277,6 +2518,8 @@ class StoryRuntime {
      */
     step_cond(node) {
         if (!node) return this.current();
+        // 对局块内的「检测落子」条件已改为对局中即时触发，流程推进到此处时直接跳过
+        if (node.consumed) return this.advance();
         if (node.kind === 'else' || this.cond_matches(node)) return this.goto(node.target);
         return this.advance();
     }

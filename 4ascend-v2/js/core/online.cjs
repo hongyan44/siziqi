@@ -623,7 +623,7 @@ const my_timer = (seconds) => {
  */
 const valid_ = (x, y) => {
     const valid = gl_game.valid(x, y, gl_state.turn_player === PLAYER_ENUM.BLACK ? STONE_ENUM.BLACK : STONE_ENUM.WHITE);
-    if (!valid) toast.error(`非法落子${x},${y}`);
+    if (!valid) toast.error(`非法落子(${x + 1},${y + 1})`);
     return valid;
 };
 

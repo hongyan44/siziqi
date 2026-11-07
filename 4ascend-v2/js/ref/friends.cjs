@@ -38,11 +38,13 @@ const FriendList = require('./friend-list.cjs');
         const node = document.createElement('sl-dialog');
         node.id = 'dialog_gift_confirm';
         node.setAttribute('label', '赠送确认');
-        // 置于背包 / 聊天弹窗之上，任何页面打开都不会被遮挡
-        node.style.zIndex = '1500';
+        // 置于背包 / 聊天弹窗之上，任何页面打开都不会被遮挡。
+        // sl-dialog 宿主为 display:contents，直接写 z-index 不生效，需覆盖内部层级变量。
+        node.style.setProperty('--sl-z-index-dialog', '1500');
         node.innerHTML = `
 <div class='d-flex flex-column gap-2'>
     <div id='div_gift_confirm_text' class='text-secondary small'></div>
+    <div id='div_gift_confirm_detail' class='small'></div>
 </div>
 <div slot='footer' class='d-flex align-items-center gap-2'>
     <sl-button id='button_gift_confirm_cancel' variant='neutral' size='small'>再想想</sl-button>
@@ -55,9 +57,14 @@ const FriendList = require('./friend-list.cjs');
     window.gift_confirm = (options = {}) => new Promise((resolve) => {
         const node = gift_confirm_node();
         const text = node.querySelector('#div_gift_confirm_text');
-        if (text) text.textContent = String(options.message || '确定要送出这份赠礼吗？送出后无法撤回。');
+        const detail = node.querySelector('#div_gift_confirm_detail');
         const ok = node.querySelector('#button_gift_confirm_ok');
         const cancel = node.querySelector('#button_gift_confirm_cancel');
+
+        if (text) text.textContent = String(options.message || '确定要送出这份赠礼吗？送出后无法撤回。');
+        if (detail) detail.textContent = String(options.detail || '');
+        if (ok) ok.textContent = String(options.ok_text || '确认赠送');
+        if (cancel) cancel.textContent = String(options.cancel_text || '再想想');
 
         let settled = false;
         const finish = (value) => {
@@ -1042,22 +1049,128 @@ const FriendList = require('./friend-list.cjs');
         }
     };
 
-    // 在聊天界面直接赠送好友赠礼：扣减自己背包里 1 个，对方获得 1 张 500 棋币兑换券
-    const send_gift = async () => {
+    // ---------- 聊天赠礼：先选礼物类型，再二次确认 ----------
+    // 聊天里好友已经确定，只需选择赠礼类型；选项按背包持有数量与账号等级过滤。
+    const GIFT_KINDS = [
+        { kind: 'gift500', label: '好友赠礼：500棋币', value: 500, count_key: 'gift_vouchers' },
+        { kind: 'gift3000', label: '好友赠礼：3000棋币', value: 3000, count_key: 'gift3000_vouchers', min_level: 3 }
+    ];
+    let gift_pick_dialog = null;
+    const gift_pick_node = () => {
+        if (gift_pick_dialog) return gift_pick_dialog;
+        const node = document.createElement('sl-dialog');
+        node.id = 'dialog_friend_gift_pick';
+        node.setAttribute('label', '赠送好友赠礼');
+        // 浮在好友栏与背包之上，二次确认弹窗（1500）再浮于其上层
+        node.style.setProperty('--sl-z-index-dialog', '1400');
+        node.innerHTML = `
+<div class='d-flex flex-column gap-2'>
+    <div id='span_friend_gift_pick_tip' class='text-secondary small'>请选择要赠送的礼物类型</div>
+    <div id='div_friend_gift_pick_list' class='d-flex flex-column gap-2' style='max-height: 20rem; overflow-y: auto;'></div>
+</div>
+<div slot='footer' class='d-flex align-items-center gap-2'>
+    <sl-button id='button_friend_gift_pick_close' variant='neutral' size='small'>取消</sl-button>
+</div>`;
+        document.body.append(node);
+        const close = node.querySelector('#button_friend_gift_pick_close');
+        if (close) close.addEventListener('click', () => gift_pick_hide());
+        node.addEventListener('sl-request-close', () => node.classList.add('d-none'));
+        gift_pick_dialog = node;
+        return node;
+    };
+
+    const gift_pick_hide = () => {
+        const node = gift_pick_dialog;
+        if (!node) return;
+        if (typeof node.hide === 'function') node.hide();
+        else node.classList.add('d-none');
+    };
+
+    const gift_pick_count = (info, item) => Math.max(0, Math.trunc(Number(info && info[item.count_key]) || 0));
+
+    const gift_pick_show = async () => {
         const chat = state.chat;
-        const button = byId('button_friend_chat_gift');
         if (!chat || !window.http_user_voucher_gift_send) return;
+        const button = byId('button_friend_chat_gift');
+        if (button) button.disabled = true;
+        let info = null;
+        try {
+            info = window.http_user_info ? await window.http_user_info(token()) : null;
+        } catch (_) {
+            info = null;
+        } finally {
+            if (state.chat === chat && button) button.disabled = false;
+        }
+        if (!info) return notify('error', '获取背包信息失败，请稍后重试');
+
+        const node = gift_pick_node();
+        const list = node.querySelector('#div_friend_gift_pick_list');
+        if (!list) return;
+        const level = Math.max(1, Math.trunc(Number(info.level) || 1));
+        list.replaceChildren();
+
+        GIFT_KINDS.forEach((item) => {
+            const count = gift_pick_count(info, item);
+            // 低等级账号默认看不到 3000 赠礼，但持有库存时仍可赠送
+            if (level < (item.min_level || 1) && count < 1) return;
+            const action = h('sl-button', {
+                size: 'small',
+                variant: count > 0 ? 'primary' : 'default',
+                outline: count > 0 ? null : '',
+                text: count > 0 ? '选择' : '无库存'
+            });
+            if (count > 0) action.addEventListener('click', () => gift_pick_choose(item));
+            else action.setAttribute('disabled', '');
+            list.append(h('div', { class: 'd-flex align-items-center gap-2 p-2 rounded border' }, [
+                h('div', { class: 'flex-grow-1 min-w-0' }, [
+                    h('div', { class: 'fw-semibold', text: item.label }),
+                    h('small', {
+                        class: 'text-secondary d-block',
+                        text: count > 0 ? `背包持有 ${count} 个` : '背包中没有该赠礼，去商店购买一个吧'
+                    })
+                ]),
+                action
+            ]));
+        });
+
+        if (!list.children.length) {
+            list.append(h('div', {
+                class: 'text-secondary small py-2',
+                text: '背包里没有可赠送的好友赠礼，去商店购买一个吧'
+            }));
+        }
+
+        node.classList.remove('d-none');
+        if (typeof node.show === 'function') node.show();
+        else customElements.whenDefined('sl-dialog').then(() => node.show());
+    };
+
+    const gift_pick_choose = async (item) => {
+        const chat = state.chat;
+        if (!chat) return;
         const friend_name = FriendList.display_name(chat.friend && chat.friend.name) || '该好友';
+        gift_pick_hide();
         if (typeof window.gift_confirm === 'function') {
             const confirmed = await window.gift_confirm({
-                message: `确定要把「好友赠礼：500棋币」送给 ${friend_name} 吗？送出后无法撤回。`
+                message: '确定赠送此礼物吗？',
+                detail: `将「${item.label}」送给 ${friend_name}，送出后无法撤回。`,
+                ok_text: '确定'
             });
             if (!confirmed) return;
         }
+        await send_gift(item);
+    };
+
+    // 在聊天界面直接赠送好友赠礼：扣减自己背包里 1 个，对方获得对应面额兑换券
+    const send_gift = async (item) => {
+        const chat = state.chat;
+        const button = byId('button_friend_chat_gift');
+        if (!chat || !window.http_user_voucher_gift_send) return;
+        const detail = item || GIFT_KINDS[0];
         if (button) button.disabled = true;
         let result = null;
         try {
-            result = await window.http_user_voucher_gift_send(token(), chat.friend.uuid, 'gift500');
+            result = await window.http_user_voucher_gift_send(token(), chat.friend.uuid, detail.kind);
         } catch (_) {
             result = null;
         } finally {
@@ -1065,10 +1178,10 @@ const FriendList = require('./friend-list.cjs');
         }
         if (!result) return notify('error', '赠送失败，请稍后重试');
         if (!result.ok) {
-            if (result.reason === 'none') return notify('info', '背包里没有好友赠礼，去商店购买一个吧');
+            if (result.reason === 'none') return notify('info', `背包里没有「${detail.label}」，去商店购买一个吧`);
             return notify('error', '赠送失败，请稍后重试');
         }
-        notify('success', '已送出好友赠礼，对方背包获得 1 张 500 棋币兑换券');
+        notify('success', `已送出「${detail.label}」，对方背包获得 1 张 ${detail.value} 棋币兑换券`);
         await refresh_chat();
     };
 
@@ -1214,7 +1327,7 @@ const FriendList = require('./friend-list.cjs');
         if (send) send.addEventListener('click', send_chat);
 
         const chat_gift = byId('button_friend_chat_gift');
-        if (chat_gift) chat_gift.addEventListener('click', send_gift);
+        if (chat_gift) chat_gift.addEventListener('click', gift_pick_show);
 
         const chat_input = byId('input_friend_chat');
         if (chat_input) chat_input.addEventListener('keydown', (event) => {
