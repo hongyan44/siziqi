@@ -8,3 +8,14 @@ __pycache__/
 # 截图与临时产物
 .screenshots/
 outputs/
+
+# 仅保留 4ascend-v2 与 4ascend-online 入库，以下仅本地留存
+/4ascendfish/
+/苦手文件/
+/tmp/
+/Zero形象和剧情/
+/.trae/
+/.trae-html-share-packages/
+/.workbuddy/
+/刷草相关代码.md
+/\[a-zA-Z_$\]+
