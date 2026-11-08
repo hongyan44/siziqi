@@ -896,6 +896,11 @@
                 if (remote && remote.data) {
                     try { merge_remote_state(JSON.parse(remote.data)); } catch (_) {}
                 }
+                // 非双败赛制自动抽签：本地补做后一并保存，管理端可立即看到胜者晋级与重新分组
+                if (auto_advance_all()) {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+                    render();
+                }
                 await window.http_contest_bracket_update(token, JSON.stringify(state));
             } catch (_) {}
         };
@@ -1684,6 +1689,92 @@
             // 平分时沿用服务端写回的胜者，避免前后端判定不一致
             if (entry.winner_uuid && Number(wins[entry.winner_uuid]) >= target) return entry.winner_uuid;
             return best_uuid;
+        };
+
+        // 安全随机下标：与后端一致的拒绝采样，避免取模偏差
+        const random_index = (length) => {
+            if (!length) return 0;
+            const limit = Math.floor(0x100000000 / length) * length;
+            const buffer = new Uint32Array(1);
+            let value = 0;
+            do {
+                crypto.getRandomValues(buffer);
+                value = buffer[0];
+            } while (value >= limit);
+            return value % length;
+        };
+
+        // 非双败赛制自动抽签：把晋级选手放入目标方块的随机未满组
+        const place_advancer = (target, name, uuid) => {
+            if (!target || !name || !uuid || !Array.isArray(target.groups)) return false;
+            // 管理员已移除过的身份不自动回填
+            if (Array.isArray(target.removed_uuids) && target.removed_uuids.includes(uuid)) return false;
+            // 已在本方块在册则跳过，保证自动抽签可重复执行
+            if (is_registered(target, uuid, name)) return false;
+            // 昵称唯一性守卫：同名不同身份时不自动写入
+            if (target.players.includes(name)) return false;
+            if (target.players.length >= target.maxPlayers) return false;
+            const candidates = [];
+            target.groups.forEach((group, index) => {
+                if (Array.isArray(group) && group.length < 2) candidates.push(index);
+            });
+            if (!candidates.length) return false;
+            const pick = candidates[random_index(candidates.length)];
+
+            // 与报名接口一致：清理该身份历史小分，并重置本次加入的组
+            purge_uuid_results(target, uuid);
+            if (!target.player_uuids || typeof target.player_uuids !== 'object') target.player_uuids = {};
+            target.players.push(name);
+            target.groups[pick].push(name);
+            target.player_uuids[name] = uuid;
+            if (!target.results || typeof target.results !== 'object') target.results = {};
+            target.results[String(pick)] = {
+                bo: normalize_bo(target.bo),
+                wins: {},
+                games: [],
+                completed: false,
+                winner_uuid: '',
+                updated_at: Date.now()
+            };
+            return true;
+        };
+
+        // 非双败赛制：本轮抽签完成且组内分出胜负后，自动把胜者放入唯一的下一轮方块
+        const auto_advance_node = (node) => {
+            if (!node || node.loserAdvance === true) return false;
+            if (!isNodeDrawn(node)) return false;
+            const children = state.edges
+                .filter((edge) => edge.from === node.id)
+                .map((edge) => findNode(edge.to))
+                .filter(Boolean);
+            // 只有唯一的下一轮方块才能自动抽签；多分支需人工安排去向
+            if (children.length !== 1) return false;
+            const child = children[0];
+            const map = node.player_uuids && typeof node.player_uuids === 'object' ? node.player_uuids : {};
+            let changed = false;
+            node.groups.forEach((group, index) => {
+                if (!Array.isArray(group) || group.length === 0 || group.length > 2) return;
+                // 单人组视为轮空直接晋级；双人组需分出胜负
+                const winner_uuid = group.length === 1 ? (map[group[0]] || '') : group_winner_uuid(node, index);
+                if (!winner_uuid) return;
+                const winner_name = Object.keys(map).find((key) => map[key] === winner_uuid);
+                if (!winner_name) return;
+                if (place_advancer(child, winner_name, winner_uuid)) changed = true;
+            });
+            return changed;
+        };
+
+        // 全量补做自动抽签；多轮循环处理本轮晋级后下一轮恰好也已完成抽签的连锁情况
+        const auto_advance_all = () => {
+            let changed = false;
+            const maxPasses = state.nodes.length + 1;
+            for (let pass = 0; pass < maxPasses; pass++) {
+                let passChanged = false;
+                state.nodes.forEach((node) => { if (auto_advance_node(node)) passChanged = true; });
+                if (!passChanged) break;
+                changed = true;
+            }
+            return changed;
         };
 
         // 某身份在前置方块中的晋级状态：wait 未定 / lose 未获胜 / ok 已晋级

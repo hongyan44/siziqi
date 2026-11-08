@@ -258,7 +258,7 @@
         let triggeredDetections = new Set();
         // 检测步数：按对局总手数计数（玩家第一手=1、AI 应手=2…），按条目索引去重
         let triggeredStepDetections = new Set();
-        // 检测步数=0：对局初始化完成后，点击屏幕即可跳转（不需要落子）
+        // 检测步数=0：对局初始化完成后暂停本局并显示棋盘，点击棋盘才跳转（不需要落子）
         let stepZeroReady = false;
         let gameNodeIndex = 0;
         let pendingResume = null;
@@ -771,6 +771,8 @@
                     setDialogueVisible(false);
                     refreshGuide();
                     done();
+                    // 回到棋盘后恢复回合提示，避免仍停留在「点击棋盘继续剧情」
+                    if (!gameOver && state) setStatus(state.turn_player === selfPlayer ? '轮到你落子。' : '对手 AI 回合。', 'primary');
                 } else { runtime.advance(); renderNode(); }
                 return;
             }
@@ -786,7 +788,11 @@
             runtime.advance();
             renderNode();
         };
-        dialoguePanel.addEventListener('click', advanceDialogue);
+        // 剧情点击只推进对话，不再冒泡到文档层的对局点击，避免结束对话的那次点击被「检测步数 0」误判为继续信号
+        dialoguePanel.addEventListener('click', (event) => {
+            event.stopPropagation();
+            advanceDialogue();
+        });
 
         // 点击对话框以外的位置：临时收起对话框；收起后点击任意位置再从底部弹出
         document.addEventListener('click', (event) => {
@@ -1418,13 +1424,6 @@
             concludeGame(null);
         });
 
-        // 检测步数=0：无需落子，点击屏幕任意位置立即跳转到目标标签
-        document.addEventListener('click', () => {
-            if (!stepZeroReady || running || mode !== 'game' || gameOver || !hasPendingZeroStep()) return;
-            clearPendingConfirm();
-            runStepDetections(0).catch((error) => console.error('检测步数跳转失败。', error));
-        });
-
         const startGame = async (node) => {
             const config = node.config || {};
             currentConfig = config;
@@ -1464,12 +1463,12 @@
             if (generation !== gameGeneration) return;
             running = false;
             renderInfo();
-            if (endByClick) { stepZeroReady = true; setStatus('点击屏幕结束本局。', 'primary'); return; }
+            if (endByClick) { stepZeroReady = true; setStatus(hasPendingZeroStep() ? '点击棋盘继续剧情。' : '点击屏幕结束本局。', 'primary'); return; }
             setStatus(state.turn_player === selfPlayer ? '轮到你落子。' : '对手 AI 先手...', 'primary');
             await runAiTurns(generation);
             if (generation !== gameGeneration) return;
             stepZeroReady = true;
-            if (!gameOver) setStatus(state.turn_player === selfPlayer ? '轮到你落子。' : '对手 AI 回合。', 'primary');
+            if (!gameOver) setStatus(hasPendingZeroStep() ? '点击棋盘继续剧情。' : (state.turn_player === selfPlayer ? '轮到你落子。' : '对手 AI 回合。'), 'primary');
         };
 
         // 页面尺寸变化时：角色框立即跟随对话框高度，先用缓存的压缩图填充；框大于压缩图时再取原图按新框像素重压

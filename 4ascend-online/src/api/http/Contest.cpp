@@ -148,6 +148,277 @@ bool is_final_node(const jsoncons::json& bracket, std::string_view node_id) noex
     }
     return !best.empty() && best == node_id;
 }
+
+// ---------- 非双败赛制自动抽签 ----------
+
+// 归一化方块的 BO 局数（默认 3，偶数向上取奇）
+int64_t node_bo(const jsoncons::json& node) noexcept {
+    int64_t bo = json_i64(node, "bo", 3);
+    if (bo < 1) bo = 3;
+    if (bo % 2 == 0) bo += 1;
+    return bo;
+}
+
+// 方块系列赛的目标胜局数（BO3 -> 2）
+int64_t node_series_target(const jsoncons::json& node) noexcept {
+    return node_bo(node) / 2 + 1;
+}
+
+// 方块是否已完成抽签：报名满员即视为分组完成
+bool node_is_drawn(const jsoncons::json& node) noexcept {
+    if (!node.contains("players") || !node.at("players").is_array()) return false;
+    const int64_t max_players = json_i64(node, "maxPlayers", 0);
+    if (max_players <= 0) return false;
+    return static_cast<int64_t>(node.at("players").size()) >= max_players;
+}
+
+// 读取方块在册昵称对应的身份标识码
+std::string node_player_uuid(const jsoncons::json& node, const std::string& name) noexcept {
+    if (!node.contains("player_uuids") || !node.at("player_uuids").is_object()) return {};
+    try {
+        const auto& map = node.at("player_uuids");
+        if (!map.contains(name)) return {};
+        return map.at(name).as<std::string>();
+    } catch (...) { return {}; }
+}
+
+// 组内胜者标识码：单人组视为轮空直接晋级；未分出胜负返回空串
+std::string node_group_winner(const jsoncons::json& node, size_t index) noexcept {
+    if (!node.contains("groups") || !node.at("groups").is_array()) return {};
+    const auto& groups = node.at("groups");
+    if (index >= groups.size() || !groups.at(index).is_array()) return {};
+    const auto& group = groups.at(index);
+    if (group.size() == 0 || group.size() > 2) return {};
+
+    std::vector<std::pair<std::string, std::string>> members;
+    for (const auto& member : group.array_range()) {
+        std::string name;
+        try { name = member.as<std::string>(); } catch (...) { continue; }
+        members.emplace_back(name, node_player_uuid(node, name));
+    }
+    if (members.size() == 1) return members[0].second;
+    if (members.size() != 2 || members[0].second.empty() || members[1].second.empty()) return {};
+
+    const int64_t target = node_series_target(node);
+    jsoncons::json entry = jsoncons::json::object();
+    if (node.contains("results") && node.at("results").is_object()) {
+        const auto& results = node.at("results");
+        const std::string key = std::to_string(index);
+        if (results.contains(key) && results.at(key).is_object()) entry = results.at(key);
+    }
+    jsoncons::json wins = jsoncons::json::object();
+    if (entry.contains("wins") && entry.at("wins").is_object()) wins = entry.at("wins");
+
+    const auto score_of = [&wins](const std::string& uuid) -> int64_t {
+        if (!wins.contains(uuid)) return 0;
+        try { return wins.at(uuid).as<int64_t>(); } catch (...) { return 0; }
+    };
+
+    // 平分时沿用服务端写回的胜者，避免前后端判定不一致
+    if (entry.contains("winner_uuid")) {
+        try {
+            const std::string declared = entry.at("winner_uuid").as<std::string>();
+            if (!declared.empty() && score_of(declared) >= target) return declared;
+        } catch (...) {}
+    }
+
+    const int64_t a = score_of(members[0].second);
+    const int64_t b = score_of(members[1].second);
+    if (a < target && b < target) return {};
+    return a >= b ? members[0].second : members[1].second;
+}
+
+// 清除某身份在方块历史小分中的残留并重算完成态（与报名接口一致）
+jsoncons::json strip_uuid_results(const jsoncons::json& node, const std::string& uuid) {
+    jsoncons::json results = (node.contains("results") && node.at("results").is_object())
+        ? node.at("results") : jsoncons::json::object();
+    if (uuid.empty()) return results;
+
+    const int64_t bo = node_bo(node);
+    const int64_t target = node_series_target(node);
+    const auto now = static_cast<int64_t>(Libs::Only::Time::timestamp_ms());
+    for (auto& item : results.object_range()) {
+        if (!item.value().is_object()) continue;
+        auto& entry = item.value();
+        if (!entry.contains("wins") || !entry.at("wins").is_object()) continue;
+        jsoncons::json wins = entry.at("wins");
+        if (!wins.contains(uuid)) continue;
+        jsoncons::json filtered = jsoncons::json::object();
+        int64_t max_wins = 0;
+        std::string best_uuid;
+        for (auto& w : wins.object_range()) {
+            const std::string& wu = w.key();
+            if (wu == uuid) continue;
+            int64_t value = 0;
+            try { value = w.value().as<int64_t>(); } catch (...) { value = 0; }
+            filtered[wu] = value;
+            if (value > max_wins) { max_wins = value; best_uuid = wu; }
+        }
+        entry["wins"] = filtered;
+        entry["bo"] = bo;
+        entry["completed"] = max_wins >= target;
+        entry["winner_uuid"] = max_wins >= target ? best_uuid : std::string();
+        entry["updated_at"] = now;
+    }
+    return results;
+}
+
+// 将晋级选手放入目标方块的随机未满组；已在本方块或已满员时不做改动
+bool place_advancer(jsoncons::json& target, const std::string& name, const std::string& uuid) {
+    if (!target.is_object() || name.empty() || uuid.empty()) return false;
+    if (!target.contains("groups") || !target.at("groups").is_array()) return false;
+
+    // 管理员已移除过的身份不自动回填，避免与人工调整冲突
+    if (target.contains("removed_uuids") && target.at("removed_uuids").is_array()) {
+        for (const auto& removed : target.at("removed_uuids").array_range()) {
+            std::string value;
+            try { value = removed.as<std::string>(); } catch (...) { continue; }
+            if (value == uuid) return false;
+        }
+    }
+
+    jsoncons::json players = (target.contains("players") && target.at("players").is_array())
+        ? target.at("players") : jsoncons::json::array();
+    jsoncons::json player_uuids = (target.contains("player_uuids") && target.at("player_uuids").is_object())
+        ? target.at("player_uuids") : jsoncons::json::object();
+
+    // 已在本方块在册则跳过，保证自动抽签可重复执行
+    for (const auto& member : players.array_range()) {
+        std::string member_name;
+        try { member_name = member.as<std::string>(); } catch (...) { continue; }
+        if (!player_uuids.contains(member_name)) continue;
+        std::string member_uuid;
+        try { member_uuid = player_uuids.at(member_name).as<std::string>(); } catch (...) { continue; }
+        if (member_uuid == uuid) return false;
+    }
+
+    // 昵称唯一性守卫：同名不同身份时不自动写入，交由管理员处理
+    if (players.contains(name)) return false;
+
+    const int64_t max_players = json_i64(target, "maxPlayers", 0);
+    if (max_players <= 0 || static_cast<int64_t>(players.size()) >= max_players) return false;
+
+    jsoncons::json groups = target.at("groups");
+    std::vector<size_t> unfilled;
+    for (size_t i = 0; i < groups.size(); ++i) {
+        if (groups.at(i).is_array() && groups.at(i).size() < 2) unfilled.push_back(i);
+    }
+    if (unfilled.empty()) return false;
+    const size_t pick = unfilled[Libs::Only::Random::mod(static_cast<uint32_t>(unfilled.size()))];
+
+    // 与报名接口一致：清理该身份历史小分，并重置本次加入的组
+    jsoncons::json results = strip_uuid_results(target, uuid);
+    const auto now = static_cast<int64_t>(Libs::Only::Time::timestamp_ms());
+    jsoncons::json cleared = jsoncons::json::object();
+    cleared["bo"] = node_bo(target);
+    cleared["wins"] = jsoncons::json::object();
+    cleared["games"] = jsoncons::json::array();
+    cleared["completed"] = false;
+    cleared["winner_uuid"] = std::string();
+    cleared["updated_at"] = now;
+    results[std::to_string(pick)] = cleared;
+    target["results"] = results;
+
+    players.push_back(name);
+    target["players"] = players;
+    groups.at(pick).push_back(name);
+    target["groups"] = groups;
+    player_uuids[name] = uuid;
+    target["player_uuids"] = player_uuids;
+    return true;
+}
+
+// 非双败赛制：本轮抽签完成且组内分出胜负后，自动把胜者放入下一轮随机未满组
+bool auto_advance_node(jsoncons::json& nodes, const jsoncons::json& edges, const std::string& parent_id) {
+    jsoncons::json* parent = nullptr;
+    for (auto& node : nodes.array_range()) {
+        if (!node.is_object()) continue;
+        if (json_string(node, "id") == parent_id) { parent = &node; break; }
+    }
+    if (!parent) return false;
+
+    // 双败赛制不自动抽签：败方去向需人工安排
+    if (json_bool(*parent, "loserAdvance", false)) return false;
+    // 本轮报名未满（抽签尚未完成）时不晋级
+    if (!node_is_drawn(*parent)) return false;
+
+    std::vector<std::string> children;
+    if (edges.is_array()) {
+        for (const auto& edge : edges.array_range()) {
+            if (!edge.is_object()) continue;
+            if (json_string(edge, "from") != parent_id) continue;
+            const auto child_id = json_string(edge, "to");
+            if (child_id.empty()) continue;
+            if (std::find(children.begin(), children.end(), child_id) == children.end()) children.push_back(child_id);
+        }
+    }
+    // 只有唯一的下一轮方块才能自动抽签；多分支（如附加赛）需人工安排去向
+    if (children.size() != 1) return false;
+
+    if (!parent->contains("groups") || !parent->at("groups").is_array()) return false;
+    const jsoncons::json groups = parent->at("groups");
+    bool changed = false;
+    for (size_t index = 0; index < groups.size(); ++index) {
+        if (!groups.at(index).is_array()) continue;
+        const std::string winner_uuid = node_group_winner(*parent, index);
+        if (winner_uuid.empty()) continue;
+
+        // 胜者昵称（以本方块在册名单为准）
+        std::string winner_name;
+        if (parent->contains("player_uuids") && parent->at("player_uuids").is_object()) {
+            for (auto& item : parent->at("player_uuids").object_range()) {
+                std::string value;
+                try { value = item.value().as<std::string>(); } catch (...) { continue; }
+                if (value != winner_uuid) continue;
+                winner_name = item.key();
+                break;
+            }
+        }
+        if (winner_name.empty()) continue;
+
+        for (const auto& child_id : children) {
+            jsoncons::json* child = nullptr;
+            for (auto& node : nodes.array_range()) {
+                if (!node.is_object()) continue;
+                if (json_string(node, "id") == child_id) { child = &node; break; }
+            }
+            if (!child) continue;
+            if (place_advancer(*child, winner_name, winner_uuid)) changed = true;
+        }
+    }
+    return changed;
+}
+
+// 遍历全部方块补做自动抽签；多轮循环处理本轮晋级后下一轮恰好也已完成抽签的连锁情况
+bool auto_advance_all(jsoncons::json& bracket) {
+    if (!bracket.is_object()) return false;
+    if (!bracket.contains("nodes") || !bracket.at("nodes").is_array()) return false;
+
+    jsoncons::json nodes = bracket.at("nodes");
+    const jsoncons::json edges = (bracket.contains("edges") && bracket.at("edges").is_array())
+        ? bracket.at("edges") : jsoncons::json::array();
+
+    std::vector<std::string> ids;
+    for (const auto& node : nodes.array_range()) {
+        if (!node.is_object()) continue;
+        const auto id = json_string(node, "id");
+        if (!id.empty()) ids.push_back(id);
+    }
+
+    bool changed = false;
+    const size_t max_passes = ids.size() + 1;
+    for (size_t pass = 0; pass < max_passes; ++pass) {
+        bool pass_changed = false;
+        for (const auto& id : ids) {
+            if (auto_advance_node(nodes, edges, id)) pass_changed = true;
+        }
+        if (!pass_changed) break;
+        changed = true;
+    }
+
+    if (changed) bracket["nodes"] = nodes;
+    return changed;
+}
 } // namespace
 
 // 查询签表。公开接口，任何人可读。
@@ -172,8 +443,20 @@ void bracket_update(cinatra::coro_http_request& request, cinatra::coro_http_resp
     std::string creator;
     if (!is_admin(value, creator)) return api_http_error("bracket_update", response);
 
-    const auto data = json_string(value, "data");
+    std::string data = json_string(value, "data");
     if (data.empty() || data.size() > 65536) return api_http_error("bracket_update", response);
+
+    // 非双败赛制自动抽签：管理员保存签表时补做一次胜者晋级抽签（覆盖手工改分场景）
+    try {
+        jsoncons::json parsed = jsoncons::json::parse(data);
+        if (auto_advance_all(parsed)) {
+            std::string updated;
+            parsed.dump(updated);
+            if (!updated.empty() && updated.size() <= 65536) data = updated;
+        }
+    } catch (...) {
+        // 非 JSON 数据保持原样写入，维持既有行为
+    }
 
     const bool status = Manager::Contest::update_bracket(data, creator, static_cast<uint64_t>(Libs::Only::Time::timestamp_ms()));
     std::string buffer;
@@ -625,6 +908,9 @@ void match_report(cinatra::coro_http_request& request, cinatra::coro_http_respon
 
     if (ok) {
         bracket["nodes"] = nodes;
+        // 非双败赛制自动抽签：本组分出胜负后，自动把胜者放入下一轮随机未满组；
+        // 多轮扫描可顺带处理下一轮恰好也已完成抽签（轮空/连锁晋级）的情况
+        auto_advance_all(bracket);
         std::string newData;
         bracket.dump(newData);
         if (newData.size() > 65536) return api_http_error("match_report", response);

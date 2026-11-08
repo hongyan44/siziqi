@@ -1061,7 +1061,9 @@ const run = async () => {
     gl_foe_index = foe_index;
     gl_first_index = first_index;
 
-    state.turn_player = first_color;
+    // 注意：存档复原（archive）后不能再把 turn_player 重置为 first_color。
+    // game_archive() 已按存档逐手推进出正确的下一手方，重置会让观战方的后续落子
+    // 从相反的先后手继续，导致黑白棋子完全颠倒（对局双方不受影响）。
 
 
     // 信息显示
